@@ -25,10 +25,13 @@ function Show-Help {
     Write-Host "  eval           - Run offline evaluation & faithfulness benchmark"
     Write-Host "  gate           - Run CI/CD evaluation regression quality gate"
     Write-Host "  demo           - Run end-to-end pipeline test against Ollama & Qdrant"
-    Write-Host "  test           - Run all 37 pytest unit & integration tests"
+    Write-Host "  test           - Run all pytest unit & integration tests"
     Write-Host "  check          - Run ruff linter and full pytest suite"
-    Write-Host "  services-up    - Start Docker containers (Qdrant & Redis)"
-    Write-Host "  services-down  - Stop Docker containers"
+    Write-Host "  services-up    - Start infrastructure only (Qdrant, Redis, PostgreSQL)"
+    Write-Host "  services-down  - Stop all Docker containers"
+    Write-Host "  stack-up       - Build and start the entire stack (infra + gateway + worker + scheduler)"
+    Write-Host "  stack-down     - Stop the entire stack"
+    Write-Host "  stack-logs     - Tail logs from the containerised app services"
     Write-Host "  scheduler      - Run directory reconciler daemon"
     Write-Host "  worker         - Run asynchronous Redis queue worker daemon"
     Write-Host "  clean          - Remove __pycache__, .pytest_cache, and .ruff_cache"
@@ -66,12 +69,24 @@ switch ($Target.ToLower()) {
         python -m pytest tests -v
     }
     "services-up" {
-        Write-Host "Starting Docker microservices..." -ForegroundColor Green
-        docker compose up -d
+        Write-Host "Starting infrastructure (Qdrant, Redis, PostgreSQL)..." -ForegroundColor Green
+        docker compose up -d qdrant redis postgres
     }
     "services-down" {
-        Write-Host "Stopping Docker microservices..." -ForegroundColor Green
+        Write-Host "Stopping Docker containers..." -ForegroundColor Green
         docker compose down
+    }
+    "stack-up" {
+        Write-Host "Building and starting the entire stack..." -ForegroundColor Green
+        docker compose up -d --build
+    }
+    "stack-down" {
+        Write-Host "Stopping the entire stack..." -ForegroundColor Green
+        docker compose down
+    }
+    "stack-logs" {
+        Write-Host "Tailing app service logs (Ctrl+C to exit)..." -ForegroundColor Green
+        docker compose logs -f gateway worker scheduler
     }
     "scheduler" {
         Write-Host "Starting directory reconciler..." -ForegroundColor Green

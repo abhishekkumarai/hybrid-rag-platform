@@ -21,13 +21,21 @@ class IndexingService:
 
     def __init__(
         self,
-        qdrant_host: str = "localhost",
-        qdrant_port: int = 6333,
+        qdrant_host: str | None = None,
+        qdrant_port: int | None = None,
         in_memory: bool = False,
         bm25_dir: Path | str | None = None,
         max_tokens: int = 512,
         graph_store: GraphStore | None = None,
     ) -> None:
+        if qdrant_host is None or qdrant_port is None:
+            from services.common.config import load_config
+            cfg = load_config()
+            if qdrant_host is None:
+                qdrant_host = cfg.storage.qdrant_host
+            if qdrant_port is None:
+                qdrant_port = cfg.storage.qdrant_port
+
         self.max_tokens = max_tokens
         self.qdrant = QdrantStore(host=qdrant_host, port=qdrant_port, in_memory=in_memory)
         self.bm25 = BM25Store(index_dir=bm25_dir)

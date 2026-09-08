@@ -46,12 +46,20 @@ class QdrantStore:
 
     def __init__(
         self,
-        host: str = "127.0.0.1",
-        port: int = 6333,
+        host: str | None = None,
+        port: int | None = None,
         in_memory: bool = False,
         collection_name: str = "rag_docs",
         vector_dim: int = 1024,
     ) -> None:
+        if host is None or port is None:
+            from services.common.config import load_config
+            cfg = load_config()
+            if host is None:
+                host = cfg.storage.qdrant_host
+            if port is None:
+                port = cfg.storage.qdrant_port
+
         self.collection_name = collection_name
         self.vector_dim = vector_dim
         self.in_memory = in_memory

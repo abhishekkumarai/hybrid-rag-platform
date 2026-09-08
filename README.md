@@ -97,17 +97,41 @@ All inter-service payloads are Pydantic models under `contracts/` — no service
 
 ## Quick start
 
+### Everything in Docker
+
+The whole stack — Qdrant, Redis, PostgreSQL, the gateway, the ingestion worker, the directory
+reconciler, and Langflow — is defined in `docker-compose.yml`:
+
 ```bash
-# 1. Install dependencies
+cp .env.example .env          # optional: override ports, credentials, profile
+docker compose up -d --build  # gateway :8000, Langflow :7860
+```
+
+Ollama stays on the host by default, so an existing GPU-accelerated install keeps working — the app
+containers reach it at `host.docker.internal:11434`. To run it as a container instead (requires the NVIDIA
+Container Toolkit, meaning Docker under WSL2 on Windows):
+
+```bash
+docker compose --profile local-llm up -d
+docker compose exec ollama ollama pull llama3.1:8b
+```
+
+| Service | Port | Role |
+| :--- | :--- | :--- |
+| `gateway` | 8000 | REST + SSE API and web client |
+| `worker` | — | Redis queue consumer |
+| `scheduler` | — | `data/documents/` reconciler |
+| `qdrant` | 6333 | Dense vector store |
+| `redis` | 6379 | Ingestion queue and DLQ |
+| `postgres` | 5432 | Langflow flow and chat persistence |
+| `langflow` | 7860 | Visual node canvas |
+| `ollama` | 11434 | Opt-in, `local-llm` profile only |
+
+### Running locally instead
+
+```bash
 uv sync                       # or: pip install -e ".[parse,dev]"
-
-# 2. Start infrastructure
-docker compose up -d          # Qdrant :6333, Langflow :7860
-
-# 3. Configure local credentials
-cp .env.example .env          # then fill in your Postgres values
-
-# 4. Launch the gateway and web client
+docker compose up -d qdrant redis postgres
 make serve                    # http://localhost:8000
 ```
 

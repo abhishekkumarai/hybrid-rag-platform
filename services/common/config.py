@@ -121,5 +121,17 @@ def load_config(profile: str | None = None) -> AppConfig:
         storage_data["postgres_user"] = os.environ["POSTGRES_USER"]
     if "POSTGRES_PASSWORD" in os.environ:
         storage_data["postgres_password"] = os.environ["POSTGRES_PASSWORD"]
+    if "QDRANT_HOST" in os.environ:
+        storage_data["qdrant_host"] = os.environ["QDRANT_HOST"]
+    if "QDRANT_PORT" in os.environ:
+        storage_data["qdrant_port"] = int(os.environ["QDRANT_PORT"])
+    if "REDIS_HOST" in os.environ:
+        storage_data["redis_host"] = os.environ["REDIS_HOST"]
+    if "REDIS_PORT" in os.environ:
+        storage_data["redis_port"] = int(os.environ["REDIS_PORT"])
+
+    hardware_data = data.setdefault("hardware", {})
+    if "OLLAMA_BASE_URL" in os.environ:
+        hardware_data["ollama_base_url"] = os.environ["OLLAMA_BASE_URL"]
 
     return AppConfig(**data)

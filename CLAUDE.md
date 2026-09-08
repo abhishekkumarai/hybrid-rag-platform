@@ -13,9 +13,15 @@ make test                               # unit tests only
 make serve                              # gateway + web client on :8000
 make eval                               # retrieval quality + faithfulness benchmark
 make gate                               # regression gate; fails on metric regression vs baseline
-make services-up / services-down        # Qdrant :6333, Langflow :7860 via docker compose
+make services-up / services-down        # full docker stack up/down
 make scheduler / worker                 # reconciler and Redis queue daemons
 ```
+
+Docker: `docker-compose.yml` defines the entire stack — `qdrant`, `redis`, `postgres`, `gateway`,
+`worker`, `scheduler`, `langflow`, plus an opt-in `ollama` behind the `local-llm` profile. `gateway`,
+`worker` and `scheduler` share one image built from `Dockerfile` and differ only in their `command`.
+`docker compose up -d --build` runs everything; `docker compose up -d qdrant redis postgres` gives just
+the infrastructure for a local `make serve`.
 
 ```powershell
 .\run.ps1 serve                         # PowerShell equivalents
@@ -79,10 +85,15 @@ defaults will push the model into CPU swap.
 ## Configuration
 
 `load_config()` merges three layers in order: `configs/default.yaml` → profile overlay
-`configs/profiles/{quality,fast}.yaml` → environment variables (Postgres keys only). Profile is selected by
-the `RAG_PROFILE` env var, else `hardware.profile` in the YAML. `quality` = `llama3.1:8b`, `fast` =
-`llama3.2:3b` (fully VRAM-resident). Add new tunables to the YAML plus the matching Pydantic model in
+`configs/profiles/{quality,fast}.yaml` → environment variables. Profile is selected by the `RAG_PROFILE`
+env var, else `hardware.profile` in the YAML. `quality` = `llama3.1:8b`, `fast` = `llama3.2:3b` (fully
+VRAM-resident). Add new tunables to the YAML plus the matching Pydantic model in
 `services/common/config.py` — nothing reads settings from the environment directly.
+
+Env overrides are opt-in per key and enumerated explicitly at the bottom of `load_config()`:
+`POSTGRES_{HOST,PORT,DB,USER,PASSWORD}`, `QDRANT_{HOST,PORT}`, `REDIS_{HOST,PORT}`, `OLLAMA_BASE_URL`.
+**Adding a setting that must work in Docker means adding its override there too** — the YAML defaults are
+all `127.0.0.1`, which is wrong inside a container, and compose supplies service names through these vars.
 
 ## Gotchas
 

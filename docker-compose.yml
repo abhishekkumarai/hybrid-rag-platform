@@ -1,6 +1,51 @@
+# Full stack for the Hybrid RAG Platform.
+#
+#   docker compose up -d                        # infra + app services (Ollama on the host)
+#   docker compose --profile local-llm up -d    # additionally run Ollama in a container (needs GPU passthrough)
+#
+# By default the app services reach Ollama on the host via host.docker.internal, which keeps an
+# existing GPU-accelerated Ollama install working untouched. See OLLAMA_BASE_URL below.
+
+x-app-env: &app-env
+  QDRANT_HOST: qdrant
+  QDRANT_PORT: 6333
+  REDIS_HOST: redis
+  REDIS_PORT: 6379
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: 5432
+  POSTGRES_DB: ${POSTGRES_DB:-rag}
+  POSTGRES_USER: ${POSTGRES_USER:-postgres}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+  RAG_PROFILE: ${RAG_PROFILE:-quality}
+  PYTHONPATH: /app
+
+x-app-base: &app-base
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: hybrid-rag-platform:local
+  restart: unless-stopped
+  environment: *app-env
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  volumes:
+    - ./data:/app/data
+    - ./logs:/app/logs
+    - ./configs:/app/configs
+    - ./services:/app/services
+    - ./contracts:/app/contracts
+    - ./ui:/app/ui
+  depends_on:
+    qdrant:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
 services:
+  # ---------------------------------------------------------------- infrastructure
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.9.2
     container_name: rag_qdrant
     restart: unless-stopped
     ports:
@@ -14,6 +59,89 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: rag_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./data/redis_storage:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: rag_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rag}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    # Published on 5433 by default: this project's host already runs a PostgreSQL on 5432,
+    # and binding it here would collide. Containers reach it as postgres:5432 regardless.
+    ports:
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Opt-in: `docker compose --profile local-llm up -d`.
+  # Requires NVIDIA Container Toolkit; on Windows that means running Docker under WSL2.
+  # Models are stored in the ollama_models volume and must be pulled into it, e.g.
+  #   docker compose exec ollama ollama pull llama3.1:8b
+  ollama:
+    image: ollama/ollama:latest
+    container_name: rag_ollama
+    profiles: ["local-llm"]
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # ---------------------------------------------------------------- application
+  gateway:
+    <<: *app-base
+    container_name: rag_gateway
+    command: ["python", "-m", "uvicorn", "services.gateway.api:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "${GATEWAY_HOST_PORT:-8001}:8000"
+    # Importing the parser and reranker stack takes ~90s on first boot, and /api/v1/health probes
+    # Qdrant, Redis and Ollama in series, so keep the start period and timeout generous — a tighter
+    # setting reports the gateway unhealthy while it is still coming up normally.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/api/v1/health || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 120s
+
+  worker:
+    <<: *app-base
+    container_name: rag_worker
+    command: ["python", "-m", "services.scheduler.worker"]
+
+  scheduler:
+    <<: *app-base
+    container_name: rag_scheduler
+    command: ["python", "-m", "services.scheduler.reconciler"]
+
   langflow:
     image: langflowai/langflow:latest
     container_name: rag_langflow
@@ -21,12 +149,19 @@ services:
     ports:
       - "7860:7860"
     environment:
-      - LANGFLOW_AUTO_LOGIN=true
-      - LANGFLOW_SUPERUSER=admin
-      - LANGFLOW_SUPERUSER_PASSWORD=admin
-      - LANGFLOW_COMPONENTS_PATH=/app/components
+      LANGFLOW_AUTO_LOGIN: "true"
+      LANGFLOW_SUPERUSER: ${LANGFLOW_SUPERUSER:-admin}
+      LANGFLOW_SUPERUSER_PASSWORD: ${LANGFLOW_SUPERUSER_PASSWORD:-admin}
+      LANGFLOW_COMPONENTS_PATH: /app/components
+      LANGFLOW_DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-rag}
     volumes:
       - ./components:/app/components
       - ./flows:/app/flows
       - ./data/langflow_data:/root/.langflow
+    depends_on:
+      postgres:
+        condition: service_healthy
 
+volumes:
+  postgres_data:
+  ollama_models:
