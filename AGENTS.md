@@ -29,8 +29,8 @@ You must never generate generic, outdated "AI slop" interfaces (e.g., standard B
 - Keyboard hints: Include styled `<kbd>` chips (`border border-zinc-700 bg-zinc-800 font-mono text-[10px] px-1.5 py-0.5 rounded text-zinc-400`).
 
 ### 5. Project Foundation & System Alignment
-- Every frontend project in this workspace must maintain and strictly follow [`DESIGN.md`](file:///C:/Users/abhi3/Documents/work/rag/DESIGN.md) in the project root to enforce design tokens, palette variables, and component guidelines across subsequent edits.
-- Consult [`claude.md`](file:///C:/Users/abhi3/Documents/work/rag/claude.md) for behavioral rules and component reuse hierarchy.
+- Every frontend project in this workspace must maintain and strictly follow [`DESIGN.md`](DESIGN.md) in the project root to enforce design tokens, palette variables, and component guidelines across subsequent edits.
+- Consult [`docs/frontend-guidelines.md`](docs/frontend-guidelines.md) for behavioral rules and component reuse hierarchy.
 
 ---
 
