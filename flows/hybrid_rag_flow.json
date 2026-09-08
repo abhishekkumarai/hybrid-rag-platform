@@ -1,0 +1,162 @@
+{
+  "name": "Hybrid RAG Platform (SOA + Langflow)",
+  "description": "100% Open-Source Local Hybrid RAG with Layout Probing, Qdrant HNSW + BM25s, FlashRank Reranker, and Citations.",
+  "data": {
+    "nodes": [
+      {
+        "id": "chat_input_1",
+        "type": "ChatInput",
+        "data": {
+          "node": {
+            "template": {
+              "input_value": "",
+              "files": []
+            }
+          }
+        },
+        "position": { "x": 100, "y": 200 }
+      },
+      {
+        "id": "layout_probe_1",
+        "type": "LayoutProbeComponent",
+        "data": {
+          "node": {
+            "template": {
+              "file_path": "",
+              "profile_override": "auto"
+            }
+          }
+        },
+        "position": { "x": 350, "y": 100 }
+      },
+      {
+        "id": "chunker_1",
+        "type": "ContentAwareChunkerComponent",
+        "data": {
+          "node": {
+            "template": {
+              "max_tokens": 512
+            }
+          }
+        },
+        "position": { "x": 650, "y": 100 }
+      },
+      {
+        "id": "hybrid_retriever_1",
+        "type": "HybridRetrieverComponent",
+        "data": {
+          "node": {
+            "template": {
+              "top_k": 20,
+              "top_rerank": 6,
+              "min_score_cutoff": 0.15
+            }
+          }
+        },
+        "position": { "x": 350, "y": 350 }
+      },
+      {
+        "id": "prompt_template_1",
+        "type": "Prompt",
+        "data": {
+          "node": {
+            "template": {
+              "template": "Answer the question strictly based on the provided context passages. If the context does not contain sufficient information, state that you cannot find the answer in the provided documents.\n\nContext:\n{context}\n\nQuestion: {query}\n\nAnswer:"
+            }
+          }
+        },
+        "position": { "x": 650, "y": 350 }
+      },
+      {
+        "id": "ollama_model_1",
+        "type": "OllamaModel",
+        "data": {
+          "node": {
+            "template": {
+              "model_name": "llama3.1:latest",
+              "base_url": "http://localhost:11434",
+              "temperature": 0.1
+            }
+          }
+        },
+        "position": { "x": 950, "y": 350 }
+      },
+      {
+        "id": "citation_formatter_1",
+        "type": "CitationFormatterComponent",
+        "data": {
+          "node": {
+            "template": {}
+          }
+        },
+        "position": { "x": 1250, "y": 350 }
+      },
+      {
+        "id": "chat_output_1",
+        "type": "ChatOutput",
+        "data": {
+          "node": {
+            "template": {}
+          }
+        },
+        "position": { "x": 1550, "y": 350 }
+      }
+    ],
+    "edges": [
+      {
+        "source": "chat_input_1",
+        "target": "layout_probe_1",
+        "sourceHandle": "files",
+        "targetHandle": "file_path"
+      },
+      {
+        "source": "layout_probe_1",
+        "target": "chunker_1",
+        "sourceHandle": "blocks_data",
+        "targetHandle": "blocks_data"
+      },
+      {
+        "source": "chat_input_1",
+        "target": "hybrid_retriever_1",
+        "sourceHandle": "message",
+        "targetHandle": "query"
+      },
+      {
+        "source": "hybrid_retriever_1",
+        "target": "prompt_template_1",
+        "sourceHandle": "context_text",
+        "targetHandle": "context"
+      },
+      {
+        "source": "chat_input_1",
+        "target": "prompt_template_1",
+        "sourceHandle": "message",
+        "targetHandle": "query"
+      },
+      {
+        "source": "prompt_template_1",
+        "target": "ollama_model_1",
+        "sourceHandle": "prompt",
+        "targetHandle": "input_value"
+      },
+      {
+        "source": "ollama_model_1",
+        "target": "citation_formatter_1",
+        "sourceHandle": "text",
+        "targetHandle": "answer_text"
+      },
+      {
+        "source": "hybrid_retriever_1",
+        "target": "citation_formatter_1",
+        "sourceHandle": "citations",
+        "targetHandle": "citations"
+      },
+      {
+        "source": "citation_formatter_1",
+        "target": "chat_output_1",
+        "sourceHandle": "final_response",
+        "targetHandle": "message"
+      }
+    ]
+  }
+}

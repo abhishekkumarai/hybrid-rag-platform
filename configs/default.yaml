@@ -1,0 +1,39 @@
+hardware:
+  profile: "quality"
+  ollama_base_url: "http://127.0.0.1:11434"
+  llm_model: "llama3.1:latest"
+  embedding_model: "bge-m3:latest"
+  reranker_model: "flashrank"
+  reranker_device: "cpu"
+
+storage:
+  postgres_host: "127.0.0.1"
+  postgres_port: 5432
+  postgres_db: "postgres"
+  postgres_user: "postgres"
+  qdrant_host: "127.0.0.1"
+  qdrant_port: 6333
+  redis_host: "127.0.0.1"
+  redis_port: 6379
+
+ingestion:
+  probe_sample_pages: 8
+  text_coverage_threshold: 0.60
+  image_ratio_threshold: 0.65
+  gutter_gap_threshold_pt: 18.0
+
+chunking:
+  max_tokens: 512
+  overlap_tokens: 64
+  preserve_tables: true
+
+retrieval:
+  top_k: 20
+  top_rerank: 6
+  rrf_k: 60
+  min_score_cutoff: 0.15
+  collection_name: "rag_docs"
+
+logging:
+  level: "INFO"
+  dir: "logs"

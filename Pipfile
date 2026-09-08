@@ -1,0 +1,19 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pip_conf_index_global"
+
+[packages]
+jupyter = "*"
+pillow = "*"
+matplotlib = "*"
+pytesseract = "*"
+openpyxl = "*"
+python-dotenv = "*"
+opencv-python = "*"
+psycopg = {extras = ["binary"], version = "*"}
+pgvector = "*"
+[dev-packages]
+
+[requires]
+python_version = "3.12"

@@ -1,0 +1,1 @@
+"""SOA Gateway service module."""

@@ -1,0 +1,6 @@
+hardware:
+  profile: "quality"
+  llm_model: "llama3.1:latest"
+  embedding_model: "bge-m3:latest"
+  reranker_model: "flashrank"
+  reranker_device: "cpu"
