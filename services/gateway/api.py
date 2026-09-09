@@ -173,6 +173,75 @@ def health_check() -> dict[str, Any]:
     }
 
 
+class ModelInfo(BaseModel):
+    name: str
+    size_bytes: int | None = None
+    modified_at: str | None = None
+    digest: str | None = None
+    is_default: bool = False
+
+
+class ModelListResponse(BaseModel):
+    models: list[ModelInfo]
+    default_model: str
+    hardware_profile: str
+    ollama_alive: bool
+
+
+@app.get("/api/v1/models", response_model=ModelListResponse)
+def list_available_models() -> ModelListResponse:
+    """Lists locally installed Ollama models and indicates the default active model."""
+    default_model = "llama3.1:8b" if settings.hardware.profile == "quality" else "llama3.2:3b"
+    models: list[ModelInfo] = []
+    ollama_alive = False
+
+    try:
+        r = requests.get(f"{settings.hardware.ollama_base_url}/api/tags", timeout=2.0)
+        if r.status_code == 200:
+            ollama_alive = True
+            data = r.json()
+            for m in data.get("models", []):
+                name = m.get("name", "")
+                if name:
+                    models.append(
+                        ModelInfo(
+                            name=name,
+                            size_bytes=m.get("size"),
+                            modified_at=m.get("modified_at"),
+                            digest=m.get("digest"),
+                            is_default=(name == default_model or name.startswith(default_model)),
+                        )
+                    )
+    except Exception as e:
+        logger.warning(f"Could not fetch models from Ollama ({settings.hardware.ollama_base_url}): {e}")
+
+    if not models:
+        fallback_models = [
+            default_model,
+            "llama3.2:3b" if default_model != "llama3.2:3b" else "llama3.1:8b",
+            "qwen2.5:7b",
+            "deepseek-r1:8b",
+            "mistral:7b",
+        ]
+        models = [
+            ModelInfo(
+                name=m,
+                is_default=(m == default_model),
+            )
+            for m in fallback_models
+        ]
+
+    if not any(m.is_default for m in models) and models:
+        models[0].is_default = True
+
+    return ModelListResponse(
+        models=models,
+        default_model=default_model,
+        hardware_profile=settings.hardware.profile,
+        ollama_alive=ollama_alive,
+    )
+
+
 @app.get("/api/v1/queue/stats")
 def queue_stats() -> dict[str, int]:
     """Returns real-time task count for pending, processing, and dead-letter queues."""

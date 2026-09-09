@@ -9,14 +9,19 @@
 
 ## 1. System Health & Verification Summary
 
-| Metric | Status | Verification Command | Notes |
+| Service / Metric | Status | URL / Port / Command | Notes |
 |---|---|---|---|
-| **Unit & Integration Tests** | **75 / 75 Passing** (100%) | `python -m pytest tests/ -q` | Zero skips, zero failures (runs in ~11–27s) |
+| **Unit & Integration Tests** | **77 / 77 Passing** (100%) | `python -m pytest tests/ -q` | Zero skips, zero failures (includes `test_models_api.py`) |
 | **Code Lint & Style** | **0 Errors** | `python -m ruff check .` | Strictly formatted across all packages |
-| **FastAPI SOA Gateway** | **Active (HTTP 200)** | `curl http://127.0.0.1:8000/api/v1/health` | Serving UI, REST, and SSE endpoints on `:8000` |
-| **Qdrant Vector Database** | **Active (HNSW + Cosine)** | `http://127.0.0.1:6333` | Docker container `rag_qdrant` |
-| **Redis Cache & Queue** | **Active** | `127.0.0.1:6379` | Docker container `stockportfolio-redis-1` |
-| **Ollama Local LLM** | **Active** | `http://127.0.0.1:11434` | Serving `llama3.2:3b` / `llama3.1:8b` |
+| **FastAPI SOA Gateway** | **Active (HTTP 200)** | `http://localhost:8001` (`/api/v1/health`) | Docker container `rag_gateway` (host `:8001` -> container `:8000`) |
+| **Langflow Visual IDE** | **Active** | `http://localhost:7860` | Docker container `rag_langflow` |
+| **Swagger / OpenAPI Docs**| **Active** | `http://localhost:8001/docs` | Interactive OpenAPI schema |
+| **Qdrant Vector Database**| **Active (HNSW + Cosine)** | `http://localhost:6333` | Docker container `rag_qdrant` |
+| **Redis Cache & Queue** | **Active** | `localhost:6379` | Docker container `rag_redis` |
+| **PostgreSQL Metadata DB**| **Active** | `localhost:5433` (host mapped) | Docker container `rag_postgres` |
+| **Background Ingestion Worker** | **Active** | Docker container `rag_worker` | Polls Redis tasks, parses PDF via Docling/PyMuPDF |
+| **Scheduler & Reconciler** | **Active** | Docker container `rag_scheduler` | Watches `data/documents/` for new files |
+| **Ollama Local LLM** | **Active** | `http://127.0.0.1:11434` | Serving `llama3.2:3b` / `llama3.1:8b` / custom models |
 
 ---
 
@@ -40,117 +45,179 @@
 | **Phase 13** | **M13: Graph-Augmented RAG (GraphRAG)**| Entity & relation extractor, NetworkX graph store, multi-hop associative traversal, community detection | `contracts/graph.py`, `services/graph/extractor.py`, `store.py`, `traversal.py` | ✅ Complete |
 | **Phase 14** | **M14: Contextual Compression**| Salience sentence selector, cross-document redundancy deduplication, wide table column pruning, 8K envelope budget | `contracts/compactor.py`, `services/retrieval/compactor.py`, `tests/unit/test_compactor.py` | ✅ Complete |
 | **Phase 15** | **M15: Continuous Eval (RAGOps)** | Active learning thumbs up/down, hard-negative mining on refusal, triplet export | `contracts/feedback.py`, `services/feedback/store.py` | ✅ Complete |
-| **UI Overhaul**| **Modern "Craft" Cockpit** | Fully responsive 3-pane cockpit layout, docked provenance inspector, command palette (`⌘K`) | `ui/index.html`, [`DESIGN.md`](file:///C:/Users/abhi3/Documents/work/rag/DESIGN.md), [`AGENTS.md`](file:///C:/Users/abhi3/Documents/work/rag/AGENTS.md) | ✅ Complete |
+| **Phase 16** | **M16: Stitch Design & Model Selection** | Stitch prototype generation, model discovery API (`/api/v1/models`), model switcher dropdown, hyperparameter tuning popover, retrieval mode switcher | `services/gateway/api.py`, `ui/index.html`, `stitch_screen.html`, `tests/unit/test_models_api.py` | ✅ Complete |
 
 ---
 
-## 3. Current In-Flight Status: Modern "Craft" UI Architecture
+## 3. Stitch.google.com Project & UI Design Modernization
 
-The frontend has been upgraded to a **fully responsive 3-pane adaptive cockpit** following [getdesign.md](https://getdesign.md) (Linear / Vercel / Raycast aesthetic):
+### Stitch Design Assets
+- **Stitch Project ID**: `projects/2131036001734639932` ("Enterprise Multimodal RAG Mission Control")
+- **Screen ID**: `28c9d70c505547c6bba5ed530ba024d5`
+- **Design System Asset**: `assets/f63a2590042b40fe8ae5ad572eefd00a` ("Obsidian Zinc Craft")
+- **Exported HTML Prototype**: `stitch_screen.html`
+- **Detailed Design Implementation Plan**: `C:\Users\abhi3\.gemini\antigravity-cli\brain\71b05384-1612-432d-9250-b1b424f794ff\stitch_design_implementation_plan.md`
 
-### What Was Delivered:
-1. **Obsidian / Zinc Dark Aesthetic**:
-   - `zinc-950` canvas (`#09090b`), `zinc-900/60` translucent cards with `backdrop-filter: blur(16px)`.
-   - 1px hairline translucent borders (`border-white/[0.08]`) with top-edge hairline highlight gradients.
-   - High-contrast crisp solid white CTA button (`bg-white text-zinc-950 font-medium`) and translucent secondary buttons.
-   - Zero generic AI tropes (no purple gradients, no fuzzy drop shadows, no decorative floating blobs).
-2. **Docked Side-by-Side Provenance Inspector (`440px`)**:
-   - Replaces disruptive modal overlays with a docked right-hand split pane.
-   - Clicking citation badges (`[p.3 #1]`) opens the exact rendered PDF page with highlighted bounding-box overlay (`[x0, y0, x1, y1]`) alongside the chat answer.
-3. **Adaptive Sidebar Rail (`320px` $\leftrightarrow$ `64px`)**:
-   - Toggleable via button or `Ctrl+B` / `⌘B` into an icon-only mini-rail to maximize reading workspace.
-4. **Command Palette (`⌘K` / `Ctrl+K`)**:
-   - Instant keyboard search for starting sessions, ingesting PDFs, switching retrieval modes, or viewing telemetry.
-5. **Full Multi-Viewport Responsiveness**:
-   - **Dynamic Viewport Height (`100dvh`)**: Immune to mobile address bar layout shifts.
-   - **Mobile (< 768px)**: Single-column stack with off-canvas drawer, backdrop scrim, touch targets $\ge 44\text{px}$, and slide-up bottom sheet with swipe-down indicator.
-   - **Tablet (768px–1279px)**: 2-pane layout (64px mini-rail sidebar + central chat arena) with 400px slide-over inspector drawer.
-   - **Desktop (≥ 1280px)**: Full 3-pane split-screen cockpit.
+### Modern "Craft" Architecture Implemented in `ui/index.html`:
+1. **Design Tokens & Fonts**:
+   - Integrated Tailwind CSS with customized `zinc` theme palette (`#09090b` background, `#18181b` card surfaces, `border-white/[0.08]` hairline borders).
+   - Loaded Geist Sans and JetBrains Mono fonts.
+2. **Model Selection & Discovery Dropdown**:
+   - Dynamic model discovery via `GET /api/v1/models`.
+   - Populates with local Ollama models (`llama3.2:3b`, `llama3.1:8b`, `qwen2.5:7b`, `mistral:7b`, `deepseek-r1:7b`).
+   - Supports custom model string entry with persistence to `localStorage`.
+3. **Retrieval Mode Segmented Switcher**:
+   - `Auto CRAG` (hybrid dense+sparse with corrective confidence reflection).
+   - `Agentic` (multi-hop iterative decomposition).
+   - `GraphRAG` (knowledge-graph entity/relation traversal).
+   - `Direct` (low-latency direct prompt generation).
+4. **Hyperparameter Tuning Controls**:
+   - Popover panel exposing:
+     - `Top-K Candidates` slider (range 5 to 50, default 20).
+     - `FlashRank Rerank Cutoff` slider (range 1 to 15, default 5).
+     - `SSE Streaming` toggle.
+5. **Hardware Health Beacon**:
+   - Real-time status indicator showing backend connection state and active model status.
+6. **Provenance Split-Pane Inspector**:
+   - Side-by-side 440px PDF rendering pane showing exact bounding boxes `[x0, y0, x1, y1]` for citations.
 
 ---
 
-## 4. Remaining Phases & Roadmap
+## 4. Backend Model Discovery Endpoint
+
+### Specification (`GET /api/v1/models`)
+- **Route**: `GET /api/v1/models`
+- **Response Model**:
+  ```json
+  {
+    "active_model": "llama3.2:3b",
+    "available_models": [
+      {
+        "id": "llama3.2:3b",
+        "name": "Llama 3.2 3B (Default / Fast)",
+        "vram_estimate": "2.2 GB",
+        "context_window": 8192,
+        "is_default": true
+      },
+      {
+        "id": "llama3.1:8b",
+        "name": "Llama 3.1 8B (Deep Reasoning)",
+        "vram_estimate": "4.9 GB",
+        "context_window": 8192,
+        "is_default": false
+      },
+      {
+        "id": "qwen2.5:7b",
+        "name": "Qwen 2.5 7B (Code & Analysis)",
+        "vram_estimate": "4.5 GB",
+        "context_window": 32768,
+        "is_default": false
+      }
+    ],
+    "retrieval_modes": ["auto_crag", "agentic", "graphrag", "direct"],
+    "defaults": {
+      "retrieval_mode": "auto_crag",
+      "top_k": 20,
+      "top_rerank": 5,
+      "stream": true
+    }
+  }
+  ```
+- **Fallback**: Gracefully falls back to curated standard model catalog if Ollama service is unreachable.
+- **Tests**: Validated via `tests/unit/test_models_api.py` (mocked online & offline scenarios).
+
+---
+
+## 5. Remaining Phases & Roadmap
 
 ```mermaid
 graph TD
     A["Phase 12: Agentic Multi-Hop & CRAG (Done)"] --> B["Phase 15: RAGOps Active Learning (Done)"]
-    B --> C["Modern Responsive UI Cockpit (Done)"]
-    C --> D["Phase 13: Graph-Augmented RAG (Done)"]
-    D --> E["Phase 14: Contextual Compression & Budget Compactor (Done)"]
-    E --> F["Phase 16: Session-Scoped Workspaces & Isolation (In Progress)"]
-    F --> G["Phase 17: Multi-Tenant RBAC & Enterprise Namespaces"]
+    B --> C["Phase 13: Graph-Augmented RAG (Done)"]
+    C --> D["Phase 14: Contextual Compression (Done)"]
+    D --> E["Phase 16: Stitch UI Redesign & Model Discovery (Done)"]
+    E --> F["Phase 17: Session-Scoped Workspaces & Document Isolation"]
+    F --> G["Phase 18: Multi-Tenant RBAC & Enterprise Namespaces"]
 ```
 
-### Next Phase on the Roadmap:
-
-### **Phase 16: Session-Scoped Workspaces, Document Isolation & Runtime Customization**
-- **Goal**: Every chat interaction automatically opens in a dedicated session with a unique session ID, possessing its own scoped documents/files, custom system prompt, and runtime parameters (temperature, model, retrieval mode, compactor budget).
+### **Phase 17: Session-Scoped Workspaces, Document Isolation & Runtime Customization**
+- **Goal**: Every chat interaction automatically opens in a dedicated session with a unique session ID, possessing its own scoped documents/files, custom system prompt, and runtime parameters.
 - **Components**:
-  - **Contracts**: `SessionParameters`, `ChatSession` extension with `files: list[str]`, `system_prompt: str`, and `UpdateSessionRequest` in `contracts/session.py`.
-  - **Memory & Storage**: Scoped Redis persistence and document filter generation in `services/session/manager.py`.
-  - **Gateway Integration**: Auto-session creation, parameter injection, and REST endpoints (`PATCH /api/v1/sessions/{id}`, `POST /api/v1/sessions/{id}/files`) in `services/gateway/api.py`.
-  - **UI Integration**: Session settings modal / drawer, system prompt persona editor, scoped document toggles, and parameter sliders in `ui/index.html`.
-  - **Verification**: Isolated multi-session regression test suite (`tests/unit/test_session_scoped_workspace.py`).
+  - `SessionParameters` contract in `contracts/session.py`.
+  - Scoped document filter generation in `services/session/manager.py`.
+  - Session patch endpoints (`PATCH /api/v1/sessions/{id}`, `POST /api/v1/sessions/{id}/files`).
+  - Isolated multi-session regression test suite (`tests/unit/test_session_scoped_workspace.py`).
 
-### **Phase 17: Multi-Tenant Security, RBAC & Enterprise Namespaces**
+### **Phase 18: Multi-Tenant Security, RBAC & Enterprise Namespaces**
 - **Goal**: Enterprise document access control lists (ACLs) and user-isolated Qdrant collection namespaces.
 - **Components**:
   - API Key & JWT Bearer authentication gateway middleware.
   - Document-level ACL filtering in Qdrant payload filters (`tenant_id`, `allowed_roles`).
-  - Audit logging for enterprise compliance.
-
----
-
-## 5. Architectural Invariants & Data Contracts
-
-1. **Contracts First**:
-   - Any new service must define Pydantic v2 data models in `contracts/` before implementation.
-2. **Deterministic Bounding Boxes**:
-   - Every candidate and citation chunk preserves normalized coordinates:
-     $$\text{bbox} = (x_0, y_0, x_1, y_1), \quad 0.0 \le x, y \le 1.0$$
-3. **Corrective RAG (CRAG) Scoring Thresholds**:
-   - **CONFIDENT** ($\text{score} \ge 0.45$): Proceed directly to prompt synthesis.
-   - **AMBIGUOUS** ($0.15 \le \text{score} < 0.45$): Trigger secondary corrective retrieval hop.
-   - **REFUSE** ($\text{score} < 0.15$): Reject answer synthesis; emit grounded safety refusal.
-4. **VRAM Preservation on 6GB RTX 3050**:
-   - FlashRank cross-encoder reranking runs exclusively on **CPU** (`optimum` / ONNX runtime).
-   - VRAM is preserved entirely for the Ollama inference process (`llama3.2:3b` uses ~2.2GB VRAM; `llama3.1:8b` uses ~4.9GB VRAM).
-5. **Zero AI Slop Enforced**:
-   - All frontend code must comply with [`DESIGN.md`](file:///C:/Users/abhi3/Documents/work/rag/DESIGN.md) and [`AGENTS.md`](file:///C:/Users/abhi3/Documents/work/rag/AGENTS.md).
+  - Compliance audit logging.
 
 ---
 
 ## 6. Operational Cheat Sheet
 
-### Common Development Commands
+### Running the System with Docker Compose
 ```powershell
-# Run all unit and integration tests (75 tests)
+# Bring up full multimodal RAG stack (Gateway, Langflow, Qdrant, Redis, Postgres, Workers)
+docker compose up -d
+
+# Check live service status and ports
+docker compose ps
+
+# View Gateway logs
+docker compose logs -f gateway
+
+# Restart gateway after Python backend modifications
+docker compose restart gateway
+```
+
+### Common Development & Verification Commands
+```powershell
+# Run all unit and integration tests (77 tests)
 python -m pytest tests/ -q
 
 # Run fast linting
 python -m ruff check .
 
-# Start FastAPI SOA Gateway server
+# Test models API specifically
+python -m pytest tests/unit/test_models_api.py -v
+
+# Start FastAPI Gateway locally (outside Docker, on port 8000)
 python -m uvicorn services.gateway.api:app --host 0.0.0.0 --port 8000 --reload
 
-# Start Background Redis Ingestion Worker
+# Start Background Ingestion Worker locally
 python -m services.scheduler.worker
 
 # Run Automated CI Regression Gate
 python tests/eval/regression_gate.py
-
-# Run Multi-Hop Comparative Benchmark (Phases 12 & 15)
-python scripts/test_phases_12_and_15.py
-
-# Run GraphRAG & Context Compactor Benchmark (Phases 13 & 14)
-python scripts/test_phases_13_and_14.py
-
-# Export RAGOps Triplet Dataset
-curl http://127.0.0.1:8000/api/v1/ragops/dataset -o hard_negatives.jsonl
 ```
 
-### Docker Containers
-```powershell
-# Check status of Qdrant & Redis containers
-docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-```
+### URLs Reference
+- **Mission Control UI**: [http://localhost:8001](http://localhost:8001)
+- **Langflow Visual Studio**: [http://localhost:7860](http://localhost:7860)
+- **API Swagger Documentation**: [http://localhost:8001/docs](http://localhost:8001/docs)
+- **Qdrant Dashboard / API**: [http://localhost:6333](http://localhost:6333)
+- **Health Check**: [http://localhost:8001/api/v1/health](http://localhost:8001/api/v1/health)
+- **Models Discovery Endpoint**: [http://localhost:8001/api/v1/models](http://localhost:8001/api/v1/models)
+
+---
+
+## 7. Phase 18: "Retrieval Intelligence Workbench" Frontend Rebuild (2026-09-09)
+
+A second, separate Stitch project (`10226929593327386385`, light "Warm Ink & Ember" theme — distinct from
+the dark "Obsidian Zinc Craft" design referenced above) was designed and then wired into `ui/index.html`,
+replacing it. **6 of 8 pages are live and browser-verified** against the running stack at
+`http://localhost:8001/`: Workspace Gallery, Chat (incl. live SSE streaming), Library, Observability, RAGOps,
+Models & Tuning. Knowledge Graph and Settings remain styled placeholders.
+
+**Conflict note**: deploying this superseded 984 uncommitted lines of another session's in-progress work on
+the *old* dark-theme UI (model selector, tuning popover, tabbed inspector, telemetry gauges — real, working
+functionality). Per explicit user decision, that work's functionality (not its visual style) was ported into
+the new Observability/RAGOps/Models & Tuning pages, and the full original file was preserved as
+`ui/dark_theme_wip_reference.html` before being overwritten, so nothing was lost. Full detail, the exact
+endpoints wired per page, and the pending follow-up list (Knowledge Graph, Settings, mobile pass, slider
+accent-color styling) are in `todo.md` Phase 17 & 18 and `plan.md`'s addendum — this section is a pointer,
+not the source of truth, to avoid drift between three copies of the same status.

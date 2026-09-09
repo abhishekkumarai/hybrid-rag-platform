@@ -45,6 +45,7 @@ To ensure zero token truncation and maximum reliability when executed by AI codi
 | **Phase 14** | **M14** | Contextual Compression & Adaptive Token Compactor | 14.1 – 14.4 | 3 files, ~350 lines | ✅ Completed |
 | **Phase 15** | **M15** | Continuous Evaluation & Active Learning (RAGOps) | 15.1 – 15.4 | 3 files, ~300 lines | ✅ Completed |
 | **Phase 16** | **M16** | Session-Scoped Workspaces (Files, Prompt, Parameters) | 16.1 – 16.5 | 5 files, ~400 lines | 📋 Planned |
+| **Phase 17** | **M17** | Stitch UI Redesign — "Retrieval Intelligence Workbench" (Light Theme) | 17.1 – 17.8 | 8 Stitch screens | ✅ Generation Complete (8/8) — not yet wired into `ui/index.html` |
 
 ---
 
@@ -313,3 +314,147 @@ To ensure zero token truncation and maximum reliability when executed by AI codi
   - [ ] Verify that Session A with custom system prompt generates output adhering to its custom persona.
   - [ ] Verify that Session B maintains independent temperature, model, and message history without cross-session contamination.
   - [ ] Ensure 100% test pass rate across test suite.
+
+---
+
+## Phase 17: Stitch UI Redesign — "Retrieval Intelligence Workbench" (Milestone 17)
+*Target: A second, distinct Stitch project — a light off-white "Warm Ink & Ember" theme (Material 3 + fluid
+motion), replacing the earlier dark "Obsidian Zinc Craft" design referenced in `plan.md` / Phase 16 of
+`wip.md`. New Stitch project id `10226929593327386385`
+([https://stitch.withgoogle.com/project/10226929593327386385](https://stitch.withgoogle.com/project/10226929593327386385)),
+design system asset `assets/16587086430143241056` ("Warm Ink & Ember"). 8 screens total, left nav rail +
+hidden-by-default right inspector, NotebookLM-style per-session Sources panel, context-aware Library scope
+switcher. See this session's conversation log for the full per-screen prompt text used.*
+
+- [x] **Task 17.1: Stitch project + design system setup**
+  - [x] `create_project` → "Retrieval Intelligence Workbench".
+  - [x] `create_design_system` + `update_design_system` → "Warm Ink & Ember" (light, off-white `#FAF9F5`,
+    Ember `#C2410C` / Moss `#4B6B4F` / Clay `#B08947`, Inter + JetBrains Mono, `ROUND_EIGHT`).
+
+- [x] **Task 17.2: Workspace Gallery screen** — generated successfully.
+- [x] **Task 17.3: Chat screen** — generated successfully (Sources sub-panel, citation badges, low-confidence
+  refusal callout, hidden-by-default right inspector).
+- [x] **Task 17.4: Library screen** — generated and content-verified (scope switcher, ingestion stepper,
+  monospace document table all present in the rendered HTML).
+- [x] **Task 17.5: Knowledge Graph screen** — generated and content-verified (entities/relations/traversal
+  present).
+- [x] **Task 17.6: Observability screen** — generated and content-verified (uptime/latency/Redis/Qdrant/Dead
+  Letter panel present).
+- [x] **Task 17.7: RAGOps screen** — generated and content-verified (satisfaction/hard-negative/JSONL export
+  present).
+- [x] **Task 17.8: Models & Tuning + Settings screens** — both generated and content-verified (VRAM/model-slot
+  language present in Models & Tuning; Appearance/API/Danger Zone present in Settings).
+
+All 8 target screens confirmed present via `list_screens` + spot-checked by downloading each screen's HTML
+and grepping for screen-specific content (not just relying on the title field) — done 2026-09-09.
+
+- [ ] **Cleanup: remove stray duplicate screens** — the unstable generation window (see blocker below)
+  produced extra duplicate renders: 2× "Workspace Gallery", ~3× "Chat"/"Workspace Chat", 2× "Library" (one
+  early "Workspace Gallery" duplicate has no screenshot and is the clearest one to remove; the rest are
+  valid duplicate generations, keep whichever renders best). No `delete_screen` tool is available via MCP —
+  do this by hand in the Stitch UI: [https://stitch.withgoogle.com/project/10226929593327386385](https://stitch.withgoogle.com/project/10226929593327386385).
+- [ ] **Follow-up: wire the approved Stitch designs into `ui/index.html`** — this phase only covers design
+  generation in Stitch; translating the approved screens into the actual single-file frontend (per
+  `CLAUDE.md`'s "web client is a single hand-written file, no build step" constraint) is separate work, not
+  started.
+
+**Blocker hit 2026-09-09 (resolved)**: `generate_screen_from_text` became unreliable partway through this
+batch — repeated client-side timeouts, one explicit `"The service is currently unavailable"` error (which
+also briefly affected `list_screens`), and no new screens landing even after ~15+ cumulative minutes of
+polling across multiple attempts (both serial and batched). On retry, waiting patiently after each
+individual (non-batched) submission worked: all 6 remaining screens eventually landed together after one
+more `list_screens` poll. Confirmed lesson for next time: a timeout from this tool means "check back later,"
+not "failed" — and batching multiple `generate_screen_from_text` calls back-to-back is what produced most of
+the stray duplicates above, so keep resubmissions strictly one-at-a-time.
+
+---
+
+## Phase 18: Wire "Retrieval Intelligence Workbench" Designs into `ui/index.html` (Milestone 18)
+*Target: Replace the current dark "Obsidian Zinc Craft" single-page chat UI with the approved light "Warm Ink
+& Ember" design from Stitch project `10226929593327386385`, ported into the same single hand-written file
+(no build step, per `CLAUDE.md`) with real backend wiring — not static Stitch mockup content. Existing file
+is ~3,300 lines; this is effectively a full frontend rewrite, done incrementally per screen so it can be
+reviewed/tested in slices rather than as one giant unreviewable diff. Built 2026-09-09 on isolated branch
+`worktree-workbench-frontend` (commit `5ab2d0f`) — **not yet merged into the main checkout**, see blocker
+note at the end of this phase.*
+
+- [x] **Task 18.1: Foundation — design tokens, app shell, router**
+  - [x] Ported the exact "Warm Ink & Ember" Tailwind tokens Stitch itself resolved (`primary #8b4f3b`,
+    `background #faf9f5`, full Material 3 tonal set, Inter/Public Sans/JetBrains Mono) as the Tailwind CDN
+    config, replacing the old Zinc/Obsidian dark tokens.
+  - [x] Built the persistent shell: left nav rail (icon+label, collapsible via `#collapseBtn`), top bar
+    (breadcrumb + system-health pill), a `#pageHost` view-swap region, and a `#inspector` right panel
+    (hidden by default, slide-in via citation click).
+  - [x] Implemented a hash-based client-side router (`navigate()`) switching between 8 `<section>` page
+    blocks with no full reload, in one file — no build step introduced.
+  - [x] *Verification*: extracted the inline `<script>` and ran `node --check` — syntax valid. Tag-balance
+    checked (`<section>`/`<aside>`/`<div>` counts match). **Not yet smoke-tested in an actual browser against
+    a running gateway** — see deployment blocker below.
+
+- [x] **Task 18.2: Workspace Gallery page** — grid of session cards (title, model badge, retrieval-mode
+  badge, doc count, message count) wired to `GET /api/v1/sessions`; "New Workspace" wired to
+  `POST /api/v1/sessions`; card click opens the Chat page for that `session_id`. (Preset quick-start buttons
+  from the original design brief not yet added — plain title-only creation for now.)
+- [x] **Task 18.3: Chat page** — Sources sub-panel (session-scoped `files`, attach via a picker, remove via
+  `DELETE /api/v1/sessions/{id}/files/{doc_id}`), message thread + SSE streaming against `POST /api/v1/chat`
+  (ported from the prior implementation: markdown rendering, citation badges, refusal callout, per-message
+  thumbs feedback via `POST /api/v1/feedback`), citation click opens the right inspector via
+  `/api/v1/preview`. (Retrieval-trace and context-budget inspector tabs from the original design brief not
+  yet added — inspector currently shows the Source tab only.)
+- [x] **Task 18.4: Library page** — "This workspace / All documents" scope switcher (filters against the
+  open session's `files`), upload dropzone wired to `POST /api/v1/ingest` + `POST /api/v1/index`, document
+  table wired to `GET /api/v1/documents` with an "Attach" action per row. (Live ingestion stepper animation
+  from the original design brief not yet added — upload currently completes silently, then refreshes the
+  table.)
+- [ ] **Task 18.5: Knowledge Graph page** — still a styled placeholder. Needs: force-directed canvas, query
+  bar, stat tiles; wire `POST /api/v1/graph/query`, `GET /api/v1/graph/stats`. (Canvas rendering: hand-rolled
+  SVG/force layout, no new external library per the artifact/library constraints already in play.)
+- [x] **Task 18.6: Observability page** — wired to `GET /api/v1/metrics` (avg retrieval/generation ms,
+  tokens/sec, refusals, Qdrant points, BM25 chunks, queue depth, DLQ count) and `GET /api/v1/queue/dlq` with
+  per-row and bulk `POST /api/v1/queue/dlq/replay`. Ported from the other session's in-progress dark-theme
+  telemetry work (see Phase 18 note below). Browser-verified against live data (Qdrant points: 80, BM25
+  chunks: 80, DLQ correctly empty).
+- [x] **Task 18.7: RAGOps page** — wired to `GET /api/v1/feedback/summary` (total feedback, satisfaction
+  rate, hard-negative count) and an export button hitting `GET /api/v1/ragops/dataset`. Browser-verified
+  against live data (45 feedback records, 48.9% satisfaction, 21 hard negatives).
+- [x] **Task 18.8: Models & Tuning page** — model dropdown wired to `GET /api/v1/models` + custom model tag
+  input, retrieval-mode segmented control, top-k/rerank-depth sliders, SSE stream toggle — all feed shared
+  state (`currentModel`/`currentRetrievalMode`/`currentTopK`/`currentTopRerank`/`streamEnabled`) that the
+  Chat page's `POST /api/v1/chat` request now carries. Browser-verified: dropdown populates with the real
+  active model. (VRAM budget meter and preset chips from the original design brief not yet added; range
+  sliders/checkbox render with default browser styling, not Ember-accented — `accent-primary` Tailwind
+  utility didn't visibly apply, needs a follow-up look.)
+- [ ] **Task 18.9: Settings page** — still a styled placeholder. Needs: appearance/API/notifications/danger
+  zone; appearance prefs to `localStorage` (no dedicated backend endpoint exists for this).
+- [~] **Task 18.10: Cross-page QA & cleanup** — partially done: all 6 live pages were opened and exercised in
+  an actual Chrome tab against a running `docker compose` stack (not just syntax-checked) — see verification
+  log below. Still outstanding: responsive/mobile pass, removing the now-dead old dark-theme CSS/JS that's
+  no longer reachable, updating `docs/frontend-guidelines.md` and `DESIGN.md`, fixing the slider/checkbox
+  accent-color styling noted above.
+
+**Source material**: the 8 approved Stitch screens (HTML+Tailwind, already generated and content-verified —
+see Phase 17 above) were the visual reference for markup/layout per page. In practice, Tasks 18.6–18.8 ended
+up sourcing their *functionality* from the other session's in-progress dark-theme rebuild instead (see below)
+since it had already implemented working wiring for exactly these three pages — the Stitch HTML was still
+used as the layout/styling reference, restyled into the light theme.
+
+**Resolved: the other session's conflicting `ui/index.html` work (2026-09-09)**. The main checkout's
+`ui/index.html` had 984 uncommitted lines from another active session implementing the *original* dark
+"Obsidian Zinc Craft" plan (model selector dropdown, retrieval-mode segmented control, top-k/rerank tuning
+popover, a tabbed Provenance/Graph/Telemetry inspector, hardware health pill) — real, working functionality,
+not a stray edit. Per explicit user decision, that file was superseded rather than merged line-by-line:
+1. The full dark-theme WIP file was preserved as `ui/dark_theme_wip_reference.html` before any overwrite, so
+   nothing from that session's work is lost.
+2. Its functional pieces (not its visual style) were re-implemented in the new light-theme Models & Tuning,
+   Observability, and RAGOps pages (Tasks 18.6–18.8 above) — same endpoints, same state variables, restyled.
+3. Only then was this branch's `ui/index.html` copied over the main checkout's, and the stack restarted
+   (`docker-compose.yml` bind-mounts `./ui:/app/ui`, so the change is live immediately).
+4. **A real bug was caught by browser-testing rather than assuming success**: the router toggled the HTML
+   `hidden` *attribute*, but every non-Gallery page also shipped with Tailwind's `hidden` *class* baked into
+   its initial markup — so every page except Gallery rendered permanently blank regardless of route. Fixed
+   by switching the router to `classList.toggle('hidden', ...)`. Re-verified in-browser afterward: Chat now
+   renders its Sources panel, real message history, and successfully sends/receives a live streamed message;
+   Library, Observability, RAGOps, and Models & Tuning all render real backend data as described above.
+
+Deployed and live at `http://localhost:8001/` as of 2026-09-09. Not yet done: Knowledge Graph (18.5) and
+Settings (18.9) remain placeholders, and the polish/cleanup items under 18.10.

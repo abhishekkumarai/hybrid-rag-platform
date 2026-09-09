@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>RAG Mission Control - Enterprise Multimodal Workstation</title>
+<!-- Tailwind CSS CDN -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Google Fonts: Geist & JetBrains Mono -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@300;400;500;600&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "tertiary": "#ffb3af",
+            "tertiary-fixed-dim": "#ffb3af",
+            "on-error-container": "#ffdad6",
+            "tertiary-fixed": "#ffdad7",
+            "on-tertiary-fixed": "#410005",
+            "primary-fixed": "#6ffbbe",
+            "on-secondary-fixed": "#00201c",
+            "surface-dim": "#131315",
+            "surface-container-low": "#1c1b1d",
+            "on-surface-variant": "#bbcabf",
+            "surface-container-highest": "#353437",
+            "on-tertiary": "#650911",
+            "on-secondary-container": "#003f38",
+            "surface": "#131315",
+            "on-primary-container": "#00422b",
+            "on-tertiary-container": "#711419",
+            "outline-variant": "#3c4a42",
+            "surface-container": "#201f22",
+            "on-secondary": "#003731",
+            "surface-container-lowest": "#0e0e10",
+            "on-error": "#690005",
+            "surface-tint": "#4edea3",
+            "outline": "#86948a",
+            "tertiary-container": "#fc7c78",
+            "error": "#ffb4ab",
+            "inverse-on-surface": "#313032",
+            "error-container": "#93000a",
+            "surface-variant": "#353437",
+            "on-primary-fixed": "#002113",
+            "secondary-container": "#04b4a2",
+            "on-background": "#e5e1e4",
+            "background": "#131315",
+            "on-tertiary-fixed-variant": "#842225",
+            "on-surface": "#e5e1e4",
+            "secondary": "#4fdbc8",
+            "on-primary": "#003824",
+            "surface-bright": "#39393b",
+            "inverse-surface": "#e5e1e4",
+            "primary-fixed-dim": "#4edea3",
+            "primary": "#4edea3",
+            "on-primary-fixed-variant": "#005236",
+            "surface-container-high": "#2a2a2c",
+            "primary-container": "#10b981",
+            "secondary-fixed": "#71f8e4",
+            "on-secondary-fixed-variant": "#005048",
+            "secondary-fixed-dim": "#4fdbc8",
+            "inverse-primary": "#006c49"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.125rem",
+            "lg": "0.25rem",
+            "xl": "0.5rem",
+            "full": "0.75rem"
+          },
+          "spacing": {
+            "space-md": "0.75rem",
+            "gutter-telemetry": "0.75rem",
+            "space-base": "1rem",
+            "space-lg": "1.5rem",
+            "space-xs": "0.25rem",
+            "panel-padding": "1rem",
+            "space-sm": "0.5rem",
+            "space-xl": "2rem",
+            "space-2xs": "0.125rem"
+          },
+          "fontFamily": {
+            "telemetry-sm": ["JetBrains Mono"],
+            "body-sm": ["Geist"],
+            "body-md": ["Geist"],
+            "headline-xl": ["Geist"],
+            "headline-lg": ["Geist"],
+            "body-xs": ["Geist"],
+            "telemetry-lg": ["JetBrains Mono"],
+            "label-code": ["JetBrains Mono"],
+            "headline-md": ["Geist"],
+            "telemetry-md": ["JetBrains Mono"]
+          },
+          "fontSize": {
+            "telemetry-sm": ["11px", { "lineHeight": "14px", "letterSpacing": "0.02em", "fontWeight": "400" }],
+            "body-sm": ["13px", { "lineHeight": "18px", "letterSpacing": "-0.005em", "fontWeight": "400" }],
+            "body-md": ["14px", { "lineHeight": "20px", "letterSpacing": "-0.01em", "fontWeight": "400" }],
+            "headline-xl": ["28px", { "lineHeight": "36px", "letterSpacing": "-0.03em", "fontWeight": "600" }],
+            "headline-lg": ["22px", { "lineHeight": "28px", "letterSpacing": "-0.025em", "fontWeight": "600" }],
+            "body-xs": ["11px", { "lineHeight": "16px", "letterSpacing": "0em", "fontWeight": "400" }],
+            "telemetry-lg": ["18px", { "lineHeight": "24px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+            "label-code": ["10px", { "lineHeight": "12px", "letterSpacing": "0.04em", "fontWeight": "500" }],
+            "headline-md": ["16px", { "lineHeight": "24px", "letterSpacing": "-0.015em", "fontWeight": "500" }],
+            "telemetry-md": ["13px", { "lineHeight": "18px", "letterSpacing": "-0.01em", "fontWeight": "500" }]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    /* Obsidian Hairlines and Custom Scrollbars */
+    ::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0e0e10;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #2a2a2c;
+      border-radius: 2px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #4edea3;
+    }
+    .custom-range::-webkit-slider-thumb {
+      appearance: none;
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      background: #e5e1e4;
+      border: 1px solid #4edea3;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body class="bg-background text-on-surface overflow-hidden h-screen w-screen flex flex-col font-body-sm antialiased select-none">
+<!-- ================= TOP APP BAR (Shared Component Anchor) ================= -->
+<header class="flex justify-between items-center w-full px-space-base h-12 border-b border-outline-variant bg-surface-container-lowest select-none z-30 shrink-0">
+<!-- Brand / Product Identity & Model Selector -->
+<div class="flex items-center space-x-space-md">
+<div class="flex items-center space-x-2">
+<span class="inline-flex items-center justify-center w-6 h-6 rounded bg-surface-container border border-outline-variant text-primary font-telemetry-sm font-semibold">
+<span class="material-symbols-outlined text-[16px]">terminal</span>
+</span>
+<span class="text-headline-md font-headline-md font-semibold text-on-surface tracking-tight">RAG Mission Control</span>
+</div>
+<div class="h-4 w-[1px] bg-outline-variant"></div>
+<!-- Brand Mark Badge -->
+<div class="flex items-center space-x-1.5 px-2 py-0.5 rounded bg-surface-container border border-outline-variant">
+<span class="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></span>
+<span class="text-label-code font-label-code text-on-surface-variant font-medium tracking-wide">HYBRID RAG // MISSION CONTROL</span>
+</div>
+<!-- Active Model Selector Dropdown -->
+<div class="relative group">
+<button class="flex items-center space-x-2 px-2.5 py-1 bg-surface-container-low border border-outline-variant hover:border-outline rounded text-body-xs font-medium text-on-surface transition-colors duration-100">
+<span class="material-symbols-outlined text-primary text-[14px]">memory</span>
+<span class="font-telemetry-sm">Llama 3.1 8B (Quality / 8K Context)</span>
+<span class="material-symbols-outlined text-[14px] text-on-surface-variant group-hover:rotate-180 transition-transform duration-150">expand_more</span>
+</button>
+<!-- Dropdown Menu -->
+<div class="absolute left-0 top-full mt-1 w-64 bg-surface-container-low border border-outline-variant rounded shadow-2xl py-1 hidden group-hover:block z-50">
+<div class="px-2.5 py-1 text-label-code font-label-code text-on-surface-variant uppercase tracking-wider">Loaded Models</div>
+<button class="w-full text-left px-2.5 py-1.5 text-body-xs font-telemetry-sm text-on-surface hover:bg-surface-container-high flex items-center justify-between">
+<span>Llama 3.2 3B (Fast / VRAM)</span>
+<span class="text-label-code text-on-surface-variant font-label-code">3.1GB</span>
+</button>
+<button class="w-full text-left px-2.5 py-1.5 text-body-xs font-telemetry-sm text-primary bg-surface-container flex items-center justify-between">
+<span class="flex items-center space-x-1.5">
+<span class="material-symbols-outlined text-[12px]">check</span>
+<span>Llama 3.1 8B (Quality / 8K Context)</span>
+</span>
+<span class="text-label-code text-primary font-label-code">8.4GB</span>
+</button>
+<button class="w-full text-left px-2.5 py-1.5 text-body-xs font-telemetry-sm text-on-surface hover:bg-surface-container-high flex items-center justify-between">
+<span>Qwen 2.5 7B</span>
+<span class="text-label-code text-on-surface-variant font-label-code">7.8GB</span>
+</button>
+<button class="w-full text-left px-2.5 py-1.5 text-body-xs font-telemetry-sm text-on-surface hover:bg-surface-container-high flex items-center justify-between">
+<span>DeepSeek-R1 8B</span>
+<span class="text-label-code text-on-surface-variant font-label-code">8.2GB</span>
+</button>
+<div class="border-t border-outline-variant my-1"></div>
+<button class="w-full text-left px-2.5 py-1.5 text-body-xs text-secondary hover:bg-surface-container-high flex items-center space-x-1.5">
+<span class="material-symbols-outlined text-[13px]">add</span>
+<span>+ Custom Model</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Navigation Links -->
+<nav class="hidden xl:flex items-center space-x-6 text-body-sm font-medium">
+<a class="text-on-surface-variant hover:text-on-surface transition-colors py-1" href="#">Models</a>
+<a class="border-b-2 border-primary text-primary font-medium py-1" href="#">Retrieval Index</a>
+<a class="text-on-surface-variant hover:text-on-surface transition-colors py-1" href="#">Telemetry</a>
+<a class="text-on-surface-variant hover:text-on-surface transition-colors py-1" href="#">Graph Inspector</a>
+</nav>
+<!-- Center Control Cluster: Retrieval Mode & Micro-Sliders -->
+<div class="hidden lg:flex items-center space-x-4">
+<!-- Segmented Retrieval Mode Selector -->
+<div class="flex items-center bg-surface-container-low border border-outline-variant rounded p-0.5">
+<button class="px-2.5 py-0.5 rounded text-label-code font-label-code bg-surface-container text-primary font-medium border border-outline-variant shadow-sm flex items-center space-x-1">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+<span>Auto CRAG</span>
+</button>
+<button class="px-2.5 py-0.5 rounded text-label-code font-label-code text-on-surface-variant hover:text-on-surface transition-colors">Agentic Multi-Hop</button>
+<button class="px-2.5 py-0.5 rounded text-label-code font-label-code text-on-surface-variant hover:text-on-surface transition-colors">GraphRAG</button>
+<button class="px-2.5 py-0.5 rounded text-label-code font-label-code text-on-surface-variant hover:text-on-surface transition-colors">Direct</button>
+</div>
+<!-- Top-K Micro Slider -->
+<div class="flex items-center space-x-2 bg-surface-container-low border border-outline-variant px-2.5 py-1 rounded">
+<span class="text-label-code font-label-code text-on-surface-variant">Top-K</span>
+<input class="custom-range w-16 h-1 bg-surface-container-high rounded-lg appearance-none cursor-pointer accent-primary" max="100" min="5" type="range" value="20"/>
+<span class="text-label-code font-telemetry-sm text-primary font-semibold">20</span>
+</div>
+<!-- FlashRank Rerank Slider -->
+<div class="flex items-center space-x-2 bg-surface-container-low border border-outline-variant px-2.5 py-1 rounded">
+<span class="text-label-code font-label-code text-on-surface-variant">Rerank</span>
+<input class="custom-range w-12 h-1 bg-surface-container-high rounded-lg appearance-none cursor-pointer accent-primary" max="20" min="1" type="range" value="6"/>
+<span class="text-label-code font-telemetry-sm text-primary font-semibold">6</span>
+</div>
+<!-- Streaming SSE Toggle -->
+<div class="flex items-center space-x-2 bg-surface-container-low border border-outline-variant px-2 py-1 rounded">
+<span class="text-label-code font-label-code text-on-surface-variant">SSE</span>
+<button class="w-7 h-4 rounded-full bg-primary-container p-0.5 flex items-center justify-end shadow-sm">
+<div class="w-3 h-3 rounded-full bg-surface shadow-md"></div>
+</button>
+</div>
+</div>
+<!-- Hardware Health Badge & Trailing Actions -->
+<div class="flex items-center space-x-3">
+<!-- Hardware Health Pill Badge -->
+<div class="flex items-center space-x-2 px-2.5 py-1 rounded bg-surface-container border border-outline-variant">
+<span class="relative flex h-2 w-2">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+<span class="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+</span>
+<span class="text-label-code font-label-code text-on-surface font-semibold">RTX 4090</span>
+<span class="text-label-code font-telemetry-sm text-on-surface-variant border-l border-outline-variant pl-2">21.4/24 GB</span>
+<span class="text-label-code font-telemetry-sm text-primary pl-1">44°C</span>
+</div>
+<!-- Icon Actions from JSON -->
+<div class="flex items-center space-x-1">
+<button class="p-1 rounded text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors duration-100" title="Tune">
+<span class="material-symbols-outlined text-[18px]">tune</span>
+</button>
+<button class="p-1 rounded text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors duration-100" title="Memory">
+<span class="material-symbols-outlined text-[18px]">memory</span>
+</button>
+<button class="p-1 rounded text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors duration-100" title="Terminal">
+<span class="material-symbols-outlined text-[18px]">terminal</span>
+</button>
+<button class="p-1 rounded text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors duration-100 relative" title="Notifications">
+<span class="material-symbols-outlined text-[18px]">notifications</span>
+<span class="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-primary"></span>
+</button>
+</div>
+<button class="px-2.5 py-1 text-body-xs font-medium text-on-surface-variant hover:text-on-surface hover:bg-surface-container border border-outline-variant rounded transition-colors duration-100">
+        Audit Logs
+      </button>
+<button class="px-3 py-1 text-body-xs font-medium bg-primary text-on-primary font-semibold rounded shadow-sm hover:bg-primary-fixed transition-colors duration-100 flex items-center space-x-1">
+<span class="material-symbols-outlined text-[14px]">rocket_launch</span>
+<span>Deploy Agent</span>
+</button>
+</div>
+</header>
+<!-- ================= MAIN WORKSPACE (Split 3-Pane Architecture) ================= -->
+<div class="flex flex-1 overflow-hidden relative">
+<!-- 1. LEFT SIDEBAR: Nav, Sessions & Corpus Storage -->
+<aside class="w-64 border-r border-outline-variant bg-surface flex flex-col justify-between select-none shrink-0 h-full">
+<!-- Upper cluster: Cluster status, search, sessions -->
+<div class="flex flex-col flex-1 overflow-y-auto">
+<!-- Cluster Node Header -->
+<div class="p-space-sm border-b border-outline-variant bg-surface-container-lowest flex items-center justify-between">
+<div class="flex items-center space-x-2">
+<div class="w-7 h-7 rounded bg-surface-container-high flex items-center justify-center text-primary border border-outline-variant">
+<span class="material-symbols-outlined text-[16px]">dns</span>
+</div>
+<div>
+<div class="text-telemetry-sm font-telemetry-sm font-semibold text-on-surface">Corpus Cluster 01</div>
+<div class="text-label-code font-label-code text-on-surface-variant">Active Shards: 12/12</div>
+</div>
+</div>
+<span class="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_#10b981]"></span>
+</div>
+<!-- System Navigation Tabs (SideNavBar from JSON) -->
+<nav class="p-space-xs border-b border-outline-variant space-y-0.5">
+<button class="w-full flex items-center space-x-2 text-primary bg-surface-container-low border-l-2 border-primary font-medium px-space-sm py-1.5 text-telemetry-md font-telemetry-md">
+<span class="material-symbols-outlined text-[16px]">chat</span>
+<span>Live Sessions</span>
+</button>
+<button class="w-full flex items-center space-x-2 text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors px-space-sm py-1.5 text-telemetry-md font-telemetry-md">
+<span class="material-symbols-outlined text-[16px]">description</span>
+<span>Corpus Documents</span>
+</button>
+<button class="w-full flex items-center space-x-2 text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors px-space-sm py-1.5 text-telemetry-md font-telemetry-md">
+<span class="material-symbols-outlined text-[16px]">dataset</span>
+<span>Vector Collections</span>
+</button>
+<button class="w-full flex items-center space-x-2 text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors px-space-sm py-1.5 text-telemetry-md font-telemetry-md">
+<span class="material-symbols-outlined text-[16px]">account_tree</span>
+<span>Reasoning Traces</span>
+</button>
+<button class="w-full flex items-center space-x-2 text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors px-space-sm py-1.5 text-telemetry-md font-telemetry-md">
+<span class="material-symbols-outlined text-[16px]">dns</span>
+<span>Hardware Nodes</span>
+</button>
+</nav>
+<!-- Sessions Filter Input with ⌘K -->
+<div class="px-space-sm pt-3 pb-2">
+<div class="relative flex items-center">
+<span class="material-symbols-outlined absolute left-2 text-[14px] text-on-surface-variant">search</span>
+<input class="w-full bg-surface-container-lowest border border-outline-variant rounded pl-7 pr-8 py-1 text-body-xs text-on-surface placeholder:text-on-surface-variant focus:border-outline focus:ring-0" placeholder="Search sessions..." type="text"/>
+<span class="absolute right-2 px-1 rounded bg-surface-container border border-outline-variant text-[9px] font-telemetry-sm text-on-surface-variant">⌘K</span>
+</div>
+</div>
+<!-- Active Sessions List -->
+<div class="px-space-sm pb-2">
+<div class="flex items-center justify-between text-label-code font-label-code text-on-surface-variant uppercase tracking-wider px-1 mb-1">
+<span>Active Sessions</span>
+<span>3</span>
+</div>
+<div class="space-y-1">
+<div class="p-2 rounded bg-surface-container border border-outline text-left cursor-pointer group">
+<div class="flex items-center justify-between">
+<span class="text-body-xs font-medium text-on-surface truncate">Financial 10-K Cross-Audit</span>
+<span class="w-1.5 h-1.5 rounded-full bg-primary shrink-0"></span>
+</div>
+<div class="flex items-center justify-between text-telemetry-sm font-telemetry-sm text-on-surface-variant mt-1">
+<span>14.2k tokens</span>
+<span>2m ago</span>
+</div>
+</div>
+<div class="p-2 rounded hover:bg-surface-container-low border border-transparent hover:border-outline-variant text-left cursor-pointer group transition-colors">
+<div class="flex items-center justify-between">
+<span class="text-body-xs font-medium text-on-surface-variant group-hover:text-on-surface truncate">Q3 Vector Cluster Anomaly</span>
+</div>
+<div class="flex items-center justify-between text-telemetry-sm font-telemetry-sm text-on-surface-variant mt-1">
+<span>8.9k tokens</span>
+<span>1h ago</span>
+</div>
+</div>
+<div class="p-2 rounded hover:bg-surface-container-low border border-transparent hover:border-outline-variant text-left cursor-pointer group transition-colors">
+<div class="flex items-center justify-between">
+<span class="text-body-xs font-medium text-on-surface-variant group-hover:text-on-surface truncate">Biomedical Protocol Graph</span>
+</div>
+<div class="flex items-center justify-between text-telemetry-sm font-telemetry-sm text-on-surface-variant mt-1">
+<span>22.1k tokens</span>
+<span>4h ago</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Ingested Documents Section -->
+<div class="px-space-sm py-2 border-t border-outline-variant">
+<div class="flex items-center justify-between text-label-code font-label-code text-on-surface-variant uppercase tracking-wider px-1 mb-1.5">
+<span>Ingested Corpus</span>
+<span class="font-telemetry-sm">12 Files</span>
+</div>
+<div class="space-y-1.5">
+<!-- Doc 1 -->
+<div class="p-1.5 rounded bg-surface-container-low border border-outline-variant flex items-center justify-between">
+<div class="flex items-center space-x-2 truncate">
+<span class="px-1 py-0.5 rounded bg-error-container text-tertiary-fixed font-telemetry-sm text-[9px] font-semibold">PDF</span>
+<div class="truncate">
+<div class="text-body-xs text-on-surface truncate font-medium">SEC-10K-2024-NVDA.pdf</div>
+<div class="text-telemetry-sm font-telemetry-sm text-on-surface-variant">142 chunks · 99.4%</div>
+</div>
+</div>
+<span class="material-symbols-outlined text-[14px] text-primary">check_circle</span>
+</div>
+<!-- Doc 2 -->
+<div class="p-1.5 rounded bg-surface-container-low border border-outline-variant flex items-center justify-between">
+<div class="flex items-center space-x-2 truncate">
+<span class="px-1 py-0.5 rounded bg-error-container text-tertiary-fixed font-telemetry-sm text-[9px] font-semibold">PDF</span>
+<div class="truncate">
+<div class="text-body-xs text-on-surface truncate font-medium">Transformer-Arxiv-v3.pdf</div>
+<div class="text-telemetry-sm font-telemetry-sm text-on-surface-variant">48 chunks · 100%</div>
+</div>
+</div>
+<span class="material-symbols-outlined text-[14px] text-primary">check_circle</span>
+</div>
+<!-- Doc 3 -->
+<div class="p-1.5 rounded bg-surface-container-low border border-outline-variant flex items-center justify-between">
+<div class="flex items-center space-x-2 truncate">
+<span class="px-1 py-0.5 rounded bg-error-container text-tertiary-fixed font-telemetry-sm text-[9px] font-semibold">PDF</span>
+<div class="truncate">
+<div class="text-body-xs text-on-surface truncate font-medium">Enterprise-Arch-Blueprint.pdf</div>
+<div class="text-telemetry-sm font-telemetry-sm text-on-surface-variant">85 chunks · 100%</div>
+</div>
+</div>
+<span class="material-symbols-outlined text-[14px] text-primary">check_circle</span>
+</div>
+</div>
+</div>
+<!-- Ingest Dropzone & CTA -->
+<div class="px-space-sm py-2">
+<div class="border border-dashed border-outline hover:border-primary rounded p-3 text-center cursor-pointer transition-colors bg-surface-container-lowest group">
+<span class="material-symbols-outlined text-[18px] text-on-surface-variant group-hover:text-primary transition-colors">cloud_upload</span>
+<div class="text-body-xs text-on-surface font-medium mt-0.5">Drop PDF/DOCX or browse</div>
+<div class="text-label-code font-label-code text-on-surface-variant mt-0.5">Up to 256MB · OCR Active</div>
+</div>
+<button class="w-full mt-2 py-1.5 bg-surface-container hover:bg-surface-container-high text-primary border border-outline-variant rounded text-body-xs font-medium flex items-center justify-center space-x-1.5 transition-colors">
+<span class="material-symbols-outlined text-[14px]">add_circle</span>
+<span>Ingest Document</span>
+</button>
+</div>
+</div>
+<!-- Footer navigation links from JSON -->
+<div class="p-space-xs border-t border-outline-variant flex items-center justify-between bg-surface-container-lowest">
+<button class="flex items-center space-x-1.5 text-on-surface-variant hover:text-on-surface px-2 py-1 text-telemetry-sm font-telemetry-sm transition-colors">
+<span class="material-symbols-outlined text-[15px]">settings</span>
+<span>Settings</span>
+</button>
+<button class="flex items-center space-x-1.5 text-on-surface-variant hover:text-on-surface px-2 py-1 text-telemetry-sm font-telemetry-sm transition-colors">
+<span class="material-symbols-outlined text-[15px]">code</span>
+<span>Docs API</span>
+</button>
+</div>
+</aside>
+<!-- 2. CENTER STAGE: Conversation & Agentic Reasoning Stream -->
+<main class="flex-1 flex flex-col min-w-0 bg-surface-container-lowest relative overflow-hidden">
+<!-- Query / Stream Breadcrumbs Header -->
+<div class="h-9 px-4 border-b border-outline-variant bg-surface-container-low flex items-center justify-between shrink-0">
+<div class="flex items-center space-x-2 text-body-xs font-telemetry-sm">
+<span class="text-on-surface-variant">Session:</span>
+<span class="text-on-surface font-medium">Financial 10-K Cross-Audit</span>
+<span class="text-outline-variant">/</span>
+<span class="text-primary font-mono">0x48f9..a2c</span>
+</div>
+<div class="flex items-center space-x-3 text-label-code font-label-code text-on-surface-variant">
+<span class="flex items-center space-x-1">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+<span>HNSW Cosine Sim</span>
+</span>
+<span class="text-outline-variant">|</span>
+<span>Temperature: 0.1</span>
+</div>
+</div>
+<!-- Center Scrolling Feed -->
+<div class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+<!-- User Prompt Turn -->
+<div class="flex items-start space-x-3 max-w-4xl">
+<div class="w-6 h-6 rounded bg-surface-container-high border border-outline-variant flex items-center justify-center shrink-0 mt-0.5">
+<span class="material-symbols-outlined text-[14px] text-on-surface">person</span>
+</div>
+<div class="flex-1 bg-surface-container border border-outline-variant rounded p-3 shadow-sm">
+<div class="text-body-xs font-medium text-on-surface-variant mb-1">Lead Analyst (You)</div>
+<p class="text-body-md text-on-surface font-normal">
+              Synthesize NVIDIA's FY24 Datacenter gross margin trajectory and verify against the raw 10-K cash flow table.
+            </p>
+</div>
+</div>
+<!-- Step-by-Step CRAG Agent Reasoning Accordion -->
+<div class="max-w-4xl ml-9 bg-surface-container-low border border-outline-variant rounded overflow-hidden">
+<!-- Accordion Header -->
+<div class="px-3.5 py-2.5 bg-surface-container border-b border-outline-variant flex items-center justify-between cursor-pointer hover:bg-surface-container-high transition-colors">
+<div class="flex items-center space-x-2.5">
+<span class="material-symbols-outlined text-primary text-[16px]">account_tree</span>
+<span class="text-body-xs font-semibold text-on-surface">CRAG Reasoning &amp; Verification Stream</span>
+<span class="px-2 py-0.5 rounded bg-surface-container-high border border-primary text-primary text-label-code font-label-code">
+                CRAG: Corrective Retrieval Verified (0.94 Confidence)
+              </span>
+</div>
+<div class="flex items-center space-x-2 text-on-surface-variant">
+<span class="text-telemetry-sm font-telemetry-sm">3 steps completed · 142ms</span>
+<span class="material-symbols-outlined text-[16px]">expand_less</span>
+</div>
+</div>
+<!-- Accordion Content Body -->
+<div class="p-3.5 space-y-3 bg-surface-container-lowest font-telemetry-sm text-telemetry-sm">
+<!-- Sub-query decomposed items -->
+<div class="space-y-1.5">
+<div class="text-label-code font-label-code text-on-surface-variant uppercase tracking-wider">Sub-Query Decomposition</div>
+<div class="p-2 rounded bg-surface-container-low border border-outline-variant flex items-center justify-between text-body-xs">
+<span class="text-on-surface">1. NVDA FY24 Datacenter revenue &amp; GM margins</span>
+<span class="text-primary font-telemetry-sm">Match score: 0.981</span>
+</div>
+<div class="p-2 rounded bg-surface-container-low border border-outline-variant flex items-center justify-between text-body-xs">
+<span class="text-on-surface">2. Cash flow statement capex vs gross profit cross-check</span>
+<span class="text-primary font-telemetry-sm">Match score: 0.945</span>
+</div>
+</div>
+<!-- Monospace Engine Trace Log -->
+<div class="rounded bg-surface-dim border border-outline-variant p-2.5 font-telemetry-sm text-on-surface-variant space-y-1">
+<div class="flex items-center justify-between text-on-surface">
+<span class="text-primary">▸ [00:00.014] Vector Search:</span>
+<span>Retrieved Top-20 chunks from SEC-10K-2024-NVDA.pdf</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="text-secondary">▸ [00:00.048] FlashRank Cross-Encoder:</span>
+<span>Reranked Top-20 → Top-6 filtered (Max score: 0.982, Min score: 0.891)</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="text-surface-tint">▸ [00:00.092] Hallucination Check:</span>
+<span>Self-Correction Gate = PASSED (Risk score: 0.02, Threshold: 0.15)</span>
+</div>
+<div class="flex items-center justify-between text-on-surface-variant">
+<span>▸ [00:00.142] Prompt Injection Safety:</span>
+<span class="text-primary">100% Clean · Zero PII Anomaly</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Assistant Synthesis Response Card -->
+<div class="flex items-start space-x-3 max-w-4xl">
+<div class="w-6 h-6 rounded bg-primary text-on-primary font-semibold flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
+<span class="material-symbols-outlined text-[14px]">smart_toy</span>
+</div>
+<div class="flex-1 bg-surface-container border border-outline-variant rounded p-4 shadow-sm space-y-3">
+<div class="flex items-center justify-between border-b border-outline-variant pb-2">
+<span class="text-body-xs font-semibold text-primary font-telemetry-sm">RAG SYNTHESIS // CONFIDENCE: 99.4%</span>
+<span class="text-telemetry-sm font-telemetry-sm text-on-surface-variant">Generated in 1.18s · 86.4 tok/s</span>
+</div>
+<p class="text-body-md text-on-surface">
+              For fiscal year 2024, NVIDIA reported an unprecedented expansion in Datacenter segment revenue, surging <strong class="text-primary font-semibold">217% year-over-year to $47.5 billion</strong>, driven by the broad adoption of the HGX platform based on the Hopper architecture. Gross margin trajectory expanded sequentially from 64.6% to <strong class="text-primary font-semibold">76.0% in Q4 FY24</strong>, benefiting directly from enterprise compute mix dominance.
+            </p>
+<!-- Comparison Table Component -->
+<div class="border border-outline-variant rounded overflow-hidden">
+<table class="w-full text-left text-body-xs font-telemetry-sm">
+<thead class="bg-surface-container-high text-on-surface-variant border-b border-outline-variant">
+<tr>
+<th class="py-1.5 px-3">Metric Segment</th>
+<th class="py-1.5 px-3">FY2023 (Baseline)</th>
+<th class="py-1.5 px-3">FY2024 (Reported)</th>
+<th class="py-1.5 px-3 text-right">Variance Δ</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant bg-surface-container-lowest">
+<tr>
+<td class="py-1.5 px-3 text-on-surface font-medium">Datacenter Revenue</td>
+<td class="py-1.5 px-3 text-on-surface-variant">$15,005 M</td>
+<td class="py-1.5 px-3 text-primary font-semibold">$47,525 M</td>
+<td class="py-1.5 px-3 text-right text-primary">+217%</td>
+</tr>
+<tr>
+<td class="py-1.5 px-3 text-on-surface font-medium">GAAP Gross Margin</td>
+<td class="py-1.5 px-3 text-on-surface-variant">56.9%</td>
+<td class="py-1.5 px-3 text-primary font-semibold">72.7%</td>
+<td class="py-1.5 px-3 text-right text-primary">+15.8 pts</td>
+</tr>
+<tr>
+<td class="py-1.5 px-3 text-on-surface font-medium">Operating Cash Flow</td>
+<td class="py-1.5 px-3 text-on-surface-variant">$5,641 M</td>
+<td class="py-1.5 px-3 text-primary font-semibold">$28,090 M</td>
+<td class="py-1.5 px-3 text-right text-primary">+398%</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Rich Interactive Citation Badges & Cards -->
+<div class="pt-2">
+<div class="text-label-code font-label-code text-on-surface-variant uppercase tracking-wider mb-2">Verified Citations &amp; Grounding Anchor</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+<!-- Citation 1 -->
+<div class="p-2.5 rounded bg-surface-container-low border border-primary-container hover:border-primary transition-colors cursor-pointer group">
+<div class="flex items-center justify-between">
+<span class="text-telemetry-sm font-telemetry-sm text-primary font-medium flex items-center space-x-1">
+<span class="material-symbols-outlined text-[13px]">pin_drop</span>
+<span>[Doc 1: SEC-10K-2024-NVDA.pdf]</span>
+</span>
+<span class="text-label-code font-label-code text-on-surface-variant">Page 42</span>
+</div>
+<p class="text-body-xs text-on-surface-variant mt-1 line-clamp-2">
+                    "Datacenter revenue for fiscal year 2024 increased 217%, reflecting higher shipments of the NVIDIA Hopper GPU architecture..."
+                  </p>
+<div class="mt-2 flex items-center justify-between border-t border-outline-variant pt-1.5">
+<span class="text-label-code font-label-code text-on-surface-variant font-mono">[x:124, y:310, w:420, h:65]</span>
+<span class="text-body-xs text-primary group-hover:underline flex items-center space-x-0.5">
+<span>View Provenance</span>
+<span class="material-symbols-outlined text-[12px]">chevron_right</span>
+</span>
+</div>
+</div>
+<!-- Citation 2 -->
+<div class="p-2.5 rounded bg-surface-container-low border border-outline-variant hover:border-primary transition-colors cursor-pointer group">
+<div class="flex items-center justify-between">
+<span class="text-telemetry-sm font-telemetry-sm text-primary font-medium flex items-center space-x-1">
+<span class="material-symbols-outlined text-[13px]">table_chart</span>
+<span>[Doc 2: SEC-10K-2024-NVDA.pdf]</span>
+</span>
+<span class="text-label-code font-label-code text-on-surface-variant">Page 48</span>
+</div>
+<p class="text-body-xs text-on-surface-variant mt-1 line-clamp-2">
+                    "Consolidated Statements of Cash Flows Table 4.1: Net cash provided by operating activities was $28,090 million..."
+                  </p>
+<div class="mt-2 flex items-center justify-between border-t border-outline-variant pt-1.5">
+<span class="text-label-code font-label-code text-on-surface-variant font-mono">Table 4.1 / Cash Flow</span>
+<span class="text-body-xs text-on-surface-variant group-hover:text-primary flex items-center space-x-0.5">
+<span>Inspect Table</span>
+<span class="material-symbols-outlined text-[12px]">chevron_right</span>
+</span>
+</div>
+</div>
+</div>
+</div>
+<!-- RAGOps Interactive Feedback Row -->
+<div class="border-t border-outline-variant pt-2.5 flex items-center justify-between text-body-xs">
+<div class="flex items-center space-x-1">
+<button class="p-1 rounded text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-colors" title="Accurate Response">
+<span class="material-symbols-outlined text-[16px]">thumb_up</span>
+</button>
+<button class="p-1 rounded text-on-surface-variant hover:text-error hover:bg-surface-container-high transition-colors" title="Hallucinated or Inaccurate">
+<span class="material-symbols-outlined text-[16px]">thumb_down</span>
+</button>
+<div class="h-3 w-[1px] bg-outline-variant mx-1"></div>
+<button class="px-2 py-0.5 rounded text-label-code font-label-code text-tertiary-container hover:bg-surface-container-high transition-colors flex items-center space-x-1">
+<span class="material-symbols-outlined text-[13px]">flag</span>
+<span>Report Hallucination</span>
+</button>
+</div>
+<div class="flex items-center space-x-2 font-telemetry-sm text-telemetry-sm">
+<button class="px-2 py-1 rounded bg-surface-container-low hover:bg-surface-container-high border border-outline-variant text-on-surface-variant hover:text-on-surface transition-colors flex items-center space-x-1">
+<span class="material-symbols-outlined text-[13px]">data_object</span>
+<span>Copy Context JSON</span>
+</button>
+<button class="px-2 py-1 rounded bg-surface-container-low hover:bg-surface-container-high border border-outline-variant text-on-surface-variant hover:text-on-surface transition-colors flex items-center space-x-1">
+<span class="material-symbols-outlined text-[13px]">download</span>
+<span>Export Trace</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Polished Bottom Chat Command Bar -->
+<div class="p-4 bg-gradient-to-t from-surface-container-lowest via-surface-container-lowest to-transparent shrink-0">
+<div class="max-w-4xl mx-auto bg-surface-container border border-outline rounded-lg shadow-2xl p-2 focus-within:border-primary transition-colors">
+<div class="flex items-center px-2 pt-1 pb-2">
+<input class="w-full bg-transparent border-0 p-0 text-body-md text-on-surface placeholder:text-on-surface-variant focus:ring-0" placeholder="Ask questions across multi-hop corpus or type / for commands..." type="text"/>
+</div>
+<div class="flex items-center justify-between border-t border-outline-variant pt-2 px-1">
+<div class="flex items-center space-x-2">
+<button class="px-2 py-1 rounded hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface text-body-xs flex items-center space-x-1 transition-colors">
+<span class="material-symbols-outlined text-[15px]">attach_file</span>
+<span>Attach Document</span>
+</button>
+<button class="px-2 py-1 rounded bg-surface-container-low text-primary border border-outline-variant text-body-xs flex items-center space-x-1.5">
+<span class="material-symbols-outlined text-[15px]">travel_explore</span>
+<span>Web-Augment (ON)</span>
+</button>
+<button class="px-2 py-1 rounded hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface text-body-xs flex items-center space-x-1 transition-colors">
+<span class="material-symbols-outlined text-[15px]">tune</span>
+<span>Prompt Presets</span>
+</button>
+</div>
+<div class="flex items-center space-x-3">
+<span class="text-label-code font-label-code text-on-surface-variant hidden md:inline">
+                ↵ Send · ⇧↵ Newline · ⌘/ Inspector
+              </span>
+<button class="px-3 py-1 bg-primary text-on-primary font-semibold rounded text-body-xs flex items-center space-x-1 shadow-sm hover:bg-primary-fixed transition-colors">
+<span>Send</span>
+<span class="material-symbols-outlined text-[14px]">arrow_upward</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- 3. RIGHT COLLAPSIBLE INSPECTOR DRAWER: Visual PDF Provenance & Real-Time Telemetry -->
+<aside class="w-80 lg:w-96 border-l border-outline-variant bg-surface flex flex-col shrink-0 select-none overflow-hidden">
+<!-- Inspector Header with Tabs -->
+<div class="h-10 border-b border-outline-variant bg-surface-container flex items-center justify-between px-3 shrink-0">
+<div class="flex items-center space-x-1">
+<button class="px-2.5 py-1 text-label-code font-label-code font-semibold border-b-2 border-primary text-primary">Visual PDF Provenance</button>
+<button class="px-2.5 py-1 text-label-code font-label-code text-on-surface-variant hover:text-on-surface transition-colors">Knowledge Graph</button>
+<button class="px-2.5 py-1 text-label-code font-label-code text-on-surface-variant hover:text-on-surface transition-colors">Telemetry</button>
+</div>
+<button class="text-on-surface-variant hover:text-on-surface p-1 rounded hover:bg-surface-container-high transition-colors" title="Collapse Pane">
+<span class="material-symbols-outlined text-[16px]">dock_to_right</span>
+</button>
+</div>
+<!-- Inspector Content Body -->
+<div class="flex-1 overflow-y-auto p-3 space-y-4">
+<!-- Real-Time Telemetry Gauge Stats Bento Card -->
+<div class="bg-surface-container-low border border-outline-variant rounded p-3 space-y-2">
+<div class="flex items-center justify-between">
+<span class="text-label-code font-label-code text-on-surface-variant uppercase tracking-wider">Real-time Telemetry</span>
+<span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+</div>
+<div class="grid grid-cols-3 gap-2 pt-1">
+<div class="p-2 rounded bg-surface-container border border-outline-variant">
+<div class="text-label-code font-label-code text-on-surface-variant">TTFT</div>
+<div class="text-telemetry-md font-telemetry-md font-bold text-primary">142ms</div>
+</div>
+<div class="p-2 rounded bg-surface-container border border-outline-variant">
+<div class="text-label-code font-label-code text-on-surface-variant">Total Latency</div>
+<div class="text-telemetry-md font-telemetry-md font-bold text-on-surface">1.18s</div>
+</div>
+<div class="p-2 rounded bg-surface-container border border-outline-variant">
+<div class="text-label-code font-label-code text-on-surface-variant">Speed</div>
+<div class="text-telemetry-md font-telemetry-md font-bold text-secondary">86.4 t/s</div>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-2 pt-0.5">
+<div class="p-2 rounded bg-surface-container border border-outline-variant flex items-center justify-between">
+<span class="text-label-code font-label-code text-on-surface-variant">Retrieval P95</span>
+<span class="text-telemetry-sm font-telemetry-sm text-primary font-semibold">38ms</span>
+</div>
+<div class="p-2 rounded bg-surface-container border border-outline-variant flex items-center justify-between">
+<span class="text-label-code font-label-code text-on-surface-variant">Precision</span>
+<span class="text-telemetry-sm font-telemetry-sm text-primary font-semibold">96.2%</span>
+</div>
+</div>
+</div>
+<!-- Visual PDF Provenance Document Canvas View -->
+<div class="space-y-2">
+<div class="flex items-center justify-between">
+<span class="text-label-code font-label-code text-on-surface-variant uppercase tracking-wider">Ground Truth PDF Anchor</span>
+<div class="flex items-center space-x-1">
+<button class="p-1 rounded bg-surface-container border border-outline-variant text-on-surface-variant hover:text-on-surface text-[12px]"><span class="material-symbols-outlined text-[14px]">zoom_in</span></button>
+<button class="p-1 rounded bg-surface-container border border-outline-variant text-on-surface-variant hover:text-on-surface text-[12px]"><span class="material-symbols-outlined text-[14px]">zoom_out</span></button>
+<button class="p-1 rounded bg-surface-container border border-outline-variant text-on-surface-variant hover:text-on-surface text-[12px]"><span class="material-symbols-outlined text-[14px]">fit_screen</span></button>
+</div>
+</div>
+<!-- Document Sheet Render Representation -->
+<div class="relative bg-surface-container-lowest border border-outline rounded p-3 overflow-hidden shadow-inner aspect-[3/4] flex flex-col justify-between">
+<!-- PDF Document Simulation Texture -->
+<div class="space-y-2 opacity-80 text-[9px] font-mono leading-relaxed text-outline">
+<div class="flex justify-between border-b border-outline-variant pb-1 text-[8px] text-on-surface-variant">
+<span>NVIDIA CORPORATION // FORM 10-K</span>
+<span>PAGE 42 / FISCAL YEAR 2024</span>
+</div>
+<div class="h-2.5 w-1/2 bg-outline-variant rounded"></div>
+<div class="h-2 w-full bg-outline-variant/60 rounded"></div>
+<div class="h-2 w-5/6 bg-outline-variant/60 rounded"></div>
+<!-- Highlighting Overlay: Glowing Emerald Bounding Box -->
+<div class="relative my-2 p-2 border-2 border-primary bg-primary/10 rounded shadow-[0_0_12px_rgba(78,222,163,0.3)]">
+<div class="absolute -top-3 -right-1 bg-primary text-on-primary text-[8px] font-label-code px-1 rounded font-bold">
+                  BBox: [124, 310, 420, 65]
+                </div>
+<div class="text-[9.5px] text-on-surface font-body-sm leading-snug">
+                  "Datacenter revenue for fiscal year 2024 increased 217%, reflecting higher shipments of the NVIDIA Hopper GPU computing platform for large language models, recommendation engines, and generative AI applications."
+                </div>
+</div>
+<div class="h-2 w-full bg-outline-variant/60 rounded"></div>
+<div class="h-2 w-3/4 bg-outline-variant/60 rounded"></div>
+<div class="h-2 w-4/5 bg-outline-variant/60 rounded"></div>
+<!-- Financial Micro Table Preview -->
+<div class="my-2 border border-outline-variant p-1 rounded bg-surface-container-low space-y-1">
+<div class="flex justify-between text-[8px] text-primary">
+<span>Compute &amp; Networking</span>
+<span>$35,595M</span>
+</div>
+<div class="flex justify-between text-[8px] text-on-surface-variant">
+<span>Graphics Architecture</span>
+<span>$11,930M</span>
+</div>
+</div>
+</div>
+<!-- OCR Extraction & Confidence Pill Footer -->
+<div class="pt-2 border-t border-outline-variant flex items-center justify-between text-label-code font-label-code bg-surface-container-lowest">
+<span class="text-on-surface-variant">PaddleOCR v2.6 · Engine: LayoutLM</span>
+<span class="text-primary font-semibold">98.7% Conf</span>
+</div>
+</div>
+</div>
+<!-- Associative Knowledge Graph Traversal Snippet Card -->
+<div class="bg-surface-container-low border border-outline-variant rounded p-3 space-y-2">
+<div class="flex items-center justify-between">
+<span class="text-label-code font-label-code text-on-surface-variant uppercase tracking-wider">Sub-Graph Entity Path</span>
+<span class="text-label-code font-label-code text-secondary font-mono">Hop Distance: 3</span>
+</div>
+<div class="space-y-1.5 font-telemetry-sm text-telemetry-sm">
+<div class="flex items-center space-x-1.5 text-on-surface">
+<span class="px-1.5 py-0.5 rounded bg-surface-container border border-outline-variant text-primary font-medium">NVIDIA</span>
+<span class="text-on-surface-variant">─[HAS_SEGMENT]→</span>
+<span class="px-1.5 py-0.5 rounded bg-surface-container border border-outline-variant text-on-surface">Datacenter</span>
+</div>
+<div class="flex items-center space-x-1.5 text-on-surface pl-4">
+<span class="text-on-surface-variant">└──[POWERED_BY]→</span>
+<span class="px-1.5 py-0.5 rounded bg-surface-container border border-outline-variant text-secondary">Hopper GPU Arch</span>
+</div>
+<div class="flex items-center space-x-1.5 text-on-surface pl-8">
+<span class="text-on-surface-variant">└──[GENERATED_REV]→</span>
+<span class="px-1.5 py-0.5 rounded bg-surface-container border border-primary text-primary font-bold">$47.5B FY24</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Drawer Sub-Footer Actions -->
+<div class="p-2 border-t border-outline-variant bg-surface-container-lowest flex items-center justify-between text-label-code font-label-code text-on-surface-variant">
+<span>Worker: cluster-node-us-west-4</span>
+<button class="text-primary hover:underline flex items-center space-x-1">
+<span>Open Full Graph</span>
+<span class="material-symbols-outlined text-[12px]">open_in_new</span>
+</button>
+</div>
+</aside>
+</div>
+</body></html>
