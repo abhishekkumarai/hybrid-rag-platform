@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, AsyncGenerator
 
 import requests
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
@@ -161,6 +161,10 @@ def health_check() -> dict[str, Any]:
     except Exception:
         pass
 
+    # 4. Neo4j health
+    _, indexing, _ = get_services()
+    neo4j_ok = getattr(indexing.graph, "is_connected", False)
+
     status = "healthy" if (qdrant_ok and ollama_ok) else "degraded"
     return {
         "status": status,
@@ -168,6 +172,7 @@ def health_check() -> dict[str, Any]:
             "qdrant": {"alive": qdrant_ok, "port": settings.storage.qdrant_port},
             "redis": {"alive": redis_ok, "port": settings.storage.redis_port},
             "ollama": {"alive": ollama_ok, "url": settings.hardware.ollama_base_url},
+            "neo4j": {"alive": neo4j_ok, "uri": settings.storage.neo4j_uri},
         },
         "hardware_profile": settings.hardware.profile,
     }
@@ -239,6 +244,101 @@ def list_available_models() -> ModelListResponse:
         default_model=default_model,
         hardware_profile=settings.hardware.profile,
         ollama_alive=ollama_alive,
+    )
+
+class GpuModelVram(BaseModel):
+    name: str
+    size_vram_bytes: int
+    size_vram_gb: float
+    context_length: int | None = None
+
+
+class GpuStatusResponse(BaseModel):
+    gpu_name: str = "NVIDIA GeForce RTX 3050 6GB Laptop GPU"
+    total_vram_mb: float = 6144.0
+    used_vram_mb: float = 0.0
+    free_vram_mb: float = 6144.0
+    vram_percent: float = 0.0
+    models: list[GpuModelVram] = []
+    source: str = "ollama_ps"
+
+
+@app.get("/api/v1/hardware/gpu", response_model=GpuStatusResponse)
+def get_gpu_hardware_status() -> GpuStatusResponse:
+    """Returns live VRAM telemetry from Ollama active model allocations and GPU memory."""
+    total_mb = 6144.0
+    used_bytes = 0
+    active_models: list[GpuModelVram] = []
+
+    try:
+        import json
+        import socket
+        import urllib.request
+
+        # Resolve host.docker.internal to concrete IP if needed to prevent container urllib3 proxy routing issues
+        base_url = settings.hardware.ollama_base_url
+        if "host.docker.internal" in base_url:
+            try:
+                host_ip = socket.gethostbyname("host.docker.internal")
+                base_url = base_url.replace("host.docker.internal", host_ip)
+            except Exception:
+                pass
+
+        req = urllib.request.Request(f"{base_url}/api/ps")
+        with urllib.request.urlopen(req, timeout=2.5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            for m in data.get("models", []):
+                vram_b = m.get("size_vram", 0) or m.get("size", 0)
+                used_bytes += vram_b
+                active_models.append(
+                    GpuModelVram(
+                        name=m.get("name", "unknown"),
+                        size_vram_bytes=vram_b,
+                        size_vram_gb=round(vram_b / (1024**3), 2),
+                        context_length=m.get("context_length"),
+                    )
+                )
+    except Exception as e:
+        logger.warning(f"Could not query Ollama /api/ps: {e}")
+
+    # Fallback/refinement via nvidia-smi if accessible
+    try:
+        import subprocess
+        res = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+            timeout=1.5,
+        )
+        if res.returncode == 0 and res.stdout.strip():
+            parts = [p.strip() for p in res.stdout.strip().split(",")]
+            if len(parts) >= 2:
+                used_mb = float(parts[0])
+                tot_mb = float(parts[1])
+                return GpuStatusResponse(
+                    gpu_name="NVIDIA GeForce RTX 3050 6GB Laptop GPU",
+                    total_vram_mb=tot_mb,
+                    used_vram_mb=used_mb,
+                    free_vram_mb=max(0.0, tot_mb - used_mb),
+                    vram_percent=round((used_mb / tot_mb) * 100, 1),
+                    models=active_models,
+                    source="nvidia_smi",
+                )
+    except Exception:
+        pass
+
+    used_mb = round(used_bytes / (1024 * 1024), 1)
+    free_mb = max(0.0, total_mb - used_mb)
+    pct = round((used_mb / total_mb) * 100, 1) if total_mb else 0.0
+
+    return GpuStatusResponse(
+        gpu_name="NVIDIA GeForce RTX 3050 6GB Laptop GPU",
+        total_vram_mb=total_mb,
+        used_vram_mb=used_mb,
+        free_vram_mb=free_mb,
+        vram_percent=pct,
+        models=active_models,
+        source="ollama_ps",
     )
 
 
@@ -349,7 +449,10 @@ def get_figure_image(figure_name: str) -> Response:
 
 
 @app.post("/api/v1/ingest", response_model=IngestResponse)
-def ingest_file(file: UploadFile = File(...)) -> IngestResponse:
+def ingest_file(
+    file: UploadFile = File(...),
+    route: str | None = Form(default=None),
+) -> IngestResponse:
     """Accepts multipart PDF file upload, stores to data/documents/, probes layout, and extracts blocks."""
     upload_dir = Path("data/documents")
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -359,7 +462,8 @@ def ingest_file(file: UploadFile = File(...)) -> IngestResponse:
         shutil.copyfileobj(file.file, buffer)
 
     ingestion, _, _ = get_services()
-    res = ingestion.parse(IngestRequest(file_path=str(file_path)))
+    profile_override = route if route in ("fast_text", "layout", "ocr") else None
+    res = ingestion.parse(IngestRequest(file_path=str(file_path), profile_override=profile_override))
     logger.info(f"API Ingest: uploaded '{file.filename}' -> {len(res.blocks)} blocks ({res.profile.route})")
     return res
 
@@ -448,8 +552,8 @@ def delete_session(session_id: str) -> dict[str, bool]:
 
 
 @app.get("/api/v1/metrics", response_model=SystemMetrics)
-def get_metrics() -> SystemMetrics:
-    """Returns real-time pipeline telemetry, latency breakdown, and microservice status."""
+def get_metrics(session_id: str | None = None) -> SystemMetrics:
+    """Returns real-time pipeline telemetry, latency breakdown, and microservice status, optionally scoped to a session."""
     _, indexing, _ = get_services()
     return telemetry_tracker.get_system_metrics(
         qdrant_host=settings.storage.qdrant_host,
@@ -457,6 +561,7 @@ def get_metrics() -> SystemMetrics:
         redis_host=settings.storage.redis_host,
         redis_port=settings.storage.redis_port,
         bm25_store=indexing.bm25,
+        session_id=session_id,
     )
 
 
@@ -471,6 +576,7 @@ async def sse_chat_generator(
     temperature: float = 0.7,
     doc_ids: list[str] | None = None,
     compactor_budget: int = 3072,
+    min_score_threshold: float = 0.15,
 ) -> AsyncGenerator[str, None]:
     """Streams Ollama generation tokens via SSE with agentic multi-hop support and live telemetry."""
     t_start = time.perf_counter()
@@ -515,7 +621,7 @@ async def sse_chat_generator(
             total_ms = (time.perf_counter() - t_start) * 1000
             refusal_msg = (
                 "I could not locate sufficiently relevant information in the indexed documents "
-                "to answer your question with confidence (relevance cutoff threshold: 0.15)."
+                f"to answer your question with confidence (relevance cutoff threshold: {min_score_threshold:.2f})."
             )
             telemetry = QueryTelemetry(
                 session_id=session_id,
@@ -557,7 +663,13 @@ async def sse_chat_generator(
         yield f"event: mode\ndata: {json.dumps({'mode': 'graph'})}\n\n"
         t_ret_start = time.perf_counter()
         search_res, graph_res = retrieval.retrieve_with_graph(
-            SearchQuery(query_text=retrieval_query, top_k=top_k, top_rerank=top_rerank, doc_ids=doc_ids)
+            SearchQuery(
+                query_text=retrieval_query,
+                top_k=top_k,
+                top_rerank=top_rerank,
+                min_rerank_score=min_score_threshold,
+                doc_ids=doc_ids,
+            )
         )
         retrieval_ms = (time.perf_counter() - t_ret_start) * 1000
 
@@ -645,7 +757,13 @@ async def sse_chat_generator(
         # Standard Single-Hop Fast Path
         t_ret_start = time.perf_counter()
         search_res = retrieval.retrieve(
-            SearchQuery(query_text=retrieval_query, top_k=top_k, top_rerank=top_rerank, doc_ids=doc_ids)
+            SearchQuery(
+                query_text=retrieval_query,
+                top_k=top_k,
+                top_rerank=top_rerank,
+                min_rerank_score=min_score_threshold,
+                doc_ids=doc_ids,
+            )
         )
         retrieval_ms = (time.perf_counter() - t_ret_start) * 1000
 
@@ -653,7 +771,7 @@ async def sse_chat_generator(
             total_ms = (time.perf_counter() - t_start) * 1000
             refusal_msg = (
                 "I could not locate sufficiently relevant information in the indexed documents "
-                "to answer your question with confidence (relevance cutoff threshold: 0.15)."
+                f"to answer your question with confidence (relevance cutoff threshold: {min_score_threshold:.2f})."
             )
             telemetry = QueryTelemetry(
                 session_id=session_id,
@@ -676,7 +794,14 @@ async def sse_chat_generator(
             yield f"event: done\ndata: {json.dumps({'citations': [], 'refused': True, 'top_score': search_res.top_score, 'is_agentic': False})}\n\n"
             return
 
-        context = "\n\n".join([f"[{c.id}] {c.text}" for c in search_res.candidates])
+        comp_context = retrieval.compact_results(
+            query=retrieval_query,
+            candidates=search_res.candidates,
+            budget_tokens=compactor_budget,
+        )
+        context = comp_context.formatted_prompt_context or "\n\n".join(
+            [f"[{c.id}] {c.text}" for c in search_res.candidates]
+        )
         if history_context:
             prompt = (
                 f"{f'System Persona & Directives:\n{system_prompt}\n\n' if system_prompt else ''}"
@@ -695,6 +820,17 @@ async def sse_chat_generator(
         top_score = search_res.top_score
         final_citations = search_res.citations
 
+    # Calculate safe num_ctx tailored for the active hardware profile & model
+    # On RTX 3050 6GB VRAM, clamp num_ctx for 7B/8B/14B models to 4096 to prevent "context size too large"
+    is_large_model = any(tag in model_name.lower() for tag in ("8b", "7b", "14b", "13b", "70b"))
+    max_hardware_ctx = 4096 if is_large_model else 8192
+    safe_num_ctx = min(max(compactor_budget + 512, 2048), max_hardware_ctx)
+
+    # Prompt length safety guard to guarantee prompt never overflows Ollama context
+    max_prompt_chars = int((safe_num_ctx - 350) * 3.5)
+    if len(prompt) > max_prompt_chars:
+        prompt = prompt[:max_prompt_chars] + "\n\n[Context truncated to fit model context window]\n"
+
     # 3. Stream from Local Ollama & Measure TTFT
     full_answer_parts: list[str] = []
     t_llm_start = time.perf_counter()
@@ -708,11 +844,35 @@ async def sse_chat_generator(
                 "model": model_name,
                 "prompt": prompt,
                 "stream": True,
-                "options": {"num_predict": 256, "temperature": temperature},
+                "options": {
+                    "num_predict": 256,
+                    "temperature": temperature,
+                    "num_ctx": safe_num_ctx,
+                },
             },
             stream=True,
             timeout=120,
         )
+        if resp.status_code != 200:
+            logger.warning(
+                f"Ollama stream returned {resp.status_code}, retrying with safe num_ctx=2048: {resp.text}"
+            )
+            resp = requests.post(
+                f"{settings.hardware.ollama_base_url}/api/generate",
+                json={
+                    "model": model_name,
+                    "prompt": prompt[:4000],
+                    "stream": True,
+                    "options": {
+                        "num_predict": 256,
+                        "temperature": temperature,
+                        "num_ctx": 2048,
+                    },
+                },
+                stream=True,
+                timeout=120,
+            )
+
         for line in resp.iter_lines():
             if line:
                 chunk = json.loads(line)
@@ -745,7 +905,11 @@ async def sse_chat_generator(
         top_score=top_score,
         citations_count=len(final_citations),
     )
-    telemetry_tracker.record_query(telemetry)
+    telemetry_tracker.record_query(
+        telemetry,
+        redis_host=settings.storage.redis_host,
+        redis_port=settings.storage.redis_port,
+    )
 
     # 4. Save Assistant Turn to Session History
     full_answer = "".join(full_answer_parts)
@@ -792,17 +956,28 @@ def chat(req: ChatRequest):
         if (req.top_k == 20 and session.parameters.top_k)
         else req.top_k
     )
+    effective_top_rerank = (
+        session.parameters.top_rerank
+        if (req.top_rerank == 6 and hasattr(session.parameters, "top_rerank") and session.parameters.top_rerank)
+        else req.top_rerank
+    )
+    effective_stream = (
+        session.parameters.stream
+        if hasattr(session.parameters, "stream") and not session.parameters.stream
+        else req.stream
+    )
     temperature = session.parameters.temperature
     compactor_budget = session.parameters.compactor_budget
+    min_score_threshold = session.parameters.min_score_threshold
     doc_ids = session.files if session.files else None
     system_prompt = session.system_prompt
 
-    if req.stream:
+    if effective_stream:
         return StreamingResponse(
             sse_chat_generator(
                 query_text=req.query,
                 top_k=effective_top_k,
-                top_rerank=req.top_rerank,
+                top_rerank=effective_top_rerank,
                 model_name=effective_model,
                 session_id=active_session_id,
                 mode=effective_mode,
@@ -810,6 +985,7 @@ def chat(req: ChatRequest):
                 temperature=temperature,
                 doc_ids=doc_ids,
                 compactor_budget=compactor_budget,
+                min_score_threshold=min_score_threshold,
             ),
             media_type="text/event-stream",
         )
@@ -837,7 +1013,7 @@ def chat(req: ChatRequest):
         candidates, citations, agent_steps, decomp_plan, crag_res, refused = coordinator.run_plan(
             query=retrieval_query,
             top_k=effective_top_k,
-            top_rerank=req.top_rerank,
+            top_rerank=effective_top_rerank,
             force_multi_hop=(effective_mode == "agentic"),
             context_budget=compactor_budget,
             doc_ids=doc_ids,
@@ -892,7 +1068,13 @@ def chat(req: ChatRequest):
     elif effective_mode == "graph":
         t_ret_start = time.perf_counter()
         search_res, graph_res = retrieval.retrieve_with_graph(
-            SearchQuery(query_text=retrieval_query, top_k=effective_top_k, top_rerank=req.top_rerank, doc_ids=doc_ids)
+            SearchQuery(
+                query_text=retrieval_query,
+                top_k=effective_top_k,
+                top_rerank=effective_top_rerank,
+                min_rerank_score=min_score_threshold,
+                doc_ids=doc_ids,
+            )
         )
         retrieval_ms = (time.perf_counter() - t_ret_start) * 1000
 
@@ -982,7 +1164,13 @@ def chat(req: ChatRequest):
         # Standard Single-Hop Path
         t_ret_start = time.perf_counter()
         ret_res = retrieval.retrieve(
-            SearchQuery(query_text=retrieval_query, top_k=effective_top_k, top_rerank=req.top_rerank, doc_ids=doc_ids)
+            SearchQuery(
+                query_text=retrieval_query,
+                top_k=effective_top_k,
+                top_rerank=effective_top_rerank,
+                min_rerank_score=min_score_threshold,
+                doc_ids=doc_ids,
+            )
         )
         retrieval_ms = (time.perf_counter() - t_ret_start) * 1000
 
@@ -1012,7 +1200,14 @@ def chat(req: ChatRequest):
                 "session_id": active_session_id,
             }
 
-        context = "\n\n".join([f"[{c.id}] {c.text}" for c in ret_res.candidates])
+        comp_context = retrieval.compact_results(
+            query=retrieval_query,
+            candidates=ret_res.candidates,
+            budget_tokens=compactor_budget,
+        )
+        context = comp_context.formatted_prompt_context or "\n\n".join(
+            [f"[{c.id}] {c.text}" for c in ret_res.candidates]
+        )
         if history_context:
             prompt = (
                 f"{f'System Persona & Directives:\n{system_prompt}\n\n' if system_prompt else ''}"
@@ -1031,6 +1226,17 @@ def chat(req: ChatRequest):
         top_score = ret_res.top_score
         final_citations = ret_res.citations
 
+    # Calculate safe num_ctx tailored for the active hardware profile & model
+    # On RTX 3050 6GB VRAM, clamp num_ctx for 7B/8B/14B models to 4096 to prevent "context size too large"
+    is_large_model = any(tag in effective_model.lower() for tag in ("8b", "7b", "14b", "13b", "70b"))
+    max_hardware_ctx = 4096 if is_large_model else 8192
+    safe_num_ctx = min(max(compactor_budget + 512, 2048), max_hardware_ctx)
+
+    # Prompt length safety guard to guarantee prompt never overflows Ollama context
+    max_prompt_chars = int((safe_num_ctx - 350) * 3.5)
+    if len(prompt) > max_prompt_chars:
+        prompt = prompt[:max_prompt_chars] + "\n\n[Context truncated to fit model context window]\n"
+
     t_llm_start = time.perf_counter()
     try:
         resp = requests.post(
@@ -1039,10 +1245,32 @@ def chat(req: ChatRequest):
                 "model": effective_model,
                 "prompt": prompt,
                 "stream": False,
-                "options": {"num_predict": 256, "temperature": temperature},
+                "options": {
+                    "num_predict": 256,
+                    "temperature": temperature,
+                    "num_ctx": safe_num_ctx,
+                },
             },
             timeout=120,
         )
+        if resp.status_code != 200:
+            logger.warning(
+                f"Ollama generation returned {resp.status_code}, retrying with safe num_ctx=2048: {resp.text}"
+            )
+            resp = requests.post(
+                f"{settings.hardware.ollama_base_url}/api/generate",
+                json={
+                    "model": effective_model,
+                    "prompt": prompt[:4000],
+                    "stream": False,
+                    "options": {
+                        "num_predict": 256,
+                        "temperature": temperature,
+                        "num_ctx": 2048,
+                    },
+                },
+                timeout=120,
+            )
         llm_answer = resp.json().get("response", "")
     except Exception as e:
         llm_answer = f"Error generating answer: {e}"
@@ -1067,7 +1295,11 @@ def chat(req: ChatRequest):
         top_score=top_score,
         citations_count=len(final_citations),
     )
-    telemetry_tracker.record_query(telemetry)
+    telemetry_tracker.record_query(
+        telemetry,
+        redis_host=settings.storage.redis_host,
+        redis_port=settings.storage.redis_port,
+    )
 
     session_manager.append_message(
         active_session_id,
@@ -1104,15 +1336,15 @@ def submit_feedback(req: FeedbackRequest) -> FeedbackRecord:
 
 
 @app.get("/api/v1/feedback/summary", response_model=RAGOpsSummary)
-def get_feedback_summary() -> RAGOpsSummary:
-    """Returns aggregated continuous evaluation metrics and active learning counts."""
-    return ragops_store.get_summary()
+def get_feedback_summary(session_id: str | None = None) -> RAGOpsSummary:
+    """Returns aggregated continuous evaluation metrics and active learning counts, optionally scoped to a session."""
+    return ragops_store.get_summary(session_id=session_id)
 
 
 @app.get("/api/v1/ragops/dataset")
-def export_ragops_dataset() -> list[dict[str, Any]]:
-    """Exports mined contrastive hard-negative triplets for local model fine-tuning."""
-    return ragops_store.export_training_dataset()
+def export_ragops_dataset(session_id: str | None = None) -> list[dict[str, Any]]:
+    """Exports mined contrastive hard-negative triplets, optionally scoped to a session."""
+    return ragops_store.export_training_dataset(session_id=session_id)
 
 
 # --- GraphRAG Endpoints (Phase 13) ---
@@ -1149,10 +1381,20 @@ def query_knowledge_graph(req: GraphSearchQuery) -> GraphRAGResponse:
 
 
 @app.get("/api/v1/graph/stats")
-def get_graph_stats() -> dict[str, Any]:
-    """Returns knowledge graph topology metrics, node categories, and predicate distributions."""
+def get_graph_stats(session_id: str | None = None, doc_ids: str | None = None) -> dict[str, Any]:
+    """Returns knowledge graph topology metrics, node categories, and predicate distributions, optionally scoped to session or documents."""
     _, indexing, _ = get_services()
-    return indexing.graph.get_stats()
+    filter_doc_ids: list[str] | None = None
+    if session_id:
+        sess, _ = session_manager.get_session(session_id)
+        if sess and sess.files:
+            filter_doc_ids = sess.files
+        else:
+            filter_doc_ids = []
+    elif doc_ids:
+        filter_doc_ids = [d.strip() for d in doc_ids.split(",") if d.strip()]
+
+    return indexing.graph.get_stats(doc_ids=filter_doc_ids)
 
 
 # --- Contextual Compression Endpoints (Phase 14) ---

@@ -41,13 +41,50 @@ class TelemetryTracker:
         self._initialized = True
         logger.info("Initialized TelemetryTracker singleton")
 
-    def record_query(self, telemetry: QueryTelemetry) -> None:
-        """Records a completed query's performance telemetry."""
+    def _sync_with_redis(self, redis_host: str, redis_port: int) -> None:
+        """Hydrates history from Redis to persist across container restarts."""
+        try:
+            import redis
+
+            r_client = redis.Redis(host=redis_host, port=redis_port, socket_timeout=1.0, decode_responses=True)
+            raw_records = r_client.lrange("rag:telemetry:history", 0, self._max_history - 1)
+            if raw_records:
+                with self._mu:
+                    self._history.clear()
+                    self._total_queries = int(r_client.get("rag:telemetry:total_queries") or 0)
+                    self._total_refusals = int(r_client.get("rag:telemetry:total_refusals") or 0)
+                    for item in reversed(raw_records):
+                        try:
+                            self._history.append(QueryTelemetry.model_validate_json(item))
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
+    def record_query(self, telemetry: QueryTelemetry, redis_host: str | None = None, redis_port: int | None = None) -> None:
+        """Records a completed query's performance telemetry and persists to Redis."""
         with self._mu:
             self._history.append(telemetry)
             self._total_queries += 1
             if telemetry.refused:
                 self._total_refusals += 1
+
+        # Persist to Redis if available
+        if redis_host and redis_port:
+            try:
+                import redis
+
+                r_client = redis.Redis(host=redis_host, port=redis_port, socket_timeout=0.5)
+                r_client.lpush("rag:telemetry:history", telemetry.model_dump_json())
+                r_client.ltrim("rag:telemetry:history", 0, self._max_history - 1)
+                r_client.incr("rag:telemetry:total_queries")
+                if telemetry.refused:
+                    r_client.incr("rag:telemetry:total_refusals")
+                if telemetry.session_id:
+                    r_client.lpush(f"rag:telemetry:session:{telemetry.session_id}", telemetry.model_dump_json())
+                    r_client.ltrim(f"rag:telemetry:session:{telemetry.session_id}", 0, self._max_history - 1)
+            except Exception:
+                pass
 
         logger.debug(
             f"Telemetry recorded: query_id={telemetry.query_id[:8]} "
@@ -69,12 +106,40 @@ class TelemetryTracker:
         redis_host: str = "127.0.0.1",
         redis_port: int = 6379,
         bm25_store: Any = None,
+        session_id: str | None = None,
     ) -> SystemMetrics:
-        """Aggregates rolling averages and inspects live microservice states."""
+        """Aggregates rolling averages and inspects live microservice states, optionally scoped to a session."""
         with self._mu:
-            records = list(self._history)
-            total_q = self._total_queries
-            total_ref = self._total_refusals
+            if session_id:
+                records = [r for r in self._history if r.session_id == session_id]
+                total_q = len(records)
+                total_ref = sum(1 for r in records if r.refused)
+                # If memory has no records for this session, query Redis
+                if not records and redis_host and redis_port:
+                    try:
+                        import redis
+
+                        r_client = redis.Redis(host=redis_host, port=redis_port, socket_timeout=0.5, decode_responses=True)
+                        raw_sess_records = r_client.lrange(f"rag:telemetry:session:{session_id}", 0, 49)
+                        if raw_sess_records:
+                            for item in raw_sess_records:
+                                try:
+                                    rec = QueryTelemetry.model_validate_json(item)
+                                    records.append(rec)
+                                    if rec not in self._history:
+                                        self._history.append(rec)
+                                except Exception:
+                                    pass
+                            total_q = len(records)
+                            total_ref = sum(1 for r in records if r.refused)
+                    except Exception:
+                        pass
+            else:
+                if not self._history and redis_host and redis_port:
+                    self._sync_with_redis(redis_host, redis_port)
+                records = list(self._history)
+                total_q = self._total_queries
+                total_ref = self._total_refusals
 
         # Compute rolling averages
         if records:

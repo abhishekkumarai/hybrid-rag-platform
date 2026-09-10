@@ -185,7 +185,11 @@ class SessionManager:
         if update_req.system_prompt is not None:
             session.system_prompt = update_req.system_prompt
         if update_req.parameters is not None:
-            session.parameters = update_req.parameters
+            # Preserve existing session parameters if only a subset was provided in the update
+            current_params_dict = session.parameters.model_dump()
+            update_params_dict = update_req.parameters.model_dump(exclude_unset=True)
+            current_params_dict.update(update_params_dict)
+            session.parameters = SessionParameters(**current_params_dict)
         if update_req.files is not None:
             session.files = list(dict.fromkeys(update_req.files))
 

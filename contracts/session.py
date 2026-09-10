@@ -17,9 +17,12 @@ class SessionParameters(BaseModel):
     model: str = "llama3.2:3b"
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     retrieval_mode: Literal["auto", "agentic", "graph", "direct"] = "auto"
-    top_k: int = Field(default=6, ge=1, le=20)
+    embedding_route: Literal["auto", "fast_text", "layout", "ocr"] = "auto"
+    top_k: int = Field(default=20, ge=1, le=100)
+    top_rerank: int = Field(default=6, ge=1, le=20)
     min_score_threshold: float = Field(default=0.15, ge=0.0, le=1.0)
     compactor_budget: int = Field(default=3072, ge=512, le=8192)
+    stream: bool = True
 
 
 class ChatMessage(BaseModel):

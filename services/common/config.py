@@ -31,6 +31,10 @@ class StorageConfig(BaseModel):
     qdrant_port: int = 6333
     redis_host: str = "127.0.0.1"
     redis_port: int = 6379
+    neo4j_uri: str = "bolt://127.0.0.1:7687"
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = "password"
+    neo4j_database: str = "neo4j"
 
     @property
     def postgres_url(self) -> str:

@@ -29,17 +29,39 @@ class FlashRankReranker:
             logger.warning(f"Could not load FlashRank ({e}); fallback ranking will be used")
             self.ranker = None
 
+    @staticmethod
+    def is_exploratory_or_summary_query(query: str) -> bool:
+        """Detects broad, summary, or exploratory questions where cross-encoders under-score."""
+        import re
+
+        q = query.lower().strip()
+        patterns = [
+            r"\btell\s+me\s+about\b",
+            r"\bwhat\s+(is|are)\s+(this|the|these)?\s*(document|file|paper|report|statement|pdf|passbook)\b",
+            r"\bsummar(y|ize|ization|ising|ise)\b",
+            r"\boverview\b",
+            r"\bexplain\s+(this|the)?\s*(document|file)\b",
+            r"\bwhat\s+does\s+(this|the)?\s*(document|file)\s+say\b",
+            r"\bkey\s+(takeaways|points|findings)\b",
+            r"\bwhat\s+is\s+in\s+(this|the)\s+(document|file)\b",
+            r"\bdescribe\s+(this|the)?\s*(document|file)\b",
+        ]
+        return any(re.search(p, q) for p in patterns) or len(q.split()) <= 2
+
     def rerank(
         self,
         query: str,
         candidates: list[Candidate],
         top_n: int = 6,
+        min_score_cutoff: float | None = None,
     ) -> tuple[list[Candidate], list[Citation], bool]:
         """Reranks candidates and returns (top_candidates, citations, refused_flag)."""
         if not candidates:
             return [], [], True
 
+        cutoff = min_score_cutoff if min_score_cutoff is not None else self.min_score_cutoff
         start = time.perf_counter()
+        is_exploratory = self.is_exploratory_or_summary_query(query)
 
         if self.ranker:
             try:
@@ -51,7 +73,13 @@ class FlashRankReranker:
 
                 score_map = {r["id"]: float(r["score"]) for r in results}
                 for c in candidates:
-                    c.rerank_score = round(score_map.get(c.id, 0.0), 4)
+                    raw_score = score_map.get(c.id, 0.0)
+                    if is_exploratory or raw_score < 0.05:
+                        # Calibrate score with normalized RRF score so exploratory queries aren't falsely refused
+                        calibrated = max(raw_score, (c.rrf_score or 0.0) * 0.75)
+                        c.rerank_score = round(calibrated, 4)
+                    else:
+                        c.rerank_score = round(raw_score, 4)
 
                 # Sort by rerank score descending
                 candidates.sort(key=lambda x: x.rerank_score, reverse=True)
@@ -68,7 +96,7 @@ class FlashRankReranker:
         top_score = top_candidates[0].rerank_score if top_candidates else 0.0
 
         # Refusal Cutoff Check
-        refused = top_score < self.min_score_cutoff
+        refused = top_score < cutoff
         duration_ms = (time.perf_counter() - start) * 1000
 
         # Generate citations

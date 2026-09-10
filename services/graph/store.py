@@ -342,32 +342,65 @@ class GraphStore:
             logger.error(f"Failed to load graph from {target_path}: {e}")
             return False
 
-    def get_stats(self) -> dict[str, Any]:
-        """Returns topological metrics for the knowledge graph."""
-        num_nodes = self.graph.number_of_nodes()
-        num_edges = self.graph.number_of_edges()
+    def get_stats(self, doc_ids: Sequence[str] | None = None) -> dict[str, Any]:
+        """Returns topological metrics for the knowledge graph, optionally scoped to specific doc_ids."""
+        filter_docs = set(doc_ids) if doc_ids is not None else None
+
+        if filter_docs is not None:
+            # Filter nodes that match any doc_id in filter_docs
+            filtered_nodes = [
+                n for n, d in self.graph.nodes(data=True)
+                if any(did in filter_docs for did in d.get("doc_ids", []))
+            ]
+            subg = self.graph.subgraph(filtered_nodes).copy()
+        else:
+            subg = self.graph
+
+        num_nodes = subg.number_of_nodes()
+        num_edges = subg.number_of_edges()
         num_components = (
-            nx.number_connected_components(self.graph.to_undirected()) if num_nodes > 0 else 0
+            nx.number_connected_components(subg.to_undirected()) if num_nodes > 0 else 0
         )
-        density = nx.density(self.graph) if num_nodes > 1 else 0.0
+        density = nx.density(subg) if num_nodes > 1 else 0.0
 
         categories: dict[str, int] = {}
-        for _, d in self.graph.nodes(data=True):
+        sample_entities: list[dict[str, Any]] = []
+        for n, d in subg.nodes(data=True):
             cat = d.get("category", "CONCEPT")
             categories[cat] = categories.get(cat, 0) + 1
+            if len(sample_entities) < 50:
+                sample_entities.append({
+                    "name": n,
+                    "category": cat,
+                    "doc_ids": d.get("doc_ids", []),
+                })
 
         predicates: dict[str, int] = {}
-        for _, _, _, d in self.graph.edges(keys=True, data=True):
+        sample_relations: list[dict[str, Any]] = []
+        for u, v, _, d in subg.edges(keys=True, data=True):
             pred = d.get("predicate", "related_to")
             predicates[pred] = predicates.get(pred, 0) + 1
+            if len(sample_relations) < 50:
+                sample_relations.append({
+                    "source": u,
+                    "target": v,
+                    "predicate": pred,
+                    "weight": float(d.get("weight", 1.0)),
+                    "doc_id": d.get("doc_id"),
+                })
 
         return {
             "num_nodes": num_nodes,
             "num_edges": num_edges,
+            "total_entities": num_nodes,
+            "total_relations": num_edges,
+            "total_communities": num_components,
             "num_connected_components": num_components,
             "density": round(density, 4),
             "entity_categories": categories,
             "predicates": predicates,
+            "sample_entities": sample_entities,
+            "sample_relations": sample_relations,
         }
 
     def clear(self) -> None:

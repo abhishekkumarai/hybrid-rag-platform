@@ -36,6 +36,7 @@ class HardNegativeRecord(BaseModel):
 
     id: str = Field(description="Sample UUID")
     timestamp: str = Field(description="ISO timestamp")
+    session_id: str | None = Field(default=None, description="Session ID if conversational")
     query_text: str = Field(description="The query that retrieved the negative")
     positive_doc_id: str | None = Field(default=None, description="Document ID of positive passage if known")
     positive_text: str | None = Field(default=None, description="Relevant passage text")

@@ -119,6 +119,7 @@ class RAGOpsStore:
                     negative_text=text,
                     negative_score=score,
                     source="thumbs_down",
+                    session_id=record.session_id,
                 )
 
     def record_hard_negative(
@@ -130,6 +131,7 @@ class RAGOpsStore:
         source: str = "active_learning",
         positive_doc_id: str | None = None,
         positive_text: str | None = None,
+        session_id: str | None = None,
     ) -> HardNegativeRecord:
         """Persists a single mined hard negative sample."""
         now_iso = datetime.now(timezone.utc).isoformat()
@@ -137,6 +139,7 @@ class RAGOpsStore:
         sample = HardNegativeRecord(
             id=sample_id,
             timestamp=now_iso,
+            session_id=session_id,
             query_text=query_text,
             positive_doc_id=positive_doc_id,
             positive_text=positive_text,
@@ -161,8 +164,8 @@ class RAGOpsStore:
         logger.info(f"Mined hard negative {sample_id} from source '{source}' for query='{query_text[:40]}'")
         return sample
 
-    def get_summary(self) -> RAGOpsSummary:
-        """Aggregates continuous evaluation metrics and feedback counters."""
+    def get_summary(self, session_id: str | None = None) -> RAGOpsSummary:
+        """Aggregates continuous evaluation metrics and feedback counters, optionally scoped to a session."""
         total = 0
         up = 0
         down = 0
@@ -175,6 +178,8 @@ class RAGOpsStore:
                         line = line.strip()
                         if line:
                             data = json.loads(line)
+                            if session_id and data.get("session_id") != session_id:
+                                continue
                             total += 1
                             if data.get("rating") == "thumbs_up":
                                 up += 1
@@ -187,7 +192,15 @@ class RAGOpsStore:
         if self.hard_negatives_file.exists():
             try:
                 with open(self.hard_negatives_file, "r", encoding="utf-8") as f:
-                    hn_count = sum(1 for line in f if line.strip())
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            if session_id:
+                                rec = json.loads(line)
+                                if rec.get("session_id") == session_id:
+                                    hn_count += 1
+                            else:
+                                hn_count += 1
             except Exception:
                 pass
 
@@ -201,8 +214,8 @@ class RAGOpsStore:
             hard_negatives_count=hn_count,
         )
 
-    def export_training_dataset(self) -> list[dict[str, Any]]:
-        """Exports mined contrastive samples in standardized format for model fine-tuning."""
+    def export_training_dataset(self, session_id: str | None = None) -> list[dict[str, Any]]:
+        """Exports mined contrastive samples in standardized format, optionally scoped to a session."""
         dataset: list[dict[str, Any]] = []
         if not self.hard_negatives_file.exists():
             return dataset
@@ -213,6 +226,8 @@ class RAGOpsStore:
                     line = line.strip()
                     if line:
                         rec = json.loads(line)
+                        if session_id and rec.get("session_id") != session_id:
+                            continue
                         dataset.append({
                             "query": rec.get("query_text"),
                             "positive": rec.get("positive_text") or "",
@@ -221,6 +236,7 @@ class RAGOpsStore:
                             "negative_score": rec.get("negative_score"),
                             "source": rec.get("source"),
                             "timestamp": rec.get("timestamp"),
+                            "session_id": rec.get("session_id"),
                         })
         except Exception as exc:
             logger.error(f"Error exporting training dataset: {exc}")

@@ -143,17 +143,23 @@ class QdrantStore:
         query: str,
         top_k: int = 20,
         ollama_url: str = "http://127.0.0.1:11434",
+        doc_ids: list[str] | None = None,
     ) -> list[tuple[dict[str, Any], float]]:
-        """Embeds query and searches Qdrant for top_k nearest neighbors."""
+        """Embeds query and searches Qdrant for top_k nearest neighbors with optional doc_ids filter."""
         query_vector = get_ollama_embedding(query, ollama_url=ollama_url, dim=self.vector_dim)
 
         # 1. Direct REST search for standalone Qdrant (fastest, avoids client 404 retries)
         if not self.in_memory:
             try:
+                body: dict[str, Any] = {"vector": query_vector, "limit": top_k, "with_payload": True}
+                if doc_ids:
+                    body["filter"] = {
+                        "should": [{"key": "doc_id", "match": {"value": d}} for d in doc_ids]
+                    }
                 res = requests.post(
                     f"http://{self.host}:{self.port}/collections/{self.collection_name}/points/search",
-                    json={"vector": query_vector, "limit": top_k, "with_payload": True},
-                    timeout=5.0,
+                    json=body,
+                    timeout=10.0,
                 )
                 if res.status_code == 200:
                     data = res.json().get("result", [])
@@ -168,10 +174,22 @@ class QdrantStore:
 
         # 2. In-memory or fallback query_points (Qdrant >= 1.10)
         try:
+            q_models_filter = None
+            if doc_ids:
+                try:
+                    from qdrant_client.models import FieldCondition, Filter, MatchValue
+
+                    q_models_filter = Filter(
+                        should=[FieldCondition(key="doc_id", match=MatchValue(value=d)) for d in doc_ids]
+                    )
+                except Exception:
+                    pass
+
             search_result = self.client.query_points(
                 collection_name=self.collection_name,
                 query=query_vector,
                 limit=top_k,
+                query_filter=q_models_filter,
                 with_payload=True,
             ).points
 
@@ -184,3 +202,4 @@ class QdrantStore:
             logger.debug(f"query_points failed: {e}")
 
         return []
+

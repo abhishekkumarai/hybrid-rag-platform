@@ -45,11 +45,17 @@ def reciprocal_rank_fusion(
     # 3. Sort by RRF score descending
     sorted_ids = sorted(scores.keys(), key=lambda cid: scores[cid], reverse=True)[:top_k]
 
+    # Theoretical maximum RRF score (rank 1 in both dense and sparse)
+    max_possible_rrf = 2.0 / (k + 1)
+
     candidates: list[Candidate] = []
     for cid in sorted_ids:
         payload = chunk_map[cid]
         bbox_list = payload.get("bbox", [0.0, 0.0, 0.0, 0.0])
         bbox_tuple = (float(bbox_list[0]), float(bbox_list[1]), float(bbox_list[2]), float(bbox_list[3]))
+
+        # Normalized RRF score mapped to [0.0, 1.0] scale
+        norm_rrf = min(1.0, scores[cid] / max_possible_rrf)
 
         candidates.append(
             Candidate(
@@ -60,7 +66,7 @@ def reciprocal_rank_fusion(
                 text=payload.get("text", ""),
                 dense_rank=dense_ranks.get(cid),
                 sparse_rank=sparse_ranks.get(cid),
-                rrf_score=round(scores[cid], 6),
+                rrf_score=round(norm_rrf, 4),
                 headings=payload.get("headings", []),
                 is_table=payload.get("is_table", False),
                 is_figure=payload.get("is_figure", False),

@@ -37,16 +37,29 @@ class CRAGEvaluator:
                 reason="No candidate documents retrieved",
             )
 
-        top_score = max((c.rerank_score if c.rerank_score > 0 else c.rrf_score for c in candidates), default=0.0)
+        from services.retrieval.reranker import FlashRankReranker
 
-        # 1. Check refusal threshold
-        if top_score < self.refusal_threshold:
-            logger.info(f"CRAG Refusal: top score {top_score:.4f} < {self.refusal_threshold}")
+        top_score = max((c.rerank_score if c.rerank_score > 0 else c.rrf_score for c in candidates), default=0.0)
+        is_exploratory = FlashRankReranker.is_exploratory_or_summary_query(query)
+
+        # 1. Check refusal threshold (with adaptive floor for exploratory queries)
+        effective_threshold = 0.05 if is_exploratory else self.refusal_threshold
+        if top_score < effective_threshold:
+            logger.info(f"CRAG Refusal: top score {top_score:.4f} < {effective_threshold}")
             return CRAGAssessment(
                 status="REFUSE",
                 top_score=round(top_score, 4),
                 reformulated_query=None,
-                reason=f"Top candidate score ({top_score:.4f}) fell below confidence floor ({self.refusal_threshold})",
+                reason=f"Top candidate score ({top_score:.4f}) fell below confidence floor ({effective_threshold})",
+            )
+
+        if is_exploratory:
+            logger.info(f"CRAG Confident (Exploratory): top score {top_score:.4f} for broad document query")
+            return CRAGAssessment(
+                status="CONFIDENT",
+                top_score=round(top_score, 4),
+                reformulated_query=None,
+                reason="Exploratory document query with grounded document candidates",
             )
 
         # 2. Check keyword alignment

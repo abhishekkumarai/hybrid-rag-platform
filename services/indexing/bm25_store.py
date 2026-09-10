@@ -83,7 +83,58 @@ class BM25Store:
         logger.info(f"BM25Store: indexed {len(new_chunks)} new chunks (total {len(self.corpus_chunks)})")
         return len(new_chunks)
 
-    def search(self, query: str, top_k: int = 20) -> list[tuple[dict[str, Any], float]]:
+    @staticmethod
+    def _matches_doc_scope(candidate_doc_id: str | None, doc_id_set: set[str]) -> bool:
+        """Matches a chunk doc_id against target doc_ids supporting stem and extension variations."""
+        if not candidate_doc_id:
+            return False
+        cand_lower = candidate_doc_id.lower()
+        cand_clean = cand_lower.replace(".pdf", "")
+
+        for target in doc_id_set:
+            target_lower = target.lower()
+            if cand_lower == target_lower:
+                return True
+            target_clean = target_lower.replace(".pdf", "")
+            if cand_clean == target_clean:
+                return True
+            if cand_clean.startswith(target_clean) or target_clean.startswith(cand_clean):
+                return True
+            t_norm = target_clean.replace("-", "_").replace(" ", "_")
+            c_norm = cand_clean.replace("-", "_").replace(" ", "_")
+            if c_norm == t_norm or c_norm.startswith(t_norm) or t_norm.startswith(c_norm):
+                return True
+
+        return False
+
+    def resolve_matching_doc_ids(self, requested_doc_ids: list[str]) -> list[str]:
+        """Resolves raw or requested doc_ids into concrete indexed doc_ids found in the corpus."""
+        target_set = set(requested_doc_ids)
+        matched = set()
+        for chunk in self.corpus_chunks:
+            c_doc = chunk.get("doc_id")
+            if c_doc and self._matches_doc_scope(c_doc, target_set):
+                matched.add(c_doc)
+        return list(matched or target_set)
+
+    def get_document_overview_chunks(self, doc_ids: list[str], max_chunks: int = 3) -> list[dict[str, Any]]:
+        """Retrieves introductory/page 1 chunks for scoped documents to anchor exploratory queries."""
+        target_set = set(doc_ids)
+        matched_chunks: list[dict[str, Any]] = []
+        for chunk in self.corpus_chunks:
+            c_doc = chunk.get("doc_id")
+            if c_doc and self._matches_doc_scope(c_doc, target_set):
+                matched_chunks.append(chunk)
+                if len(matched_chunks) >= max_chunks:
+                    break
+        return matched_chunks
+
+    def search(
+        self,
+        query: str,
+        top_k: int = 20,
+        doc_ids: list[str] | None = None,
+    ) -> list[tuple[dict[str, Any], float]]:
         """Searches BM25 index and returns list of (chunk_dict, score) ranked by relevance."""
         if not self.retriever or not self.corpus_chunks:
             return []
@@ -91,15 +142,21 @@ class BM25Store:
         import bm25s
 
         query_tokens = bm25s.tokenize([query], stopwords="en")
-        k_val = max(1, min(top_k, len(self.corpus_chunks)))
+        k_val = len(self.corpus_chunks) if doc_ids else max(1, min(top_k, len(self.corpus_chunks)))
         results, scores = self.retriever.retrieve(query_tokens, k=k_val)
 
+        doc_set = set(doc_ids) if doc_ids else None
         ranked_results: list[tuple[dict[str, Any], float]] = []
         for idx, score in zip(results[0], scores[0]):
             f_score = float(score)
             if f_score <= 0.0:
                 continue
             chunk_data = self.corpus_chunks[int(idx)]
+            if doc_set and not self._matches_doc_scope(chunk_data.get("doc_id"), doc_set):
+                continue
             ranked_results.append((chunk_data, f_score))
+            if doc_set and len(ranked_results) >= top_k:
+                break
 
         return ranked_results
+

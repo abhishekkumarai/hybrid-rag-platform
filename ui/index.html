@@ -102,6 +102,18 @@
   .status-dot.active { background: #47664b; }
 
   .page-placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; color: #5d605b; gap: 8px; padding: 40px; }
+
+  /* -- Accent-color & accessibility styling -- */
+  input[type="range"], input[type="checkbox"] { accent-color: #8b4f3b !important; }
+  @keyframes emberPulse {
+    0%, 100% { stroke-opacity: 0.8; stroke-width: 3px; }
+    50% { stroke-opacity: 0.3; stroke-width: 6px; }
+  }
+  .pulse-ember { animation: emberPulse 2.4s ease-in-out infinite; }
+  body.compact-mode .message { padding: 6px 10px; margin-bottom: 8px; font-size: 12.5px; }
+  body.compact-mode table th, body.compact-mode table td { padding: 2px 6px; font-size: 11px; }
+  body.high-contrast-mode { border-color: #30332f !important; }
+  body.high-contrast-mode .border-surface-container-high { border-color: #797b76 !important; }
 </style>
 </head>
 <body class="h-screen w-screen flex overflow-hidden bg-background text-on-surface font-body antialiased">
@@ -143,10 +155,23 @@
       <div class="flex items-baseline gap-1.5 shrink-0">
         <span class="font-headline font-bold tracking-tight text-on-surface text-base">Retrieval Intelligence</span>
         <span class="font-mono text-xs text-on-surface-variant">/</span>
-        <span class="font-headline font-medium text-xs text-primary" id="breadcrumb">Workspaces</span>
+        <span class="font-headline font-medium text-xs text-primary cursor-pointer hover:underline" id="breadcrumb" title="Click to view all Workspaces">Workspaces</span>
       </div>
     </div>
     <div class="flex items-center gap-3">
+      <!-- VRAM Footprint Top Header Indicator -->
+      <div class="hidden sm:flex items-center gap-2.5 px-3 py-1 bg-surface-container-low border border-surface-container-high rounded-full font-mono text-xs cursor-pointer hover:border-primary/40 transition" id="headerVramPill" title="Local Model VRAM Footprint (Click to tune models)">
+        <span class="text-on-surface-variant flex items-center gap-1">
+          <span class="material-symbols-outlined text-[14px] text-primary">memory</span>
+          <span>VRAM</span>
+        </span>
+        <div class="w-16 bg-surface-container-high rounded-full h-1.5 overflow-hidden">
+          <div id="headerVramBar" class="bg-primary h-1.5 rounded-full transition-all duration-300" style="width: 37%;"></div>
+        </div>
+        <span id="headerVramBadge" class="text-primary font-semibold text-[11px]">2.2 / 6.0 GB (37%)</span>
+      </div>
+
+      <!-- System Health Pill -->
       <div class="flex items-center gap-2 px-2.5 py-1 bg-surface-container-low border border-surface-container-high rounded-full font-mono text-xs" id="healthPill">
         <span class="w-1.5 h-1.5 rounded-full bg-outline-variant" id="healthDot"></span>
         <span id="healthText">Checking systems…</span>
@@ -158,14 +183,33 @@
 
     <!-- ============ PAGE: WORKSPACE GALLERY ============ -->
     <section id="page-gallery" class="page h-full overflow-y-auto p-8">
-      <div class="flex items-center justify-between mb-6">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
           <h1 class="font-headline font-bold text-2xl text-on-surface">Workspaces</h1>
           <p class="text-sm text-on-surface-variant mt-1">Each workspace is a scoped conversation with its own documents, prompt, and model.</p>
         </div>
-        <button id="newWorkspaceBtn" class="flex items-center gap-2 bg-primary text-on-primary font-label text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition">
-          <span class="material-symbols-outlined text-[18px]">add</span> New Workspace
-        </button>
+        <div class="flex items-center gap-3 flex-wrap">
+          <!-- Bulk selection actions toolbar -->
+          <div id="wsBulkToolbar" class="hidden items-center gap-2 bg-surface-container-low border border-surface-container-high px-3 py-1.5 rounded-lg">
+            <span id="wsSelectedCount" class="font-mono text-xs text-primary font-semibold">0 selected</span>
+            <span class="text-surface-container-highest">|</span>
+            <button id="wsSelectAllBtn" class="text-xs font-label text-on-surface-variant hover:text-on-surface transition">Select all</button>
+            <button id="wsDeselectAllBtn" class="text-xs font-label text-on-surface-variant hover:text-on-surface transition">Clear</button>
+            <button id="wsDeleteSelectedBtn" class="flex items-center gap-1 text-xs font-label text-error hover:bg-error/10 px-2 py-1 rounded transition ml-1 font-medium">
+              <span class="material-symbols-outlined text-[14px]">delete</span>
+              <span>Delete</span>
+            </button>
+          </div>
+
+          <button id="wsToggleSelectModeBtn" class="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-surface-container-high bg-surface-container-lowest text-on-surface hover:bg-surface-container-low text-xs font-label font-medium transition cursor-pointer" title="Toggle bulk selection">
+            <span class="material-symbols-outlined text-[16px] text-on-surface-variant">checklist</span>
+            <span>Select</span>
+          </button>
+
+          <button id="newWorkspaceBtn" class="flex items-center gap-2 bg-primary text-on-primary font-label text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition">
+            <span class="material-symbols-outlined text-[18px]">add</span> New Workspace
+          </button>
+        </div>
       </div>
       <div id="galleryGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
       <div id="galleryEmpty" class="page-placeholder" hidden>
@@ -179,13 +223,25 @@
     <section id="page-chat" class="page hidden h-full flex overflow-hidden">
       <!-- Sources sub-panel -->
       <aside id="sourcesPanel" class="w-72 shrink-0 h-full border-r border-surface-container-high bg-surface-container-low flex flex-col">
-        <div class="p-4 border-b border-surface-container-high">
-          <button id="addSourceBtn" class="w-full flex items-center justify-center gap-2 border border-dashed border-outline-variant rounded-lg py-2 text-xs font-label text-on-surface-variant hover:border-primary hover:text-primary transition">
-            <span class="material-symbols-outlined text-[16px]">add</span> Add source
+        <div class="p-3 border-b border-surface-container-high space-y-2">
+          <input id="wsFileInput" type="file" accept=".pdf" hidden />
+          <button id="wsUploadBtn" class="w-full flex items-center justify-center gap-2 bg-primary text-on-primary rounded-lg py-2 text-xs font-label hover:opacity-90 transition font-medium shadow-sm">
+            <span class="material-symbols-outlined text-[16px]">upload_file</span> Upload PDF to Workspace
+          </button>
+          <button id="addSourceBtn" class="w-full flex items-center justify-center gap-2 border border-surface-container-high bg-surface-container-lowest rounded-lg py-1.5 text-xs font-label text-on-surface-variant hover:border-primary hover:text-primary transition">
+            <span class="material-symbols-outlined text-[15px]">library_add</span> Attach from Library
           </button>
         </div>
+        <div id="wsUploadStatus" class="px-3 pt-2 pb-1 text-[11px] font-mono text-primary flex items-center gap-2 hidden">
+          <span class="inline-block w-2 h-2 rounded-full bg-primary animate-ping"></span>
+          <span id="wsUploadStatusText">Ingesting &amp; indexing...</span>
+        </div>
+        <div class="px-3 pt-2.5 text-[10px] font-mono text-on-surface-variant uppercase tracking-wider flex justify-between items-center">
+          <span>Workspace Sources</span>
+          <span id="sourcesCountBadge" class="font-mono text-[10px] px-1.5 py-0.2 bg-surface-container-high rounded text-on-surface">0</span>
+        </div>
         <div id="sourcesList" class="flex-1 overflow-y-auto p-3 space-y-2"></div>
-        <div class="p-3 border-t border-surface-container-high">
+        <div class="p-3 border-t border-surface-container-high flex justify-between items-center">
           <a class="text-xs font-label text-primary cursor-pointer hover:underline" id="manageLibraryLink">Manage in full Library →</a>
         </div>
       </aside>
@@ -194,14 +250,21 @@
       <div class="flex-1 flex flex-col min-w-0">
         <div class="flex items-center justify-between px-5 py-3 border-b border-surface-container-high bg-surface shrink-0">
           <div class="flex items-center gap-2 min-w-0">
-            <span id="currentChatTitle" class="font-headline font-semibold text-sm text-on-surface truncate" contenteditable="true">Select or create a workspace</span>
+            <button id="backToGalleryBtn" class="flex items-center gap-1 text-xs font-label text-on-surface-variant hover:text-primary px-2 py-1 rounded-md hover:bg-surface-container-low transition shrink-0" title="Return to Workspaces Gallery">
+              <span class="material-symbols-outlined text-[15px]">arrow_back</span>
+              <span class="font-medium">Workspaces</span>
+            </button>
+            <span class="text-surface-container-highest shrink-0">/</span>
+            <select id="chatWorkspaceSelect" class="border border-surface-container-high rounded-lg px-2.5 py-1 text-xs font-headline font-semibold bg-surface-container-lowest text-on-surface focus:outline-none focus:border-primary transition cursor-pointer max-w-[180px] md:max-w-[240px] truncate shrink-0" title="Switch workspace">
+              <option value="">Switch workspace…</option>
+            </select>
+            <span id="currentChatTitle" class="font-headline font-semibold text-sm text-on-surface truncate cursor-text hover:bg-surface-container-low px-1.5 py-0.5 rounded transition" contenteditable="true" title="Click to rename workspace">Select or create a workspace</span>
+            <span class="material-symbols-outlined text-[14px] text-on-surface-variant opacity-60 shrink-0">edit</span>
           </div>
           <div class="flex items-center gap-2 shrink-0">
-            <button id="chatModelBadge" class="flex items-center gap-1.5 text-xs font-mono border border-surface-container-high rounded-full px-2.5 py-1 bg-surface-container-lowest hover:bg-surface-container-low" title="Change in Models & Tuning">
-              <span class="material-symbols-outlined text-[13px] text-primary">memory</span>
-              <span id="chatModelBadgeText">llama3.2:3b</span>
-              <span class="text-on-surface-variant">·</span>
-              <span id="chatModeBadgeText">auto</span>
+            <button id="toggleWsSettingsBtn" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-surface-container-high bg-surface-container-lowest hover:bg-surface-container-low text-on-surface text-xs font-label font-medium transition" title="Toggle Workspace Settings & Tuning">
+              <span class="material-symbols-outlined text-[16px] text-primary">tune</span>
+              <span>Workspace Settings</span>
             </button>
           </div>
         </div>
@@ -213,6 +276,160 @@
           </button>
         </form>
       </div>
+
+      <!-- Workspace Settings Right-Hand Drawer -->
+      <aside id="wsSettingsDrawer" class="w-80 shrink-0 h-full border-l border-surface-container-high bg-surface-container-low flex flex-col transition-all duration-200 overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-surface-container-high bg-surface shrink-0">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-[18px] text-primary">tune</span>
+            <span class="font-headline font-semibold text-xs uppercase tracking-wider text-on-surface">Workspace Settings</span>
+          </div>
+          <button id="closeWsSettingsBtn" class="w-7 h-7 rounded-md flex items-center justify-center hover:bg-surface-container text-on-surface-variant hover:text-on-surface transition" title="Close Settings">
+            <span class="material-symbols-outlined text-[18px]">close</span>
+          </button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-4 space-y-5 text-xs">
+          <!-- Workspace Name -->
+          <div>
+            <div class="flex items-center justify-between">
+              <label class="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-wide">Workspace Name</label>
+              <span class="text-[10px] font-mono text-on-surface-variant">Rename</span>
+            </div>
+            <input id="drawerWorkspaceName" type="text" placeholder="e.g., Financial Compliance Audit" class="w-full mt-1.5 border border-surface-container-high rounded-lg px-3 py-2 text-xs font-headline font-semibold bg-surface-container-lowest text-on-surface focus:outline-none focus:border-primary transition" />
+          </div>
+
+          <!-- Model Selection & VRAM Footprint -->
+          <div>
+            <label class="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-wide">LLM Inference Model</label>
+            <select id="drawerModelSelect" class="w-full mt-1.5 border border-surface-container-high rounded-lg px-3 py-2 text-xs font-mono bg-surface-container-lowest text-on-surface focus:outline-none focus:border-primary">
+              <option value="llama3.2:3b">llama3.2:3b</option>
+              <option value="llama3.1:8b">llama3.1:8b</option>
+              <option value="qwen2.5:7b">qwen2.5:7b</option>
+            </select>
+            <div class="mt-2.5 p-2.5 rounded-lg bg-surface-container-lowest border border-surface-container-high">
+              <div class="flex justify-between font-mono text-[10px] text-on-surface-variant mb-1">
+                <span>VRAM Footprint</span>
+                <span id="drawerVramBadge" class="text-primary font-semibold">2.2 / 6.0 GB (37%)</span>
+              </div>
+              <div class="w-full bg-surface-container-high rounded-full h-1.5 overflow-hidden">
+                <div id="drawerVramBar" class="bg-primary h-1.5 rounded-full transition-all duration-300" style="width: 37%;"></div>
+              </div>
+              <p id="drawerVramDesc" class="text-[10px] text-on-surface-variant mt-1.5 font-mono">Headroom: ~3.8 GB free for Qdrant HNSW and BM25 memory.</p>
+            </div>
+          </div>
+
+          <!-- Retrieval Mode -->
+          <div>
+            <label class="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-wide">Retrieval Mode</label>
+            <div class="grid grid-cols-2 gap-1.5 mt-1.5" id="drawerModeGroup">
+              <button data-mode="auto" class="px-2.5 py-2 rounded-lg border border-primary bg-primary text-on-primary font-label text-left flex flex-col transition shadow-sm">
+                <span class="font-medium text-xs text-on-primary">Auto CRAG</span>
+                <span class="text-[10px] text-on-primary opacity-80 font-mono">Adaptive fallback</span>
+              </button>
+              <button data-mode="agentic" class="px-2.5 py-2 rounded-lg border border-surface-container-high bg-surface-container-lowest text-on-surface font-label text-left flex flex-col transition hover:border-surface-container-highest">
+                <span class="font-medium text-xs text-on-surface">Agentic</span>
+                <span class="text-[10px] text-on-surface-variant font-mono">Multi-hop subqueries</span>
+              </button>
+              <button data-mode="graph" class="px-2.5 py-2 rounded-lg border border-surface-container-high bg-surface-container-lowest text-on-surface font-label text-left flex flex-col transition hover:border-surface-container-highest">
+                <span class="font-medium text-xs text-on-surface">GraphRAG</span>
+                <span class="text-[10px] text-on-surface-variant font-mono">Knowledge traversal</span>
+              </button>
+              <button data-mode="direct" class="px-2.5 py-2 rounded-lg border border-surface-container-high bg-surface-container-lowest text-on-surface font-label text-left flex flex-col transition hover:border-surface-container-highest">
+                <span class="font-medium text-xs text-on-surface">Direct</span>
+                <span class="text-[10px] text-on-surface-variant font-mono">Single-hop RRF</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Ingestion & Extraction Route -->
+          <div>
+            <label class="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-wide">Document Ingestion Route</label>
+            <div class="grid grid-cols-2 gap-1.5 mt-1.5" id="drawerRouteGroup">
+              <button data-route="auto" class="px-2.5 py-2 rounded-lg border border-primary bg-primary text-on-primary font-label text-left flex flex-col transition shadow-sm">
+                <span class="font-medium text-xs text-on-primary">Auto</span>
+                <span class="text-[10px] text-on-primary opacity-80 font-mono">8-page probe</span>
+              </button>
+              <button data-route="fast_text" class="px-2.5 py-2 rounded-lg border border-surface-container-high bg-surface-container-lowest text-on-surface font-label text-left flex flex-col transition hover:border-surface-container-highest">
+                <span class="font-medium text-xs text-on-surface">Fast Text</span>
+                <span class="text-[10px] text-on-surface-variant font-mono">PyMuPDF text-layer</span>
+              </button>
+              <button data-route="layout" class="px-2.5 py-2 rounded-lg border border-surface-container-high bg-surface-container-lowest text-on-surface font-label text-left flex flex-col transition hover:border-surface-container-highest">
+                <span class="font-medium text-xs text-on-surface">Layout</span>
+                <span class="text-[10px] text-on-surface-variant font-mono">Docling tables/cols</span>
+              </button>
+              <button data-route="ocr" class="px-2.5 py-2 rounded-lg border border-surface-container-high bg-surface-container-lowest text-on-surface font-label text-left flex flex-col transition hover:border-surface-container-highest">
+                <span class="font-medium text-xs text-on-surface">OCR</span>
+                <span class="text-[10px] text-on-surface-variant font-mono">RapidOCR scans</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- System Persona / Prompt -->
+          <div>
+            <label class="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-wide">System Persona &amp; Directives</label>
+            <textarea id="drawerSystemPrompt" rows="3" placeholder="e.g., You are a strict SEC auditor. Answer strictly with verified numerical provenance..." class="w-full mt-1.5 resize-none border border-surface-container-high rounded-lg p-2.5 text-xs bg-surface-container-lowest text-on-surface focus:outline-none focus:border-primary font-mono"></textarea>
+          </div>
+
+          <!-- Tuning Sliders (Local to Workspace) -->
+          <div class="space-y-4 pt-2 border-t border-surface-container-high">
+            <div class="font-label text-xs font-semibold text-on-surface uppercase tracking-wide">Retrieval &amp; Context Tuning</div>
+
+            <div>
+              <div class="flex justify-between items-center font-label text-xs">
+                <span class="text-on-surface-variant">Temperature</span>
+                <span id="drawerTempBadge" class="font-mono text-primary font-semibold">0.7</span>
+              </div>
+              <input id="drawerTempSlider" type="range" min="0.0" max="1.5" step="0.05" value="0.7" class="w-full mt-1.5" />
+            </div>
+
+            <div>
+              <div class="flex justify-between items-center font-label text-xs">
+                <span class="text-on-surface-variant">Top-K Candidates</span>
+                <span id="drawerTopkBadge" class="font-mono text-primary font-semibold">20</span>
+              </div>
+              <input id="drawerTopkSlider" type="range" min="5" max="100" step="5" value="20" class="w-full mt-1.5" />
+            </div>
+
+            <div>
+              <div class="flex justify-between items-center font-label text-xs">
+                <span class="text-on-surface-variant">Rerank Depth</span>
+                <span id="drawerRerankBadge" class="font-mono text-primary font-semibold">6</span>
+              </div>
+              <input id="drawerRerankSlider" type="range" min="1" max="20" step="1" value="6" class="w-full mt-1.5" />
+            </div>
+
+            <div>
+              <div class="flex justify-between items-center font-label text-xs">
+                <span class="text-on-surface-variant">Context Budget</span>
+                <span id="drawerBudgetBadge" class="font-mono text-primary font-semibold">3072 tok</span>
+              </div>
+              <input id="drawerBudgetSlider" type="range" min="512" max="8192" step="256" value="3072" class="w-full mt-1.5" />
+            </div>
+
+            <div>
+              <div class="flex justify-between items-center font-label text-xs">
+                <span class="text-on-surface-variant">Refusal Cutoff (Min Score)</span>
+                <span id="drawerCutoffBadge" class="font-mono text-primary font-semibold">0.15</span>
+              </div>
+              <input id="drawerCutoffSlider" type="range" min="0.0" max="0.5" step="0.01" value="0.15" class="w-full mt-1.5" />
+            </div>
+
+            <div class="flex items-center justify-between pt-1">
+              <span class="font-label text-xs text-on-surface-variant">SSE Streaming</span>
+              <input id="drawerStreamToggle" type="checkbox" checked class="w-4 h-4 accent-primary cursor-pointer" />
+            </div>
+
+            <!-- Danger Zone: Delete Workspace -->
+            <div class="pt-4 border-t border-surface-container-high">
+              <button id="drawerDeleteWsBtn" class="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-error/30 text-error hover:bg-error/10 text-xs font-label font-medium transition cursor-pointer" title="Permanently delete this workspace">
+                <span class="material-symbols-outlined text-[15px]">delete</span>
+                <span>Delete Workspace</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </aside>
     </section>
 
     <!-- ============ PAGE: LIBRARY ============ -->
@@ -222,9 +439,11 @@
           <h1 class="font-headline font-bold text-2xl text-on-surface">Library</h1>
           <p class="text-sm text-on-surface-variant mt-1" id="libraryScopeLabel">All documents</p>
         </div>
-        <div class="inline-flex rounded-lg border border-surface-container-high overflow-hidden text-xs font-label" id="libraryScopeSwitch">
-          <button data-scope="workspace" class="px-3 py-1.5 bg-surface-container-lowest">This workspace</button>
-          <button data-scope="all" class="px-3 py-1.5 bg-primary text-on-primary">All documents</button>
+        <div class="flex items-center gap-2">
+          <span class="font-mono text-[10px] text-on-surface-variant uppercase tracking-wider font-semibold">Scope:</span>
+          <select id="libraryScopeSelect" class="border border-surface-container-high rounded-lg px-3 py-1.5 text-xs font-headline font-semibold bg-surface-container-lowest text-on-surface focus:outline-none focus:border-primary transition cursor-pointer">
+            <option value="all">All documents (Global)</option>
+          </select>
         </div>
       </div>
 
@@ -255,12 +474,187 @@
       </div>
     </section>
 
-    <!-- ============ PLACEHOLDER PAGES (Phase 18.5 – 18.9, not yet wired) ============ -->
-    <section id="page-graph" class="page hidden h-full"><div class="page-placeholder"><span class="material-symbols-outlined text-[40px] text-outline-variant">hub</span><div class="font-headline text-on-surface font-medium">Knowledge Graph</div><div class="text-sm text-on-surface-variant max-w-sm">Design approved in Stitch — live GraphRAG wiring lands in Phase 18.5.</div></div></section>
+    <!-- ============ PAGE: KNOWLEDGE GRAPH ============ -->
+    <section id="page-graph" class="page hidden h-full flex overflow-hidden relative">
+      <!-- Left / Center Canvas Area -->
+      <div class="flex-1 flex flex-col h-full min-w-0 overflow-hidden relative">
+        <!-- Minimal Top Controls Strip -->
+        <div class="h-12 bg-surface-container-low border-b border-surface-container-high px-5 flex items-center justify-between text-xs shrink-0 z-20">
+          <div class="flex items-center gap-2">
+            <span class="font-headline font-semibold text-sm text-on-surface flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-[18px] text-primary">hub</span>
+              <span>Knowledge Graph</span>
+            </span>
+            <span id="kg-engine-badge" class="font-mono text-[10px] px-2 py-0.5 rounded border border-surface-container-high bg-surface-container-lowest text-on-surface-variant flex items-center gap-1 ml-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-outline-variant" id="kg-engine-dot"></span>
+              <span id="kg-engine-text">NetworkX</span>
+            </span>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <button id="toggleKgDrawerBtn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-surface-container-high bg-surface-container-lowest hover:bg-surface-container-low text-on-surface text-xs font-label font-medium transition cursor-pointer" title="Toggle Graph Inspector & Filters">
+              <span class="material-symbols-outlined text-[16px] text-primary">tune</span>
+              <span>Graph Controls</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. Viewport & Canvas Area -->
+        <div class="relative flex-1 w-full h-full overflow-hidden select-none bg-[#FAF9F5]" id="kg-viewport">
+          <!-- Dot Grid Pattern -->
+          <svg class="absolute inset-0 w-full h-full pointer-events-none opacity-40">
+            <defs>
+              <pattern id="dot-pattern" width="24" height="24" patternUnits="userSpaceOnUse">
+                <circle cx="2" cy="2" r="1" fill="#b0b3ad"></circle>
+              </pattern>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#dot-pattern)"></rect>
+          </svg>
+
+          <!-- Floating Relation Query Bar -->
+          <div class="absolute top-4 left-6 right-6 max-w-2xl mx-auto z-20">
+            <div class="bg-surface-container-lowest/95 backdrop-blur border border-surface-container-high rounded-lg p-2 shadow-sm flex items-center gap-2.5">
+              <span class="material-symbols-outlined text-primary pl-2 text-[20px]">route</span>
+              <input id="kg-query-input" class="w-full bg-transparent border-0 text-xs font-mono text-on-surface placeholder:text-on-surface-variant focus:ring-0 p-0" placeholder="Ask a question or enter entities to trace relation path... (e.g. 'NVIDIA and datacenter revenue')" type="text" />
+              <div class="flex items-center gap-2 shrink-0 pr-1">
+                <button id="kg-trace-btn" class="px-3.5 py-1.5 bg-primary hover:bg-primary-dim text-on-primary rounded text-xs font-medium transition-colors flex items-center gap-1.5">
+                  <span class="material-symbols-outlined text-[15px]">alt_route</span>
+                  <span>Trace Path</span>
+                </button>
+              </div>
+            </div>
+            <!-- Live Traversal Result Subgraph Callout (hidden by default) -->
+            <div id="kg-trace-result" class="mt-2 bg-surface border border-primary/30 rounded-lg p-3 shadow-md hidden text-xs font-body">
+              <div class="flex items-center justify-between font-headline font-semibold text-primary mb-1">
+                <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[15px]">auto_graph</span> Relational Path Trace</span>
+                <button id="kg-close-trace" class="text-on-surface-variant hover:text-on-surface"><span class="material-symbols-outlined text-[14px]">close</span></button>
+              </div>
+              <div id="kg-trace-text" class="text-on-surface text-xs leading-relaxed font-mono whitespace-pre-wrap"></div>
+            </div>
+          </div>
+
+          <!-- Dynamic SVG Network Canvas -->
+          <svg id="kg-svg" class="w-full h-full cursor-grab active:cursor-grabbing" viewBox="0 0 1000 620">
+            <defs>
+              <marker id="arrow-neutral" markerWidth="6" markerHeight="6" refX="14" refY="3" orient="auto">
+                <path d="M0,0 L6,3 L0,6 Z" fill="#708C78" fill-opacity="0.6"></path>
+              </marker>
+              <marker id="arrow-ember" markerWidth="8" markerHeight="8" refX="17" refY="4" orient="auto">
+                <path d="M0,0 L8,4 L0,8 Z" fill="#C2410C"></path>
+              </marker>
+              <filter id="ember-glow" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#8B4F3B" flood-opacity="0.35"></feDropShadow>
+              </filter>
+            </defs>
+            <g id="kg-communities" opacity="0.45"></g>
+            <g id="kg-edges" stroke="#708C78" stroke-opacity="0.4" stroke-width="1.5"></g>
+            <g id="kg-edge-labels" font-family="JetBrains Mono" font-size="8" fill="#5D605B" text-anchor="middle"></g>
+            <g id="kg-nodes"></g>
+          </svg>
+
+          <!-- Empty / Info State Overlay when 0 nodes -->
+          <div id="kg-empty-state" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none p-6 text-center" hidden>
+            <span class="material-symbols-outlined text-[44px] text-outline-variant">hub</span>
+            <div class="font-headline font-semibold text-base text-on-surface mt-2">Graph Awaiting Ingestion</div>
+            <p class="text-xs text-on-surface-variant max-w-md mt-1">Upload and index documents in Library to automatically populate semantic entities and multi-hop associative relations.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Collapsible Right-Hand Navbar for Graph Controls & Telemetry -->
+      <aside id="kgSettingsDrawer" class="w-80 shrink-0 h-full border-l border-surface-container-high bg-surface-container-low flex flex-col transition-all duration-200 overflow-hidden z-30">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-surface-container-high bg-surface shrink-0">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-[18px] text-primary">analytics</span>
+            <span class="font-headline font-semibold text-xs uppercase tracking-wider text-on-surface">Graph Controls</span>
+          </div>
+          <button id="closeKgDrawerBtn" class="w-7 h-7 rounded-md flex items-center justify-center hover:bg-surface-container text-on-surface-variant hover:text-on-surface transition cursor-pointer" title="Close Controls">
+            <span class="material-symbols-outlined text-[18px]">close</span>
+          </button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-4 space-y-5 text-xs">
+          <!-- Graph Scope Selector -->
+          <div>
+            <label class="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-wide">Graph Scope</label>
+            <div class="mt-1.5">
+              <select id="kgScopeSelect" class="w-full border border-surface-container-high rounded-lg px-3 py-2 text-xs font-headline font-semibold bg-surface-container-lowest text-on-surface focus:outline-none focus:border-primary transition cursor-pointer truncate">
+                <option value="all">All documents (Global)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Entity & Relation Telemetry Cards -->
+          <div>
+            <label class="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-wide">Graph Topology</label>
+            <div class="grid grid-cols-2 gap-2 mt-2">
+              <div class="p-2.5 rounded-lg bg-surface-container-lowest border border-surface-container-high">
+                <span class="text-[10px] font-mono text-on-surface-variant uppercase block">Entities</span>
+                <span id="kg-stat-entities" class="font-mono text-base font-semibold text-on-surface mt-0.5 block">0</span>
+              </div>
+              <div class="p-2.5 rounded-lg bg-surface-container-lowest border border-surface-container-high">
+                <span class="text-[10px] font-mono text-on-surface-variant uppercase block">Relations</span>
+                <span id="kg-stat-relations" class="font-mono text-base font-semibold text-on-surface mt-0.5 block">0</span>
+              </div>
+              <div class="p-2.5 rounded-lg bg-surface-container-lowest border border-surface-container-high">
+                <span class="text-[10px] font-mono text-on-surface-variant uppercase block">Communities</span>
+                <span id="kg-stat-communities" class="font-mono text-base font-semibold text-on-surface mt-0.5 block">0</span>
+              </div>
+              <div class="p-2.5 rounded-lg bg-surface-container-lowest border border-surface-container-high">
+                <span class="text-[10px] font-mono text-on-surface-variant uppercase block">Density</span>
+                <span id="kg-stat-density" class="font-mono text-base font-semibold text-on-surface mt-0.5 block">0.00</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Entity Types Filter -->
+          <div class="pt-2 border-t border-surface-container-high">
+            <label class="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-2 block">Entity Types</label>
+            <div class="flex flex-wrap gap-1.5">
+              <button data-type="all" class="kg-type-filter px-2.5 py-1 rounded text-[11px] font-mono bg-primary text-on-primary font-medium">All</button>
+              <button data-type="ORGANIZATION" class="kg-type-filter px-2.5 py-1 rounded text-[11px] font-mono bg-surface border border-surface-container-high text-on-surface-variant hover:text-on-surface flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-primary"></span>Org</button>
+              <button data-type="PERSON" class="kg-type-filter px-2.5 py-1 rounded text-[11px] font-mono bg-surface border border-surface-container-high text-on-surface-variant hover:text-on-surface flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>Person</button>
+              <button data-type="METRIC" class="kg-type-filter px-2.5 py-1 rounded text-[11px] font-mono bg-surface border border-surface-container-high text-on-surface-variant hover:text-on-surface flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span>Metric</button>
+              <button data-type="CLAUSE" class="kg-type-filter px-2.5 py-1 rounded text-[11px] font-mono bg-surface border border-surface-container-high text-on-surface-variant hover:text-on-surface flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-outline"></span>Clause</button>
+            </div>
+          </div>
+
+          <!-- Min Edge Weight Slider -->
+          <div class="pt-2 border-t border-surface-container-high">
+            <div class="flex justify-between items-center font-label text-xs mb-1.5">
+              <span class="text-on-surface-variant uppercase font-semibold text-[10px] tracking-wide">Min Edge Weight</span>
+              <span id="kg-weight-badge" class="font-mono text-primary font-semibold">0.40</span>
+            </div>
+            <input id="kg-weight-slider" type="range" min="0" max="100" value="40" class="w-full h-1.5 accent-primary cursor-pointer" />
+            <span class="text-[10px] text-on-surface-variant font-mono mt-1 block">Prunes associative relations below confidence threshold</span>
+          </div>
+
+          <!-- Hop Selector -->
+          <div class="pt-2 border-t border-surface-container-high">
+            <label class="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-2 block">Traversal Hops</label>
+            <div id="kg-hop-group" class="grid grid-cols-3 gap-1 bg-surface border border-surface-container-high rounded-lg p-1 text-[11px] font-mono">
+              <button data-hop="1" class="py-1 text-center rounded text-on-surface-variant hover:text-on-surface transition">1-hop</button>
+              <button data-hop="2" class="py-1 text-center rounded bg-primary text-on-primary font-semibold transition">2-hop</button>
+              <button data-hop="3" class="py-1 text-center rounded text-on-surface-variant hover:text-on-surface transition">All</button>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </section>
     <!-- ============ PAGE: OBSERVABILITY ============ -->
     <section id="page-observability" class="page hidden h-full overflow-y-auto p-8">
-      <h1 class="font-headline font-bold text-2xl text-on-surface mb-1">Observability</h1>
-      <p class="text-sm text-on-surface-variant mb-6">Real-time system health and pipeline performance.</p>
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 class="font-headline font-bold text-2xl text-on-surface mb-1">Observability</h1>
+          <p class="text-sm text-on-surface-variant" id="obsScopeLabel">Real-time system health and pipeline performance.</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="font-mono text-[10px] text-on-surface-variant uppercase tracking-wider font-semibold">Scope:</span>
+          <select id="obsScopeSelect" class="border border-surface-container-high rounded-lg px-3 py-1.5 text-xs font-headline font-semibold bg-surface-container-lowest text-on-surface focus:outline-none focus:border-primary transition cursor-pointer max-w-[240px] truncate">
+            <option value="all">Global platform (All)</option>
+          </select>
+        </div>
+      </div>
 
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <div class="border border-surface-container-high rounded-xl p-4 bg-surface-container-lowest">
@@ -297,6 +691,32 @@
         </div>
       </div>
 
+      <!-- Recent Telemetry Table -->
+      <div class="border border-surface-container-high rounded-xl overflow-hidden mb-6">
+        <div class="px-4 py-3 bg-surface-container-low border-b border-surface-container-high flex items-center justify-between">
+          <span class="font-headline font-semibold text-sm">Recent Query Telemetry</span>
+          <span class="font-mono text-xs text-on-surface-variant" id="obsTelemetryCount">0 queries</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-surface-container-low text-xs font-mono text-on-surface-variant">
+              <tr>
+                <th class="text-left px-4 py-2">Query</th>
+                <th class="text-left px-4 py-2">Dense</th>
+                <th class="text-left px-4 py-2">Sparse</th>
+                <th class="text-left px-4 py-2">Rerank</th>
+                <th class="text-left px-4 py-2">LLM Gen</th>
+                <th class="text-left px-4 py-2">Total</th>
+                <th class="text-left px-4 py-2">Speed</th>
+                <th class="text-left px-4 py-2">Status</th>
+              </tr>
+            </thead>
+            <tbody id="obs-telemetry-body"></tbody>
+          </table>
+        </div>
+        <div id="obs-telemetry-empty" class="page-placeholder" hidden><span class="text-sm text-on-surface-variant">No query telemetry recorded yet.</span></div>
+      </div>
+
       <div class="border border-surface-container-high rounded-xl overflow-hidden">
         <div class="px-4 py-3 bg-surface-container-low border-b border-surface-container-high flex items-center justify-between">
           <span class="font-headline font-semibold text-sm">Dead Letter Queue</span>
@@ -314,8 +734,19 @@
 
     <!-- ============ PAGE: RAGOPS ============ -->
     <section id="page-ragops" class="page hidden h-full overflow-y-auto p-8">
-      <h1 class="font-headline font-bold text-2xl text-on-surface mb-1">RAGOps &amp; Active Learning</h1>
-      <p class="text-sm text-on-surface-variant mb-6">Continuous feedback loop for retrieval and reranking quality.</p>
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 class="font-headline font-bold text-2xl text-on-surface mb-1">RAGOps &amp; Active Learning</h1>
+          <p class="text-sm text-on-surface-variant" id="ragScopeLabel">Continuous feedback loop for retrieval and reranking quality.</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="font-mono text-[10px] text-on-surface-variant uppercase tracking-wider font-semibold">Scope:</span>
+          <select id="ragScopeSelect" class="border border-surface-container-high rounded-lg px-3 py-1.5 text-xs font-headline font-semibold bg-surface-container-lowest text-on-surface focus:outline-none focus:border-primary transition cursor-pointer max-w-[240px] truncate">
+            <option value="all">Global platform (All)</option>
+          </select>
+        </div>
+      </div>
+
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div class="border border-surface-container-high rounded-xl p-5 bg-surface-container-lowest text-center">
           <div class="font-mono text-[10px] text-on-surface-variant">TOTAL FEEDBACK</div>
@@ -350,6 +781,21 @@
           </div>
         </div>
 
+        <!-- VRAM Budget Meter (Target: RTX 3050 6GB) -->
+        <div class="border border-surface-container-high rounded-xl p-4 bg-surface-container-lowest">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="material-symbols-outlined text-[16px] text-primary">memory</span>
+              <span class="font-label text-xs font-semibold text-on-surface">VRAM Budget (RTX 3050 6GB)</span>
+            </div>
+            <span id="models-vram-badge" class="font-mono text-xs font-semibold text-primary">2.2 / 6.0 GB (37%)</span>
+          </div>
+          <div class="w-full bg-surface-container-high rounded-full h-2 mt-2.5 overflow-hidden">
+            <div id="models-vram-bar" class="bg-primary h-2 rounded-full transition-all duration-300" style="width: 37%;"></div>
+          </div>
+          <p id="models-vram-desc" class="text-[11px] text-on-surface-variant mt-1.5 font-mono">Headroom: ~3.8 GB free for Qdrant HNSW and BM25 memory.</p>
+        </div>
+
         <div>
           <label class="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-wide">Retrieval mode</label>
           <div class="inline-flex mt-2 rounded-lg border border-surface-container-high overflow-hidden text-xs font-label" id="models-mode-group">
@@ -358,6 +804,17 @@
             <button data-mode="graph" class="px-3 py-1.5 bg-surface-container-lowest">GraphRAG</button>
             <button data-mode="direct" class="px-3 py-1.5 bg-surface-container-lowest">Direct</button>
           </div>
+        </div>
+
+        <div>
+          <label class="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-wide">Document Ingestion & Extraction Route</label>
+          <div class="inline-flex mt-2 rounded-lg border border-surface-container-high overflow-hidden text-xs font-label" id="models-route-group">
+            <button data-route="auto" class="px-3 py-1.5 bg-primary text-on-primary font-medium transition">Auto Heuristic</button>
+            <button data-route="fast_text" class="px-3 py-1.5 bg-surface-container-lowest text-on-surface hover:bg-surface-container transition">Fast Text (PyMuPDF)</button>
+            <button data-route="layout" class="px-3 py-1.5 bg-surface-container-lowest text-on-surface hover:bg-surface-container transition">Layout (Docling)</button>
+            <button data-route="ocr" class="px-3 py-1.5 bg-surface-container-lowest text-on-surface hover:bg-surface-container transition">OCR (RapidOCR)</button>
+          </div>
+          <p class="text-xs text-on-surface-variant mt-1 font-mono text-[11px]">Parser pipeline applied during document ingestion and chunk embedding.</p>
         </div>
 
         <div>
@@ -381,7 +838,192 @@
         </div>
       </div>
     </section>
-    <section id="page-settings" class="page hidden h-full"><div class="page-placeholder"><span class="material-symbols-outlined text-[40px] text-outline-variant">settings</span><div class="font-headline text-on-surface font-medium">Settings</div><div class="text-sm text-on-surface-variant max-w-sm">Design approved in Stitch — appearance/API/danger-zone wiring lands in Phase 18.9.</div></div></section>
+    <!-- ============ PAGE: SETTINGS ============ -->
+    <section id="page-settings" class="page hidden h-full flex overflow-hidden">
+      <!-- Sub-nav column -->
+      <aside class="w-60 border-r border-surface-container-high py-6 px-4 shrink-0 flex flex-col justify-between overflow-y-auto bg-surface-container-low">
+        <div class="space-y-5">
+          <div>
+            <p class="px-3 text-[11px] font-mono font-medium text-on-surface-variant uppercase tracking-wider mb-2">General Preferences</p>
+            <div class="space-y-1" id="settings-tab-group">
+              <button data-tab="appearance" class="settings-tab-btn w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-on-surface bg-surface-container rounded-lg border-l-2 border-primary text-left">
+                <span class="material-symbols-outlined text-[18px] text-primary">palette</span>
+                <span>Appearance</span>
+              </button>
+              <button data-tab="api" class="settings-tab-btn w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low rounded-lg transition-colors text-left">
+                <span class="material-symbols-outlined text-[18px]">key</span>
+                <span>API &amp; Security</span>
+              </button>
+              <button data-tab="notifications" class="settings-tab-btn w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low rounded-lg transition-colors text-left">
+                <span class="material-symbols-outlined text-[18px]">notifications_active</span>
+                <span>Notifications</span>
+              </button>
+            </div>
+          </div>
+          <div>
+            <p class="px-3 text-[11px] font-mono font-medium text-tertiary-dim uppercase tracking-wider mb-2">Destructive Actions</p>
+            <button data-tab="danger" class="settings-tab-btn w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-primary hover:bg-primary-container/20 rounded-lg transition-colors text-left">
+              <span class="material-symbols-outlined text-[18px] text-primary">warning</span>
+              <span>Danger Zone</span>
+            </button>
+          </div>
+        </div>
+        <div class="p-3 bg-surface-container rounded-lg border border-surface-container-high flex items-center gap-2">
+          <span class="material-symbols-outlined text-secondary text-[16px]">check_circle</span>
+          <span class="text-[11px] text-on-surface-variant font-mono leading-tight">Settings persisted to local workstation</span>
+        </div>
+      </aside>
+
+      <!-- Content column -->
+      <div class="flex-1 overflow-y-auto px-10 py-8 space-y-8 bg-surface">
+        <!-- TAB 1: APPEARANCE -->
+        <div id="settings-pane-appearance" class="settings-pane space-y-6">
+          <div class="border-b border-surface-container-high pb-3">
+            <h2 class="font-headline font-semibold text-base text-on-surface">Appearance &amp; Display</h2>
+            <p class="text-xs text-on-surface-variant mt-0.5">Fine-tune UI density, paper grain warmth, and accessibility ergonomics.</p>
+          </div>
+
+          <div class="bg-surface-container-lowest border border-surface-container-high rounded-xl p-6 space-y-6 shadow-xs max-w-2xl">
+            <!-- Paper Warmth Slider -->
+            <div class="space-y-3">
+              <div class="flex justify-between items-center">
+                <div>
+                  <label class="font-headline font-medium text-xs text-on-surface">Paper Warmth &amp; Tint</label>
+                  <p class="text-[11px] text-on-surface-variant">Adjust surface tone for extended reading sessions</p>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span id="settings-warmth-badge" class="font-mono text-xs text-primary font-medium bg-surface-container-low px-2 py-0.5 rounded border border-surface-container-high">Default (Warm Ink)</span>
+                  <div id="settings-warmth-swatch" class="w-5 h-5 rounded border border-outline-variant shadow-inner bg-[#FAF9F5]"></div>
+                </div>
+              </div>
+              <input id="settings-warmth-slider" type="range" min="0" max="100" value="50" class="w-full h-1.5 accent-primary cursor-pointer" />
+              <div class="flex justify-between text-[11px] font-mono text-on-surface-variant">
+                <span>Cool Slate (0%)</span>
+                <span>Warm Parchment (50%)</span>
+                <span>Sepia Amber (100%)</span>
+              </div>
+            </div>
+
+            <div class="h-px bg-surface-container-high"></div>
+
+            <!-- Display Density -->
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="font-headline font-medium text-xs text-on-surface">Display Density</label>
+                <p class="text-[11px] text-on-surface-variant">Table row spacing and chat message padding</p>
+              </div>
+              <div class="inline-flex p-1 bg-surface-container rounded-lg border border-surface-container-high text-xs" id="settings-density-group">
+                <button data-density="comfortable" class="px-3 py-1.5 rounded-md bg-surface text-on-surface font-medium border border-surface-container-high shadow-xs">Comfortable</button>
+                <button data-density="compact" class="px-3 py-1.5 rounded-md text-on-surface-variant hover:text-on-surface">Compact</button>
+              </div>
+            </div>
+
+            <div class="h-px bg-surface-container-high"></div>
+
+            <!-- Accessibility Toggles -->
+            <div class="space-y-4">
+              <span class="font-headline font-medium text-xs text-on-surface">Visual Accessibility</span>
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-xs font-medium text-on-surface">Reduced Motion</p>
+                  <p class="text-[11px] text-on-surface-variant">Minimize UI micro-animations and physics</p>
+                </div>
+                <input id="settings-reduced-motion" type="checkbox" class="w-5 h-5 accent-primary cursor-pointer" />
+              </div>
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-xs font-medium text-on-surface">High Contrast Borders</p>
+                  <p class="text-[11px] text-on-surface-variant">Enhance container edge boundaries</p>
+                </div>
+                <input id="settings-high-contrast" type="checkbox" class="w-5 h-5 accent-primary cursor-pointer" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: API & SECURITY -->
+        <div id="settings-pane-api" class="settings-pane hidden space-y-6">
+          <div class="border-b border-surface-container-high pb-3">
+            <h2 class="font-headline font-semibold text-base text-on-surface">API &amp; Endpoints</h2>
+            <p class="text-xs text-on-surface-variant mt-0.5">Connection endpoints to underlying local microservices.</p>
+          </div>
+          <div class="bg-surface-container-lowest border border-surface-container-high rounded-xl p-6 space-y-5 max-w-2xl">
+            <div>
+              <label class="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-wide">FastAPI Gateway</label>
+              <input type="text" readonly value="http://localhost:8001" class="w-full mt-1.5 border border-surface-container-high rounded-lg px-3 py-2 text-xs font-mono bg-surface-container-low text-on-surface" />
+            </div>
+            <div>
+              <label class="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-wide">Ollama Local LLM Endpoint</label>
+              <input type="text" readonly value="http://127.0.0.1:11434" class="w-full mt-1.5 border border-surface-container-high rounded-lg px-3 py-2 text-xs font-mono bg-surface-container-low text-on-surface" />
+            </div>
+            <div>
+              <label class="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-wide">Qdrant Vector Database</label>
+              <input type="text" readonly value="http://localhost:6333 (Collection: rag_documents)" class="w-full mt-1.5 border border-surface-container-high rounded-lg px-3 py-2 text-xs font-mono bg-surface-container-low text-on-surface" />
+            </div>
+            <div>
+              <label class="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-wide">Redis Queue &amp; State</label>
+              <input type="text" readonly value="localhost:6379 (DB: 0)" class="w-full mt-1.5 border border-surface-container-high rounded-lg px-3 py-2 text-xs font-mono bg-surface-container-low text-on-surface" />
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 3: NOTIFICATIONS -->
+        <div id="settings-pane-notifications" class="settings-pane hidden space-y-6">
+          <div class="border-b border-surface-container-high pb-3">
+            <h2 class="font-headline font-semibold text-base text-on-surface">Notifications &amp; Alerts</h2>
+            <p class="text-xs text-on-surface-variant mt-0.5">Desktop and in-app system telemetry notifications.</p>
+          </div>
+          <div class="bg-surface-container-lowest border border-surface-container-high rounded-xl p-6 space-y-4 max-w-2xl">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-xs font-medium text-on-surface">Ingestion Complete Alerts</p>
+                <p class="text-[11px] text-on-surface-variant">Notify when background worker finishes parsing &amp; indexing</p>
+              </div>
+              <input type="checkbox" checked class="w-5 h-5 accent-primary cursor-pointer" />
+            </div>
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-xs font-medium text-on-surface">Dead-Letter Queue Alert</p>
+                <p class="text-[11px] text-on-surface-variant">Alert when a task fails 3 times and is routed to DLQ</p>
+              </div>
+              <input type="checkbox" checked class="w-5 h-5 accent-primary cursor-pointer" />
+            </div>
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-xs font-medium text-on-surface">Hard Negative Mined Confirmation</p>
+                <p class="text-[11px] text-on-surface-variant">Display confirmation pill when thumbs-down feedback triggers mining</p>
+              </div>
+              <input type="checkbox" checked class="w-5 h-5 accent-primary cursor-pointer" />
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 4: DANGER ZONE -->
+        <div id="settings-pane-danger" class="settings-pane hidden space-y-6">
+          <div class="border-b border-error pb-3">
+            <h2 class="font-headline font-semibold text-base text-error">Danger Zone</h2>
+            <p class="text-xs text-on-surface-variant mt-0.5">Irreversible actions that affect cluster state and conversation data.</p>
+          </div>
+          <div class="border border-error/30 rounded-xl p-6 space-y-6 bg-error-container/10 max-w-2xl">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-xs font-medium text-on-surface">Purge Dead-Letter Queue</p>
+                <p class="text-[11px] text-on-surface-variant">Permanently removes all failed tasks currently in dead-letter queue</p>
+              </div>
+              <button id="settings-purge-dlq-btn" class="px-3 py-1.5 border border-error text-error text-xs font-semibold rounded-lg hover:bg-error hover:text-on-error transition">Purge DLQ</button>
+            </div>
+            <div class="h-px bg-surface-container-high"></div>
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-xs font-medium text-on-surface">Reset Workspaces &amp; Cache</p>
+                <p class="text-[11px] text-on-surface-variant">Clears local workspace state and resets preferences</p>
+              </div>
+              <button id="settings-reset-all-btn" class="px-3 py-1.5 bg-error text-on-error text-xs font-semibold rounded-lg hover:opacity-90 transition">Reset All</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
   </main>
 </div>
@@ -409,14 +1051,27 @@
     document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === NAV_PAGE[page]));
     document.getElementById('breadcrumb').textContent = BREADCRUMB[page];
     window.location.hash = page + (opts.sessionId ? `/${opts.sessionId}` : '');
+    if (page === 'gallery') loadSessions();
     if (page === 'library') loadLibraryTable();
+    if (page === 'graph') loadKnowledgeGraph();
     if (page === 'observability') loadObservability();
     if (page === 'ragops') loadRagOps();
+    if (page === 'settings') loadSettings();
   }
 
   document.querySelectorAll('.nav-item[data-page]').forEach(el => {
     el.addEventListener('click', () => navigate(el.dataset.page));
   });
+
+  const breadcrumbBtn = document.getElementById('breadcrumb');
+  if (breadcrumbBtn) {
+    breadcrumbBtn.addEventListener('click', () => navigate('gallery'));
+  }
+
+  const backToGalleryBtn = document.getElementById('backToGalleryBtn');
+  if (backToGalleryBtn) {
+    backToGalleryBtn.addEventListener('click', () => navigate('gallery'));
+  }
 
   document.getElementById('collapseBtn').addEventListener('click', () => {
     const rail = document.getElementById('navRail');
@@ -436,8 +1091,12 @@
   let libraryScope = 'all';
   let currentModel = 'llama3.2:3b';
   let currentRetrievalMode = 'auto';
+  let currentEmbeddingRoute = 'auto';
+  let currentTemperature = 0.7;
   let currentTopK = 20;
   let currentTopRerank = 6;
+  let currentCompactorBudget = 3072;
+  let currentCutoffThreshold = 0.15;
   let streamEnabled = true;
   let availableModelsList = [];
 
@@ -555,6 +1214,52 @@
   // ============================================================
   // Sessions (Workspaces)
   // ============================================================
+  function populateWorkspaceSelects() {
+    const selects = [
+      { el: document.getElementById('chatWorkspaceSelect'), isChat: true },
+      { el: document.getElementById('libraryScopeSelect'), current: libraryScope, label: 'All documents (Global)' },
+      { el: document.getElementById('kgScopeSelect'), current: currentKgScope, label: 'All documents (Global)' },
+      { el: document.getElementById('obsScopeSelect'), current: obsScope, label: 'Global platform (All)' },
+      { el: document.getElementById('ragScopeSelect'), current: ragScope, label: 'Global platform (All)' },
+    ];
+
+    selects.forEach(cfg => {
+      const sel = cfg.el;
+      if (!sel) return;
+      const prevVal = cfg.isChat ? (currentSessionId || '') : (cfg.current || 'all');
+      sel.innerHTML = '';
+
+      if (cfg.isChat) {
+        const defaultOpt = document.createElement('option');
+        defaultOpt.value = '';
+        defaultOpt.textContent = 'Switch workspace…';
+        sel.appendChild(defaultOpt);
+      } else {
+        const allOpt = document.createElement('option');
+        allOpt.value = 'all';
+        allOpt.textContent = cfg.label;
+        sel.appendChild(allOpt);
+      }
+
+      if (allSessions && allSessions.length > 0) {
+        const group = document.createElement('optgroup');
+        group.label = 'Workspaces';
+        allSessions.forEach(s => {
+          const opt = document.createElement('option');
+          opt.value = s.id;
+          const docCount = (s.files || []).length;
+          opt.textContent = `${s.title || 'Untitled'} (${docCount} doc${docCount === 1 ? '' : 's'})`;
+          group.appendChild(opt);
+        });
+        sel.appendChild(group);
+      }
+
+      if (prevVal) {
+        sel.value = prevVal;
+      }
+    });
+  }
+
   async function loadSessions() {
     try {
       const res = await fetch('/api/v1/sessions');
@@ -562,32 +1267,235 @@
       const data = await res.json();
       allSessions = data.sessions || [];
       renderGallery();
+      populateWorkspaceSelects();
     } catch (e) { console.error('Failed to load sessions', e); }
   }
 
+  // Bulk workspace selection
+  const selectedWorkspaceIds = new Set();
+  let isSelectionMode = false;
+
+  function updateBulkToolbar() {
+    const toolbar = document.getElementById('wsBulkToolbar');
+    const countEl = document.getElementById('wsSelectedCount');
+    const toggleBtn = document.getElementById('wsToggleSelectModeBtn');
+    if (!toolbar || !countEl) return;
+
+    if (isSelectionMode || selectedWorkspaceIds.size > 0) {
+      toolbar.classList.remove('hidden');
+      toolbar.classList.add('flex');
+      countEl.textContent = `${selectedWorkspaceIds.size} selected`;
+      if (toggleBtn) {
+        toggleBtn.classList.add('bg-surface-container-high', 'text-primary');
+        toggleBtn.innerHTML = '<span class="material-symbols-outlined text-[16px] text-primary">check_box</span><span>Done</span>';
+      }
+    } else {
+      toolbar.classList.add('hidden');
+      toolbar.classList.remove('flex');
+      if (toggleBtn) {
+        toggleBtn.classList.remove('bg-surface-container-high', 'text-primary');
+        toggleBtn.innerHTML = '<span class="material-symbols-outlined text-[16px] text-on-surface-variant">checklist</span><span>Select</span>';
+      }
+    }
+  }
+
   function renderGallery() {
+    populateWorkspaceSelects();
     const grid = document.getElementById('galleryGrid');
     const empty = document.getElementById('galleryEmpty');
     grid.innerHTML = '';
-    if (allSessions.length === 0) { empty.hidden = false; return; }
+    if (allSessions.length === 0) {
+      empty.hidden = false;
+      selectedWorkspaceIds.clear();
+      updateBulkToolbar();
+      return;
+    }
     empty.hidden = true;
+
+    // Filter out any selected IDs that no longer exist
+    const validIds = new Set(allSessions.map(s => s.id));
+    for (const id of selectedWorkspaceIds) {
+      if (!validIds.has(id)) selectedWorkspaceIds.delete(id);
+    }
+    updateBulkToolbar();
+
     allSessions.forEach(s => {
       const card = document.createElement('div');
-      card.className = 'session-card';
+      const isSelected = selectedWorkspaceIds.has(s.id);
+      card.className = `session-card group relative transition border ${isSelected ? 'border-primary bg-surface-container-low ring-1 ring-primary' : 'border-surface-container-high'}`;
       const fileCount = (s.files || []).length;
       const model = (s.parameters && s.parameters.model) || 'llama3.2:3b';
       const mode = (s.parameters && s.parameters.retrieval_mode) || 'auto';
+      const route = (s.parameters && s.parameters.embedding_route) || 'auto';
       card.innerHTML = `
-        <div class="font-headline font-semibold text-sm text-on-surface truncate">${s.title}</div>
-        <div class="flex items-center gap-2 mt-2 flex-wrap">
-          <span class="font-mono text-[10px] px-2 py-0.5 rounded bg-surface-container-low border border-surface-container-high">${model}</span>
-          <span class="font-mono text-[10px] px-2 py-0.5 rounded bg-secondary-container text-on-secondary-container">${mode}</span>
-          <span class="font-mono text-[10px] text-on-surface-variant">${fileCount} doc${fileCount === 1 ? '' : 's'}</span>
+        <div class="flex items-start justify-between gap-2">
+          <div class="flex items-center gap-2 flex-1 min-w-0">
+            <input type="checkbox" data-id="${s.id}" class="ws-select-checkbox w-4 h-4 rounded border-surface-container-highest accent-primary cursor-pointer shrink-0 ${isSelectionMode || selectedWorkspaceIds.size > 0 ? '' : 'opacity-0 group-hover:opacity-100 transition-opacity'}" ${isSelected ? 'checked' : ''} />
+            <div class="font-headline font-semibold text-sm text-on-surface truncate flex-1">${s.title}</div>
+          </div>
+          <div class="flex items-center gap-1 shrink-0">
+            <button class="ws-rename-btn opacity-60 hover:opacity-100 hover:text-primary transition p-0.5 rounded text-on-surface-variant" title="Rename workspace">
+              <span class="material-symbols-outlined text-[15px]">edit</span>
+            </button>
+            <button class="ws-delete-btn opacity-60 hover:opacity-100 hover:text-error transition p-0.5 rounded text-on-surface-variant" title="Delete workspace">
+              <span class="material-symbols-outlined text-[15px]">delete</span>
+            </button>
+          </div>
+        </div>
+        <div class="flex items-center gap-1.5 mt-2 flex-wrap">
+          <span class="font-mono text-[10px] px-2 py-0.5 rounded bg-surface-container-low border border-surface-container-high text-on-surface">${model}</span>
+          <span class="font-mono text-[10px] px-2 py-0.5 rounded bg-secondary-container text-on-secondary-container font-medium">${mode}</span>
+          <span class="font-mono text-[10px] px-2 py-0.5 rounded bg-surface-container-high text-on-surface-variant font-medium">${route}</span>
+          <span class="font-mono text-[10px] text-on-surface-variant ml-1">${fileCount} doc${fileCount === 1 ? '' : 's'}</span>
         </div>
         <div class="font-mono text-[10px] text-on-surface-variant mt-3">${s.message_count || 0} messages</div>`;
-      card.addEventListener('click', () => openWorkspace(s.id));
+
+      const checkbox = card.querySelector('.ws-select-checkbox');
+      if (checkbox) {
+        checkbox.addEventListener('click', (e) => {
+          e.stopPropagation();
+        });
+        checkbox.addEventListener('change', (e) => {
+          if (e.target.checked) {
+            selectedWorkspaceIds.add(s.id);
+            card.classList.add('border-primary', 'bg-surface-container-low', 'ring-1', 'ring-primary');
+          } else {
+            selectedWorkspaceIds.delete(s.id);
+            card.classList.remove('border-primary', 'bg-surface-container-low', 'ring-1', 'ring-primary');
+          }
+          updateBulkToolbar();
+        });
+      }
+
+      const renameBtn = card.querySelector('.ws-rename-btn');
+      if (renameBtn) {
+        renameBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const newTitle = prompt('Enter new workspace name:', s.title);
+          if (newTitle && newTitle.trim() && newTitle.trim() !== s.title) {
+            const cleanTitle = newTitle.trim();
+            s.title = cleanTitle;
+            if (currentSessionId === s.id) {
+              currentChatTitle.textContent = cleanTitle;
+              const drawerWsName = document.getElementById('drawerWorkspaceName');
+              if (drawerWsName) drawerWsName.value = cleanTitle;
+              const breadcrumb = document.getElementById('breadcrumb');
+              if (breadcrumb) breadcrumb.textContent = `Workspaces / ${cleanTitle}`;
+            }
+            try {
+              await fetch(`/api/v1/sessions/${s.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: cleanTitle })
+              });
+              renderGallery();
+            } catch (err) {
+              console.error('Failed to rename workspace from gallery', err);
+            }
+          }
+        });
+      }
+
+      const deleteBtn = card.querySelector('.ws-delete-btn');
+      if (deleteBtn) {
+        deleteBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await deleteWorkspace(s.id, s.title);
+        });
+      }
+
+      card.addEventListener('click', (e) => {
+        if (isSelectionMode) {
+          if (checkbox) {
+            checkbox.checked = !checkbox.checked;
+            checkbox.dispatchEvent(new Event('change'));
+          }
+          return;
+        }
+        openWorkspace(s.id);
+      });
       grid.appendChild(card);
     });
+  }
+
+  // Bulk Toolbar Action Listeners
+  const wsToggleSelectModeBtn = document.getElementById('wsToggleSelectModeBtn');
+  if (wsToggleSelectModeBtn) {
+    wsToggleSelectModeBtn.addEventListener('click', () => {
+      isSelectionMode = !isSelectionMode;
+      if (!isSelectionMode) {
+        selectedWorkspaceIds.clear();
+      }
+      renderGallery();
+    });
+  }
+
+  const wsSelectAllBtn = document.getElementById('wsSelectAllBtn');
+  if (wsSelectAllBtn) {
+    wsSelectAllBtn.addEventListener('click', () => {
+      allSessions.forEach(s => selectedWorkspaceIds.add(s.id));
+      renderGallery();
+    });
+  }
+
+  const wsDeselectAllBtn = document.getElementById('wsDeselectAllBtn');
+  if (wsDeselectAllBtn) {
+    wsDeselectAllBtn.addEventListener('click', () => {
+      selectedWorkspaceIds.clear();
+      renderGallery();
+    });
+  }
+
+  const wsDeleteSelectedBtn = document.getElementById('wsDeleteSelectedBtn');
+  if (wsDeleteSelectedBtn) {
+    wsDeleteSelectedBtn.addEventListener('click', async () => {
+      const count = selectedWorkspaceIds.size;
+      if (count === 0) return;
+      if (!confirm(`Are you sure you want to delete ${count} selected workspace${count === 1 ? '' : 's'}? All messages in these workspaces will be permanently removed.`)) {
+        return;
+      }
+      wsDeleteSelectedBtn.disabled = true;
+      wsDeleteSelectedBtn.textContent = 'Deleting…';
+      try {
+        const idsToDelete = Array.from(selectedWorkspaceIds);
+        await Promise.all(idsToDelete.map(id => fetch(`/api/v1/sessions/${id}`, { method: 'DELETE' })));
+        if (currentSessionId && selectedWorkspaceIds.has(currentSessionId)) {
+          currentSessionId = null;
+          navigate('gallery');
+        }
+        selectedWorkspaceIds.clear();
+        await loadSessions();
+      } catch (err) {
+        console.error('Failed to bulk delete workspaces', err);
+        alert(`Error deleting workspaces: ${err.message}`);
+      } finally {
+        wsDeleteSelectedBtn.disabled = false;
+        wsDeleteSelectedBtn.innerHTML = '<span class="material-symbols-outlined text-[14px]">delete</span><span>Delete</span>';
+        updateBulkToolbar();
+      }
+    });
+  }
+
+  async function deleteWorkspace(sessionId, title = '') {
+    if (!confirm(`Are you sure you want to delete workspace "${title || sessionId}"? All conversation messages will be removed.`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/v1/sessions/${sessionId}`, { method: 'DELETE' });
+      if (res.ok) {
+        selectedWorkspaceIds.delete(sessionId);
+        if (currentSessionId === sessionId) {
+          currentSessionId = null;
+          navigate('gallery');
+        }
+        await loadSessions();
+      } else {
+        alert('Failed to delete workspace.');
+      }
+    } catch (err) {
+      console.error('Failed to delete workspace', err);
+      alert(`Error deleting workspace: ${err.message}`);
+    }
   }
 
   async function openWorkspace(sessionId) {
@@ -598,27 +1506,101 @@
       if (!res.ok) return;
       const data = await res.json();
       currentChatTitle.textContent = data.session.title;
+      const drawerWsName = document.getElementById('drawerWorkspaceName');
+      if (drawerWsName) drawerWsName.value = data.session.title;
+      const breadcrumb = document.getElementById('breadcrumb');
+      if (breadcrumb) breadcrumb.textContent = `Workspaces / ${data.session.title}`;
+      if (!allSessions.some(s => s.id === sessionId)) {
+        await loadSessions();
+      }
+      const chatWsSel = document.getElementById('chatWorkspaceSelect');
+      if (chatWsSel) chatWsSel.value = sessionId;
       messagesDiv.innerHTML = '';
       data.messages.forEach(m => appendChatMessage(m.role, m.content, m.citations));
       renderSourcesPanel(data.session.files || []);
+
+      // Resolve workspace parameters: backend session parameters are the primary authority
+      const p = data.session.parameters || {};
+
+      let wsModel = p.model;
+      if (!wsModel) {
+        try { wsModel = localStorage.getItem(`ri_workspace_model_${sessionId}`); } catch (e) {}
+      }
+      setWorkspaceModel(wsModel || 'llama3.2:3b', false);
+
+      let wsMode = p.retrieval_mode;
+      if (!wsMode) {
+        try { wsMode = localStorage.getItem(`ri_workspace_mode_${sessionId}`); } catch (e) {}
+      }
+      setWorkspaceRetrievalMode(wsMode || 'auto', false);
+
+      let wsRoute = p.embedding_route;
+      if (!wsRoute) {
+        try { wsRoute = localStorage.getItem(`ri_workspace_route_${sessionId}`); } catch (e) {}
+      }
+      setWorkspaceEmbeddingRoute(wsRoute || 'auto', false);
+
+      // Populate System Persona
+      const drawerSystemPrompt = document.getElementById('drawerSystemPrompt');
+      if (drawerSystemPrompt) {
+        drawerSystemPrompt.value = data.session.system_prompt || '';
+      }
+
+      // Populate Workspace Tuning Parameters
+      setDrawerTemp(p.temperature !== undefined ? p.temperature : 0.7);
+      setDrawerTopk(p.top_k !== undefined ? p.top_k : 20);
+      setDrawerRerank(p.top_rerank !== undefined ? p.top_rerank : 6);
+      setDrawerBudget(p.compactor_budget !== undefined ? p.compactor_budget : 3072);
+      setDrawerCutoff(p.min_score_threshold !== undefined ? p.min_score_threshold : 0.15);
+      setDrawerStream(p.stream !== undefined ? p.stream : true);
     } catch (e) { console.error('Failed to open workspace', e); }
+  }
+
+  const chatWorkspaceSelect = document.getElementById('chatWorkspaceSelect');
+  if (chatWorkspaceSelect) {
+    chatWorkspaceSelect.addEventListener('change', (e) => {
+      const selectedId = e.target.value;
+      if (selectedId) {
+        openWorkspace(selectedId);
+      }
+    });
   }
 
   document.getElementById('newWorkspaceBtn').addEventListener('click', async () => {
     try {
       const res = await fetch('/api/v1/sessions', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: 'New Conversation' })
+        body: JSON.stringify({
+          title: 'New Conversation',
+          parameters: {
+            model: currentModel,
+            retrieval_mode: currentRetrievalMode,
+            embedding_route: currentEmbeddingRoute,
+            temperature: currentTemperature,
+            top_k: currentTopK,
+            top_rerank: currentTopRerank,
+            compactor_budget: currentCompactorBudget,
+            min_score_threshold: currentCutoffThreshold,
+            stream: streamEnabled
+          }
+        })
       });
       if (!res.ok) return;
       const newSess = await res.json();
+      try {
+        localStorage.setItem(`ri_workspace_model_${newSess.id}`, currentModel);
+        localStorage.setItem(`ri_workspace_mode_${newSess.id}`, currentRetrievalMode);
+        localStorage.setItem(`ri_workspace_route_${newSess.id}`, currentEmbeddingRoute);
+      } catch (e) {}
       await loadSessions();
       openWorkspace(newSess.id);
     } catch (e) { console.error('Failed to create workspace', e); }
   });
 
   document.getElementById('manageLibraryLink').addEventListener('click', () => {
-    libraryScope = 'workspace';
+    libraryScope = currentSessionId || 'all';
+    const libSel = document.getElementById('libraryScopeSelect');
+    if (libSel) libSel.value = libraryScope;
     navigate('library');
   });
 
@@ -705,6 +1687,8 @@
   function renderSourcesPanel(fileIds) {
     const list = document.getElementById('sourcesList');
     list.innerHTML = '';
+    const badge = document.getElementById('sourcesCountBadge');
+    if (badge) badge.textContent = fileIds.length;
     if (fileIds.length === 0) {
       list.innerHTML = `<div class="text-xs text-on-surface-variant p-2">No sources attached yet.</div>`;
       return;
@@ -743,6 +1727,130 @@
     openWorkspace(currentSessionId);
   });
 
+  async function uploadWorkspaceFile(file) {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      alert('Only PDF documents are supported for ingestion.');
+      return;
+    }
+    if (!currentSessionId) {
+      try {
+        const res = await fetch('/api/v1/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: `Workspace: ${file.name.replace(/\.[^/.]+$/, '')}`,
+            parameters: {
+              model: currentModel,
+              retrieval_mode: currentRetrievalMode,
+              embedding_route: currentEmbeddingRoute,
+              temperature: currentTemperature,
+              top_k: currentTopK,
+              top_rerank: currentTopRerank,
+              compactor_budget: currentCompactorBudget,
+              min_score_threshold: currentCutoffThreshold,
+              stream: streamEnabled
+            }
+          })
+        });
+        if (res.ok) {
+          const newS = await res.json();
+          currentSessionId = newS.id;
+          await loadSessions();
+        }
+      } catch (e) {
+        console.error('Failed to create workspace session before upload', e);
+      }
+    }
+
+    const statusEl = document.getElementById('wsUploadStatus');
+    const statusText = document.getElementById('wsUploadStatusText');
+    const uploadBtn = document.getElementById('wsUploadBtn');
+
+    if (statusEl) statusEl.classList.remove('hidden');
+    if (statusText) statusText.textContent = `Ingesting ${file.name}...`;
+    if (uploadBtn) uploadBtn.disabled = true;
+
+    try {
+      // 1. Ingest with workspace-scoped route override
+      const formData = new FormData();
+      formData.append('file', file);
+      if (currentEmbeddingRoute && currentEmbeddingRoute !== 'auto') {
+        formData.append('route', currentEmbeddingRoute);
+      }
+      const ingestRes = await fetch('/api/v1/ingest', { method: 'POST', body: formData });
+      if (!ingestRes.ok) throw new Error('Ingestion failed');
+      const ingestData = await ingestRes.json();
+
+      if (statusText) statusText.textContent = `Indexing into Qdrant & BM25...`;
+
+      // 2. Index globally
+      const indexRes = await fetch('/api/v1/index', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ doc_id: ingestData.doc_id, blocks: ingestData.blocks })
+      });
+      if (!indexRes.ok) throw new Error('Indexing failed');
+      await indexRes.json();
+
+      // 3. Attach locally to the active workspace session
+      if (currentSessionId && ingestData.doc_id) {
+        if (statusText) statusText.textContent = `Attaching to workspace...`;
+        await fetch(`/api/v1/sessions/${currentSessionId}/files`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ files: [ingestData.doc_id] })
+        });
+      }
+
+      // 4. Refresh global document library and workspace sources view
+      await loadDocuments();
+      if (currentSessionId) {
+        await openWorkspace(currentSessionId);
+      }
+    } catch (err) {
+      console.error('Workspace upload error:', err);
+      alert(`Upload error: ${err.message}`);
+    } finally {
+      if (statusEl) statusEl.classList.add('hidden');
+      if (uploadBtn) uploadBtn.disabled = false;
+      const fileInp = document.getElementById('wsFileInput');
+      if (fileInp) fileInp.value = '';
+    }
+  }
+
+  const wsUploadBtn = document.getElementById('wsUploadBtn');
+  const wsFileInput = document.getElementById('wsFileInput');
+  const sourcesPanel = document.getElementById('sourcesPanel');
+
+  if (wsUploadBtn && wsFileInput) {
+    wsUploadBtn.addEventListener('click', () => wsFileInput.click());
+    wsFileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        uploadWorkspaceFile(e.target.files[0]);
+      }
+    });
+  }
+
+  if (sourcesPanel) {
+    sourcesPanel.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      sourcesPanel.classList.add('border-primary', 'bg-surface-container');
+    });
+    sourcesPanel.addEventListener('dragleave', (e) => {
+      if (!sourcesPanel.contains(e.relatedTarget)) {
+        sourcesPanel.classList.remove('border-primary', 'bg-surface-container');
+      }
+    });
+    sourcesPanel.addEventListener('drop', (e) => {
+      e.preventDefault();
+      sourcesPanel.classList.remove('border-primary', 'bg-surface-container');
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        uploadWorkspaceFile(e.dataTransfer.files[0]);
+      }
+    });
+  }
+
   // ============================================================
   // Documents / Library
   // ============================================================
@@ -761,11 +1869,11 @@
     const empty = document.getElementById('libraryEmpty');
     const scopeLabel = document.getElementById('libraryScopeLabel');
     let docs = knownDocuments;
-    if (libraryScope === 'workspace' && currentSessionId) {
-      const sess = allSessions.find(s => s.id === currentSessionId);
+    if (libraryScope !== 'all' && libraryScope) {
+      const sess = allSessions.find(s => s.id === libraryScope);
       const scopedIds = new Set((sess && sess.files) || []);
       docs = knownDocuments.filter(d => scopedIds.has(d.doc_id));
-      scopeLabel.textContent = `Sources in this workspace (${docs.length})`;
+      scopeLabel.textContent = `Sources in "${sess ? sess.title : libraryScope}" (${docs.length} of ${knownDocuments.length})`;
     } else {
       scopeLabel.textContent = `All documents (${knownDocuments.length})`;
     }
@@ -792,14 +1900,13 @@
     });
   }
 
-  document.querySelectorAll('#libraryScopeSwitch button').forEach(btn => {
-    btn.addEventListener('click', () => {
-      libraryScope = btn.dataset.scope;
-      document.querySelectorAll('#libraryScopeSwitch button').forEach(b => { b.classList.remove('bg-primary', 'text-on-primary'); b.classList.add('bg-surface-container-lowest'); });
-      btn.classList.add('bg-primary', 'text-on-primary'); btn.classList.remove('bg-surface-container-lowest');
+  const libScopeSelect = document.getElementById('libraryScopeSelect');
+  if (libScopeSelect) {
+    libScopeSelect.addEventListener('change', (e) => {
+      libraryScope = e.target.value;
       loadLibraryTable();
     });
-  });
+  }
 
   dropZone.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', (e) => { if (e.target.files.length) uploadFile(e.target.files[0]); });
@@ -810,6 +1917,9 @@
   async function uploadFile(file) {
     const formData = new FormData();
     formData.append('file', file);
+    if (currentEmbeddingRoute && currentEmbeddingRoute !== 'auto') {
+      formData.append('route', currentEmbeddingRoute);
+    }
     try {
       const ingestRes = await fetch('/api/v1/ingest', { method: 'POST', body: formData });
       const ingestData = await ingestRes.json();
@@ -845,64 +1955,634 @@
   // ============================================================
   // Models & Tuning (ported from the prior dark-theme implementation)
   // ============================================================
+  const MODEL_VRAM = {
+    'llama3.2:3b': { vram: 2.2, pct: 37, desc: 'Headroom: ~3.8 GB free for Qdrant HNSW and BM25 memory.' },
+    'llama3.1:8b': { vram: 4.9, pct: 82, desc: 'High utilization: ~1.1 GB VRAM headroom on RTX 3050.' },
+    'qwen2.5:7b': { vram: 4.5, pct: 75, desc: 'Balanced: ~1.5 GB VRAM headroom remaining.' },
+    'mistral:7b': { vram: 4.2, pct: 70, desc: 'Optimal: ~1.8 GB VRAM headroom remaining.' },
+    'deepseek-r1:7b': { vram: 4.8, pct: 80, desc: 'Deep reasoning: ~1.2 GB VRAM headroom remaining.' },
+    'deepseek-r1:8b': { vram: 5.1, pct: 85, desc: 'Heavy reasoning: ~0.9 GB VRAM headroom on RTX 3050.' },
+  };
+
+  function updateVramBudget(modelName) {
+    const cleanName = (modelName || '').toLowerCase().trim();
+    let meta = MODEL_VRAM[cleanName];
+    if (!meta) {
+      const matchKey = Object.keys(MODEL_VRAM).find(k => cleanName.startsWith(k.split(':')[0]));
+      meta = matchKey ? MODEL_VRAM[matchKey] : { vram: 3.5, pct: 58, desc: 'Custom model estimated ~3.5 GB footprint.' };
+    }
+    const badge = document.getElementById('models-vram-badge');
+    const bar = document.getElementById('models-vram-bar');
+    const desc = document.getElementById('models-vram-desc');
+    if (badge) badge.textContent = `${meta.vram} / 6.0 GB (${meta.pct}%)`;
+    if (bar) {
+      bar.style.width = `${meta.pct}%`;
+      bar.className = `h-2 rounded-full transition-all duration-300 ${meta.pct > 80 ? 'bg-error' : meta.pct > 70 ? 'bg-tertiary' : 'bg-primary'}`;
+    }
+    if (desc) desc.textContent = meta.desc;
+
+    // Synchronize top header VRAM display
+    const hBadge = document.getElementById('headerVramBadge');
+    const hBar = document.getElementById('headerVramBar');
+    if (hBadge) hBadge.textContent = `${meta.vram} / 6.0 GB (${meta.pct}%)`;
+    if (hBar) {
+      hBar.style.width = `${meta.pct}%`;
+      hBar.className = `h-1.5 rounded-full transition-all duration-300 ${meta.pct > 80 ? 'bg-error' : meta.pct > 70 ? 'bg-tertiary' : 'bg-primary'}`;
+    }
+
+    // Synchronize workspace settings drawer VRAM display
+    const dBadge = document.getElementById('drawerVramBadge');
+    const dBar = document.getElementById('drawerVramBar');
+    const dDesc = document.getElementById('drawerVramDesc');
+    if (dBadge) dBadge.textContent = `${meta.vram} / 6.0 GB (${meta.pct}%)`;
+    if (dBar) {
+      dBar.style.width = `${meta.pct}%`;
+      dBar.className = `h-1.5 rounded-full transition-all duration-300 ${meta.pct > 80 ? 'bg-error' : meta.pct > 70 ? 'bg-tertiary' : 'bg-primary'}`;
+    }
+    if (dDesc) dDesc.textContent = meta.desc;
+  }
+
+  const headerVramPill = document.getElementById('headerVramPill');
+  if (headerVramPill) {
+    headerVramPill.addEventListener('click', () => navigate('models'));
+  }
+
   function applyModelChoice(name) {
     currentModel = name;
-    document.getElementById('chatModelBadgeText').textContent = name;
+    const badgeText = document.getElementById('chatModelBadgeText');
+    if (badgeText) badgeText.textContent = name;
+    updateVramBudget(name);
     const sel = document.getElementById('models-select');
     if (sel) {
       let opt = Array.from(sel.options).find(o => o.value === name);
       if (!opt) { opt = new Option(name, name); sel.add(opt); }
       sel.value = name;
     }
+    const wsSel = document.getElementById('workspaceModelSelect');
+    if (wsSel) {
+      let opt = Array.from(wsSel.options).find(o => o.value === name);
+      if (!opt) { opt = new Option(name, name); wsSel.add(opt); }
+      wsSel.value = name;
+    }
+    const drawerSel = document.getElementById('drawerModelSelect');
+    if (drawerSel) {
+      let opt = Array.from(drawerSel.options).find(o => o.value === name);
+      if (!opt) { opt = new Option(name, name); drawerSel.add(opt); }
+      drawerSel.value = name;
+    }
+  }
+
+  async function setWorkspaceModel(newModel, persistToBackend = true) {
+    if (!newModel) return;
+    currentModel = newModel;
+    applyModelChoice(newModel);
+    if (currentSessionId) {
+      // 1. Cache to local storage per workspace
+      try {
+        localStorage.setItem(`ri_workspace_model_${currentSessionId}`, newModel);
+      } catch (e) {
+        console.warn('Failed to cache workspace model to localStorage', e);
+      }
+
+      // Update in-memory session list for instant gallery UI update
+      const sess = allSessions.find(s => s.id === currentSessionId);
+      if (sess) {
+        if (!sess.parameters) sess.parameters = {};
+        sess.parameters.model = newModel;
+        renderGallery();
+      }
+
+      // 2. Persist to backend
+      if (persistToBackend) {
+        try {
+          await fetch(`/api/v1/sessions/${currentSessionId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ parameters: { model: newModel } })
+          });
+        } catch (e) {
+          console.error('Failed to persist workspace model to backend', e);
+        }
+      }
+    }
+  }
+
+  function updateModeButtons(activeMode) {
+    const drawerGroup = document.getElementById('drawerModeGroup');
+    if (drawerGroup) {
+      drawerGroup.querySelectorAll('button').forEach(b => {
+        const isActive = b.dataset.mode === activeMode;
+        const title = b.children[0];
+        const desc = b.children[1];
+        if (isActive) {
+          b.className = 'px-2.5 py-2 rounded-lg border border-primary bg-primary text-on-primary font-label text-left flex flex-col transition shadow-sm';
+          if (title) title.className = 'font-medium text-xs text-on-primary';
+          if (desc) desc.className = 'text-[10px] text-on-primary opacity-80 font-mono';
+        } else {
+          b.className = 'px-2.5 py-2 rounded-lg border border-surface-container-high bg-surface-container-lowest text-on-surface font-label text-left flex flex-col transition hover:border-surface-container-highest';
+          if (title) title.className = 'font-medium text-xs text-on-surface';
+          if (desc) desc.className = 'text-[10px] text-on-surface-variant font-mono';
+        }
+      });
+    }
+
+    const modelsGroup = document.getElementById('models-mode-group');
+    if (modelsGroup) {
+      modelsGroup.querySelectorAll('button').forEach(b => {
+        const isActive = b.dataset.mode === activeMode;
+        if (isActive) {
+          b.className = 'px-3 py-1.5 bg-primary text-on-primary font-medium transition';
+        } else {
+          b.className = 'px-3 py-1.5 bg-surface-container-lowest text-on-surface hover:bg-surface-container transition';
+        }
+      });
+    }
+  }
+
+  function updateRouteButtons(activeRoute) {
+    const drawerGroup = document.getElementById('drawerRouteGroup');
+    if (drawerGroup) {
+      drawerGroup.querySelectorAll('button').forEach(b => {
+        const isActive = b.dataset.route === activeRoute;
+        const title = b.children[0];
+        const desc = b.children[1];
+        if (isActive) {
+          b.className = 'px-2.5 py-2 rounded-lg border border-primary bg-primary text-on-primary font-label text-left flex flex-col transition shadow-sm';
+          if (title) title.className = 'font-medium text-xs text-on-primary';
+          if (desc) desc.className = 'text-[10px] text-on-primary opacity-80 font-mono';
+        } else {
+          b.className = 'px-2.5 py-2 rounded-lg border border-surface-container-high bg-surface-container-lowest text-on-surface font-label text-left flex flex-col transition hover:border-surface-container-highest';
+          if (title) title.className = 'font-medium text-xs text-on-surface';
+          if (desc) desc.className = 'text-[10px] text-on-surface-variant font-mono';
+        }
+      });
+    }
+
+    const modelsGroup = document.getElementById('models-route-group');
+    if (modelsGroup) {
+      modelsGroup.querySelectorAll('button').forEach(b => {
+        const isActive = b.dataset.route === activeRoute;
+        if (isActive) {
+          b.className = 'px-3 py-1.5 bg-primary text-on-primary font-medium transition';
+        } else {
+          b.className = 'px-3 py-1.5 bg-surface-container-lowest text-on-surface hover:bg-surface-container transition';
+        }
+      });
+    }
+  }
+
+  async function setWorkspaceRetrievalMode(newMode, persistToBackend = true) {
+    if (!newMode) return;
+    currentRetrievalMode = newMode;
+    const wsModeSel = document.getElementById('workspaceModeSelect');
+    if (wsModeSel) wsModeSel.value = newMode;
+    const badgeText = document.getElementById('chatModeBadgeText');
+    if (badgeText) badgeText.textContent = newMode;
+
+    updateModeButtons(newMode);
+
+    if (currentSessionId) {
+      try {
+        localStorage.setItem(`ri_workspace_mode_${currentSessionId}`, newMode);
+      } catch (e) {
+        console.warn('Failed to cache workspace mode to localStorage', e);
+      }
+
+      const sess = allSessions.find(s => s.id === currentSessionId);
+      if (sess) {
+        if (!sess.parameters) sess.parameters = {};
+        sess.parameters.retrieval_mode = newMode;
+        renderGallery();
+      }
+
+      if (persistToBackend) {
+        await persistWorkspaceParameters();
+      }
+    }
+  }
+
+  async function setWorkspaceEmbeddingRoute(newRoute, persistToBackend = true) {
+    if (!newRoute) return;
+    currentEmbeddingRoute = newRoute;
+    const wsRouteSel = document.getElementById('workspaceRouteSelect');
+    if (wsRouteSel) wsRouteSel.value = newRoute;
+
+    updateRouteButtons(newRoute);
+
+    if (currentSessionId) {
+      try {
+        localStorage.setItem(`ri_workspace_route_${currentSessionId}`, newRoute);
+      } catch (e) {
+        console.warn('Failed to cache workspace route to localStorage', e);
+      }
+
+      const sess = allSessions.find(s => s.id === currentSessionId);
+      if (sess) {
+        if (!sess.parameters) sess.parameters = {};
+        sess.parameters.embedding_route = newRoute;
+        renderGallery();
+      }
+
+      if (persistToBackend) {
+        await persistWorkspaceParameters();
+      }
+    }
+  }
+
+  function setDrawerTemp(val) {
+    currentTemperature = parseFloat(val);
+    const slider = document.getElementById('drawerTempSlider');
+    const badge = document.getElementById('drawerTempBadge');
+    if (slider) slider.value = currentTemperature;
+    if (badge) badge.textContent = currentTemperature.toFixed(2);
+  }
+
+  function setDrawerTopk(val) {
+    currentTopK = parseInt(val, 10);
+    const slider = document.getElementById('drawerTopkSlider');
+    const badge = document.getElementById('drawerTopkBadge');
+    if (slider) slider.value = currentTopK;
+    if (badge) badge.textContent = currentTopK;
+    const globalSlider = document.getElementById('models-topk-slider');
+    const globalBadge = document.getElementById('models-topk-badge');
+    if (globalSlider) globalSlider.value = currentTopK;
+    if (globalBadge) globalBadge.textContent = currentTopK;
+  }
+
+  function setDrawerRerank(val) {
+    currentTopRerank = parseInt(val, 10);
+    const slider = document.getElementById('drawerRerankSlider');
+    const badge = document.getElementById('drawerRerankBadge');
+    if (slider) slider.value = currentTopRerank;
+    if (badge) badge.textContent = currentTopRerank;
+    const globalSlider = document.getElementById('models-rerank-slider');
+    const globalBadge = document.getElementById('models-rerank-badge');
+    if (globalSlider) globalSlider.value = currentTopRerank;
+    if (globalBadge) globalBadge.textContent = currentTopRerank;
+  }
+
+  function setDrawerBudget(val) {
+    currentCompactorBudget = parseInt(val, 10);
+    const slider = document.getElementById('drawerBudgetSlider');
+    const badge = document.getElementById('drawerBudgetBadge');
+    if (slider) slider.value = currentCompactorBudget;
+    if (badge) badge.textContent = `${currentCompactorBudget} tok`;
+  }
+
+  function setDrawerCutoff(val) {
+    currentCutoffThreshold = parseFloat(val);
+    const slider = document.getElementById('drawerCutoffSlider');
+    const badge = document.getElementById('drawerCutoffBadge');
+    if (slider) slider.value = currentCutoffThreshold;
+    if (badge) badge.textContent = currentCutoffThreshold.toFixed(2);
+  }
+
+  function setDrawerStream(val) {
+    streamEnabled = !!val;
+    const toggle = document.getElementById('drawerStreamToggle');
+    if (toggle) toggle.checked = streamEnabled;
+    const globalToggle = document.getElementById('models-stream-toggle');
+    if (globalToggle) globalToggle.checked = streamEnabled;
+  }
+
+  async function persistWorkspaceParameters() {
+    if (!currentSessionId) return;
+    try {
+      await fetch(`/api/v1/sessions/${currentSessionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          parameters: {
+            model: currentModel,
+            retrieval_mode: currentRetrievalMode,
+            embedding_route: currentEmbeddingRoute,
+            temperature: currentTemperature,
+            top_k: currentTopK,
+            top_rerank: currentTopRerank,
+            compactor_budget: currentCompactorBudget,
+            min_score_threshold: currentCutoffThreshold,
+            stream: streamEnabled
+          }
+        })
+      });
+      const sess = allSessions.find(s => s.id === currentSessionId);
+      if (sess) {
+        if (!sess.parameters) sess.parameters = {};
+        sess.parameters.model = currentModel;
+        sess.parameters.retrieval_mode = currentRetrievalMode;
+        sess.parameters.embedding_route = currentEmbeddingRoute;
+        sess.parameters.temperature = currentTemperature;
+        sess.parameters.top_k = currentTopK;
+        sess.parameters.top_rerank = currentTopRerank;
+        sess.parameters.compactor_budget = currentCompactorBudget;
+        sess.parameters.min_score_threshold = currentCutoffThreshold;
+        sess.parameters.stream = streamEnabled;
+        renderGallery();
+      }
+    } catch (e) {
+      console.error('Failed to persist workspace parameters to backend', e);
+    }
   }
 
   async function loadAvailableModels() {
     const sel = document.getElementById('models-select');
+    const wsSel = document.getElementById('workspaceModelSelect');
+    const drawerSel = document.getElementById('drawerModelSelect');
     try {
       const res = await fetch('/api/v1/models');
       let models = [{ id: 'llama3.2:3b', is_default: true }, { id: 'llama3.1:8b' }, { id: 'qwen2.5:7b' }];
       let defaultModel = 'llama3.2:3b';
       if (res.ok) {
         const data = await res.json();
-        models = data.available_models || models;
-        defaultModel = data.active_model || defaultModel;
+        const rawList = data.models || data.available_models || [];
+        if (rawList.length) {
+          models = rawList.map(m => ({
+            id: m.name || m.id,
+            name: m.name || m.id,
+            is_default: !!m.is_default
+          }));
+        }
+        defaultModel = data.default_model || data.active_model || defaultModel;
       }
       availableModelsList = models;
-      sel.innerHTML = '';
-      models.forEach(m => sel.add(new Option(m.name || m.id, m.id, false, m.id === defaultModel)));
+      if (sel) {
+        sel.innerHTML = '';
+        models.forEach(m => sel.add(new Option(m.name || m.id, m.id, false, m.id === defaultModel)));
+      }
+      if (wsSel) {
+        wsSel.innerHTML = '';
+        models.forEach(m => wsSel.add(new Option(m.name || m.id, m.id, false, m.id === defaultModel)));
+      }
+      if (drawerSel) {
+        drawerSel.innerHTML = '';
+        models.forEach(m => drawerSel.add(new Option(m.name || m.id, m.id, false, m.id === defaultModel)));
+      }
       applyModelChoice(defaultModel);
     } catch (e) { console.warn('Failed to load models', e); }
   }
 
-  document.getElementById('models-select').addEventListener('change', (e) => applyModelChoice(e.target.value));
-  document.getElementById('models-custom-btn').addEventListener('click', () => {
-    const input = document.getElementById('models-custom-input');
-    const val = input.value.trim();
-    if (val) { applyModelChoice(val); input.value = ''; }
+  const wsModelSelect = document.getElementById('workspaceModelSelect');
+  if (wsModelSelect) {
+    wsModelSelect.addEventListener('change', (e) => {
+      setWorkspaceModel(e.target.value, true);
+    });
+  }
+
+  const drawerModelSelect = document.getElementById('drawerModelSelect');
+  if (drawerModelSelect) {
+    drawerModelSelect.addEventListener('change', (e) => {
+      setWorkspaceModel(e.target.value, true);
+    });
+  }
+
+  const toggleWsSettingsBtn = document.getElementById('toggleWsSettingsBtn');
+  const closeWsSettingsBtn = document.getElementById('closeWsSettingsBtn');
+  const wsSettingsDrawer = document.getElementById('wsSettingsDrawer');
+  if (toggleWsSettingsBtn && wsSettingsDrawer) {
+    toggleWsSettingsBtn.addEventListener('click', () => {
+      wsSettingsDrawer.classList.toggle('hidden');
+    });
+  }
+  if (closeWsSettingsBtn && wsSettingsDrawer) {
+    closeWsSettingsBtn.addEventListener('click', () => {
+      wsSettingsDrawer.classList.add('hidden');
+    });
+  }
+
+  const drawerSystemPrompt = document.getElementById('drawerSystemPrompt');
+  if (drawerSystemPrompt) {
+    drawerSystemPrompt.addEventListener('change', async () => {
+      if (!currentSessionId) return;
+      const val = drawerSystemPrompt.value.trim();
+      try {
+        await fetch(`/api/v1/sessions/${currentSessionId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ system_prompt: val || null })
+        });
+        const sess = allSessions.find(s => s.id === currentSessionId);
+        if (sess) sess.system_prompt = val || null;
+      } catch (e) {
+        console.error('Failed to update system prompt', e);
+      }
+    });
+  }
+
+  // Workspace tuning sliders (local to workspace)
+  const drawerTempSlider = document.getElementById('drawerTempSlider');
+  if (drawerTempSlider) {
+    drawerTempSlider.addEventListener('input', (e) => {
+      currentTemperature = parseFloat(e.target.value);
+      const b = document.getElementById('drawerTempBadge');
+      if (b) b.textContent = currentTemperature.toFixed(2);
+    });
+    drawerTempSlider.addEventListener('change', () => persistWorkspaceParameters());
+  }
+
+  const drawerTopkSlider = document.getElementById('drawerTopkSlider');
+  if (drawerTopkSlider) {
+    drawerTopkSlider.addEventListener('input', (e) => {
+      currentTopK = parseInt(e.target.value, 10);
+      const b = document.getElementById('drawerTopkBadge');
+      if (b) b.textContent = currentTopK;
+      const gb = document.getElementById('models-topk-badge');
+      if (gb) gb.textContent = currentTopK;
+      const gs = document.getElementById('models-topk-slider');
+      if (gs) gs.value = currentTopK;
+    });
+    drawerTopkSlider.addEventListener('change', () => persistWorkspaceParameters());
+  }
+
+  const drawerRerankSlider = document.getElementById('drawerRerankSlider');
+  if (drawerRerankSlider) {
+    drawerRerankSlider.addEventListener('input', (e) => {
+      currentTopRerank = parseInt(e.target.value, 10);
+      const b = document.getElementById('drawerRerankBadge');
+      if (b) b.textContent = currentTopRerank;
+      const gb = document.getElementById('models-rerank-badge');
+      if (gb) gb.textContent = currentTopRerank;
+      const gs = document.getElementById('models-rerank-slider');
+      if (gs) gs.value = currentTopRerank;
+    });
+    drawerRerankSlider.addEventListener('change', () => persistWorkspaceParameters());
+  }
+
+  const drawerBudgetSlider = document.getElementById('drawerBudgetSlider');
+  if (drawerBudgetSlider) {
+    drawerBudgetSlider.addEventListener('input', (e) => {
+      currentCompactorBudget = parseInt(e.target.value, 10);
+      const b = document.getElementById('drawerBudgetBadge');
+      if (b) b.textContent = `${currentCompactorBudget} tok`;
+    });
+    drawerBudgetSlider.addEventListener('change', () => persistWorkspaceParameters());
+  }
+
+  const drawerCutoffSlider = document.getElementById('drawerCutoffSlider');
+  if (drawerCutoffSlider) {
+    drawerCutoffSlider.addEventListener('input', (e) => {
+      currentCutoffThreshold = parseFloat(e.target.value);
+      const b = document.getElementById('drawerCutoffBadge');
+      if (b) b.textContent = currentCutoffThreshold.toFixed(2);
+    });
+    drawerCutoffSlider.addEventListener('change', () => persistWorkspaceParameters());
+  }
+
+  const drawerStreamToggle = document.getElementById('drawerStreamToggle');
+  if (drawerStreamToggle) {
+    drawerStreamToggle.addEventListener('change', (e) => {
+      streamEnabled = e.target.checked;
+      const gt = document.getElementById('models-stream-toggle');
+      if (gt) gt.checked = streamEnabled;
+      persistWorkspaceParameters();
+    });
+  }
+
+  const drawerDeleteWsBtn = document.getElementById('drawerDeleteWsBtn');
+  if (drawerDeleteWsBtn) {
+    drawerDeleteWsBtn.addEventListener('click', async () => {
+      if (!currentSessionId) return;
+      const sess = allSessions.find(s => s.id === currentSessionId);
+      const title = sess ? sess.title : (currentChatTitle ? currentChatTitle.textContent : currentSessionId);
+      await deleteWorkspace(currentSessionId, title);
+    });
+  }
+
+  const drawerWorkspaceName = document.getElementById('drawerWorkspaceName');
+  async function persistWorkspaceName(newTitle) {
+    if (!currentSessionId || !newTitle) return;
+    currentChatTitle.textContent = newTitle;
+    if (drawerWorkspaceName) drawerWorkspaceName.value = newTitle;
+    const breadcrumb = document.getElementById('breadcrumb');
+    if (breadcrumb) breadcrumb.textContent = `Workspaces / ${newTitle}`;
+    try {
+      await fetch(`/api/v1/sessions/${currentSessionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newTitle })
+      });
+      const sess = allSessions.find(s => s.id === currentSessionId);
+      if (sess) { sess.title = newTitle; renderGallery(); }
+    } catch (e) {
+      console.error('Failed to update workspace name', e);
+    }
+  }
+
+  if (drawerWorkspaceName) {
+    drawerWorkspaceName.addEventListener('change', () => {
+      persistWorkspaceName(drawerWorkspaceName.value.trim());
+    });
+    drawerWorkspaceName.addEventListener('blur', () => {
+      persistWorkspaceName(drawerWorkspaceName.value.trim());
+    });
+  }
+
+  currentChatTitle.addEventListener('blur', () => {
+    persistWorkspaceName(currentChatTitle.textContent.trim());
   });
-  document.getElementById('chatModelBadge').addEventListener('click', () => navigate('models'));
+
+  const modelsSelect = document.getElementById('models-select');
+  if (modelsSelect) modelsSelect.addEventListener('change', (e) => applyModelChoice(e.target.value));
+
+  const modelsCustomBtn = document.getElementById('models-custom-btn');
+  if (modelsCustomBtn) {
+    modelsCustomBtn.addEventListener('click', () => {
+      const input = document.getElementById('models-custom-input');
+      const val = input ? input.value.trim() : '';
+      if (val) { applyModelChoice(val); input.value = ''; }
+    });
+  }
+
+  const chatModelBadge = document.getElementById('chatModelBadge');
+  if (chatModelBadge) chatModelBadge.addEventListener('click', () => navigate('models'));
 
   document.querySelectorAll('#models-mode-group button').forEach(btn => {
     btn.addEventListener('click', () => {
-      currentRetrievalMode = btn.dataset.mode;
-      document.querySelectorAll('#models-mode-group button').forEach(b => { b.classList.remove('bg-primary', 'text-on-primary'); b.classList.add('bg-surface-container-lowest'); });
-      btn.classList.add('bg-primary', 'text-on-primary'); btn.classList.remove('bg-surface-container-lowest');
-      document.getElementById('chatModeBadgeText').textContent = currentRetrievalMode;
+      setWorkspaceRetrievalMode(btn.dataset.mode, true);
+    });
+  });
+
+  document.querySelectorAll('#drawerModeGroup button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      setWorkspaceRetrievalMode(btn.dataset.mode, true);
+    });
+  });
+
+  document.querySelectorAll('#models-route-group button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      setWorkspaceEmbeddingRoute(btn.dataset.route, true);
+    });
+  });
+
+  document.querySelectorAll('#drawerRouteGroup button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      setWorkspaceEmbeddingRoute(btn.dataset.route, true);
     });
   });
 
   const modelsTopkSlider = document.getElementById('models-topk-slider');
-  modelsTopkSlider.addEventListener('input', () => { currentTopK = parseInt(modelsTopkSlider.value, 10); document.getElementById('models-topk-badge').textContent = currentTopK; });
+  if (modelsTopkSlider) {
+    modelsTopkSlider.addEventListener('input', () => {
+      currentTopK = parseInt(modelsTopkSlider.value, 10);
+      const b = document.getElementById('models-topk-badge');
+      if (b) b.textContent = currentTopK;
+      const db = document.getElementById('drawerTopkBadge');
+      if (db) db.textContent = currentTopK;
+      const ds = document.getElementById('drawerTopkSlider');
+      if (ds) ds.value = currentTopK;
+    });
+    modelsTopkSlider.addEventListener('change', () => persistWorkspaceParameters());
+  }
+
   const modelsRerankSlider = document.getElementById('models-rerank-slider');
-  modelsRerankSlider.addEventListener('input', () => { currentTopRerank = parseInt(modelsRerankSlider.value, 10); document.getElementById('models-rerank-badge').textContent = currentTopRerank; });
-  document.getElementById('models-stream-toggle').addEventListener('change', (e) => { streamEnabled = e.target.checked; });
+  if (modelsRerankSlider) {
+    modelsRerankSlider.addEventListener('input', () => {
+      currentTopRerank = parseInt(modelsRerankSlider.value, 10);
+      const b = document.getElementById('models-rerank-badge');
+      if (b) b.textContent = currentTopRerank;
+      const db = document.getElementById('drawerRerankBadge');
+      if (db) db.textContent = currentTopRerank;
+      const ds = document.getElementById('drawerRerankSlider');
+      if (ds) ds.value = currentTopRerank;
+    });
+    modelsRerankSlider.addEventListener('change', () => persistWorkspaceParameters());
+  }
+
+  const modelsStreamToggle = document.getElementById('models-stream-toggle');
+  if (modelsStreamToggle) {
+    modelsStreamToggle.addEventListener('change', (e) => {
+      streamEnabled = e.target.checked;
+      const dt = document.getElementById('drawerStreamToggle');
+      if (dt) dt.checked = streamEnabled;
+      persistWorkspaceParameters();
+    });
+  }
 
   // ============================================================
   // Observability
   // ============================================================
+  let obsScope = 'all';
+
   async function loadObservability() {
     try {
-      const res = await fetch('/api/v1/metrics');
+      if (!allSessions || allSessions.length === 0) {
+        await loadSessions();
+      } else {
+        populateWorkspaceSelects();
+      }
+      const url = (obsScope !== 'all' && obsScope)
+        ? `/api/v1/metrics?session_id=${encodeURIComponent(obsScope)}`
+        : '/api/v1/metrics';
+      const label = document.getElementById('obsScopeLabel');
+      if (label) {
+        if (obsScope !== 'all' && obsScope) {
+          const sess = allSessions.find(s => s.id === obsScope);
+          label.textContent = `Telemetry for workspace: "${sess ? sess.title : obsScope}"`;
+        } else {
+          label.textContent = 'Real-time platform health and pipeline performance across all workspaces.';
+        }
+      }
+
+      const res = await fetch(url);
       if (res.ok) {
         const m = await res.json();
         document.getElementById('obs-avg-ret').textContent = `${Math.round(m.avg_retrieval_ms || 0)} ms`;
@@ -913,6 +2593,35 @@
         document.getElementById('obs-bm25').textContent = m.bm25_chunks ?? 0;
         document.getElementById('obs-queue').textContent = m.redis_queue_depth ?? 0;
         document.getElementById('obs-dlq').textContent = m.dlq_task_count ?? 0;
+
+        // Render Recent Telemetry Table
+        const telemBody = document.getElementById('obs-telemetry-body');
+        const telemEmpty = document.getElementById('obs-telemetry-empty');
+        const telemCount = document.getElementById('obsTelemetryCount');
+        const telemetryList = m.recent_telemetry || [];
+
+        if (telemCount) telemCount.textContent = `${telemetryList.length} queries`;
+        if (telemBody) {
+          telemBody.innerHTML = '';
+          if (telemEmpty) telemEmpty.hidden = (telemetryList.length > 0);
+          telemetryList.forEach(t => {
+            const tr = document.createElement('tr');
+            tr.className = 'border-t border-surface-container-high hover:bg-surface-container-low/50 transition';
+            const statusBadge = t.refused
+              ? `<span class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-error/15 text-error">REFUSED</span>`
+              : `<span class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-primary">SUCCESS (${t.citations_count} cit)</span>`;
+            tr.innerHTML = `
+              <td class="px-4 py-2 font-mono text-xs text-on-surface truncate max-w-xs" title="${t.query_text || ''}">${t.query_text || '—'}</td>
+              <td class="px-4 py-2 font-mono text-xs text-on-surface-variant">${Math.round(t.dense_ms || 0)}ms</td>
+              <td class="px-4 py-2 font-mono text-xs text-on-surface-variant">${Math.round(t.sparse_ms || 0)}ms</td>
+              <td class="px-4 py-2 font-mono text-xs text-on-surface-variant">${Math.round(t.rerank_ms || 0)}ms</td>
+              <td class="px-4 py-2 font-mono text-xs text-on-surface-variant">${Math.round(t.llm_gen_ms || 0)}ms</td>
+              <td class="px-4 py-2 font-mono text-xs font-semibold text-on-surface">${Math.round(t.total_ms || 0)}ms</td>
+              <td class="px-4 py-2 font-mono text-xs text-primary">${(t.tokens_per_sec || 0).toFixed(1)} t/s</td>
+              <td class="px-4 py-2">${statusBadge}</td>`;
+            telemBody.appendChild(tr);
+          });
+        }
       }
     } catch (e) { console.error('Failed to load metrics', e); }
 
@@ -941,17 +2650,44 @@
       }
     } catch (e) { console.error('Failed to load DLQ', e); }
   }
-  document.getElementById('obs-replay-all').addEventListener('click', async () => {
-    await fetch('/api/v1/queue/dlq/replay', { method: 'POST' });
-    loadObservability();
-  });
+
+  const obsScopeSelect = document.getElementById('obsScopeSelect');
+  if (obsScopeSelect) {
+    obsScopeSelect.addEventListener('change', (e) => {
+      obsScope = e.target.value;
+      loadObservability();
+    });
+  }
+
+  const obsReplayBtn = document.getElementById('obs-replay-all');
+  if (obsReplayBtn) {
+    obsReplayBtn.addEventListener('click', async () => {
+      await fetch('/api/v1/queue/dlq/replay', { method: 'POST' });
+      loadObservability();
+    });
+  }
 
   // ============================================================
   // RAGOps
   // ============================================================
+  let ragScope = 'all';
+
   async function loadRagOps() {
     try {
-      const res = await fetch('/api/v1/feedback/summary');
+      const url = (ragScope !== 'all' && ragScope)
+        ? `/api/v1/feedback/summary?session_id=${encodeURIComponent(ragScope)}`
+        : '/api/v1/feedback/summary';
+      const label = document.getElementById('ragScopeLabel');
+      if (label) {
+        if (ragScope !== 'all' && ragScope) {
+          const sess = allSessions.find(s => s.id === ragScope);
+          label.textContent = `Continuous feedback & active learning for workspace: "${sess ? sess.title : ragScope}"`;
+        } else {
+          label.textContent = 'Continuous feedback loop for retrieval and reranking quality across all workspaces.';
+        }
+      }
+
+      const res = await fetch(url);
       if (res.ok) {
         const fb = await res.json();
         document.getElementById('rag-total-fb').textContent = fb.total_feedback ?? 0;
@@ -960,13 +2696,557 @@
       }
     } catch (e) { console.error('Failed to load RAGOps summary', e); }
   }
-  document.getElementById('rag-export-btn').addEventListener('click', () => {
-    window.open('/api/v1/ragops/dataset', '_blank');
+
+  const ragScopeSelect = document.getElementById('ragScopeSelect');
+  if (ragScopeSelect) {
+    ragScopeSelect.addEventListener('change', (e) => {
+      ragScope = e.target.value;
+      loadRagOps();
+    });
+  }
+
+  const ragExportBtn = document.getElementById('rag-export-btn');
+  if (ragExportBtn) {
+    ragExportBtn.addEventListener('click', () => {
+      const exportUrl = (ragScope !== 'all' && ragScope)
+        ? `/api/v1/ragops/dataset?session_id=${encodeURIComponent(ragScope)}`
+        : '/api/v1/ragops/dataset';
+      window.open(exportUrl, '_blank');
+    });
+  }
+
+  // ============================================================
+  // Knowledge Graph (Phase 18.5)
+  // ============================================================
+  let currentKgFilter = 'all';
+  let currentKgWeight = 0.40;
+  let currentKgHops = 2;
+  let currentKgScope = 'all';
+  let kgGraphData = null;
+
+  async function loadKnowledgeGraph() {
+    try {
+      const url = (currentKgScope !== 'all' && currentKgScope)
+        ? `/api/v1/graph/stats?session_id=${encodeURIComponent(currentKgScope)}`
+        : '/api/v1/graph/stats';
+      const res = await fetch(url);
+      if (res.ok) {
+        const stats = await res.json();
+        document.getElementById('kg-stat-entities').textContent = stats.total_entities ?? 0;
+        document.getElementById('kg-stat-relations').textContent = stats.total_relations ?? 0;
+        document.getElementById('kg-stat-communities').textContent = stats.total_communities ?? 0;
+        document.getElementById('kg-stat-density').textContent = (stats.density ?? 0).toFixed(3);
+
+        const engineText = document.getElementById('kg-engine-text');
+        const engineDot = document.getElementById('kg-engine-dot');
+        if (engineText && engineDot) {
+          if (stats.neo4j_connected) {
+            engineText.textContent = 'Neo4j (Live)';
+            engineDot.className = 'w-1.5 h-1.5 rounded-full bg-secondary animate-pulse';
+          } else {
+            engineText.textContent = 'NetworkX (Local)';
+            engineDot.className = 'w-1.5 h-1.5 rounded-full bg-outline-variant';
+          }
+        }
+
+        kgGraphData = stats;
+        renderKnowledgeGraph(stats);
+      } else {
+        renderKnowledgeGraphDemo();
+      }
+    } catch (e) {
+      console.error('Failed to load graph stats', e);
+      renderKnowledgeGraphDemo();
+    }
+  }
+
+  const toggleKgDrawerBtn = document.getElementById('toggleKgDrawerBtn');
+  const closeKgDrawerBtn = document.getElementById('closeKgDrawerBtn');
+  const kgSettingsDrawer = document.getElementById('kgSettingsDrawer');
+  if (toggleKgDrawerBtn && kgSettingsDrawer) {
+    toggleKgDrawerBtn.addEventListener('click', () => {
+      kgSettingsDrawer.classList.toggle('hidden');
+    });
+  }
+  if (closeKgDrawerBtn && kgSettingsDrawer) {
+    closeKgDrawerBtn.addEventListener('click', () => {
+      kgSettingsDrawer.classList.add('hidden');
+    });
+  }
+
+  const kgScopeSelect = document.getElementById('kgScopeSelect');
+  if (kgScopeSelect) {
+    kgScopeSelect.addEventListener('change', (e) => {
+      currentKgScope = e.target.value;
+      loadKnowledgeGraph();
+    });
+  }
+
+  // Type filter buttons
+  document.querySelectorAll('.kg-type-filter').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.kg-type-filter').forEach(b => {
+        b.classList.remove('bg-primary', 'text-on-primary');
+        b.classList.add('bg-surface', 'border', 'border-surface-container-high', 'text-on-surface-variant');
+      });
+      btn.classList.add('bg-primary', 'text-on-primary');
+      btn.classList.remove('bg-surface', 'border', 'border-surface-container-high', 'text-on-surface-variant');
+      currentKgFilter = btn.dataset.type;
+      applyKgFilter();
+    });
   });
+
+  // Weight slider
+  const kgWeightSlider = document.getElementById('kg-weight-slider');
+  if (kgWeightSlider) {
+    kgWeightSlider.addEventListener('input', () => {
+      currentKgWeight = (parseInt(kgWeightSlider.value, 10) / 100);
+      document.getElementById('kg-weight-badge').textContent = currentKgWeight.toFixed(2);
+      applyKgFilter();
+    });
+  }
+
+  // Hop buttons
+  document.querySelectorAll('#kg-hop-group button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#kg-hop-group button').forEach(b => {
+        b.classList.remove('bg-primary', 'text-on-primary', 'font-semibold');
+        b.classList.add('text-on-surface-variant');
+      });
+      btn.classList.add('bg-primary', 'text-on-primary', 'font-semibold');
+      btn.classList.remove('text-on-surface-variant');
+      currentKgHops = parseInt(btn.dataset.hop, 10);
+    });
+  });
+
+  // Trace button & input
+  const kgTraceBtn = document.getElementById('kg-trace-btn');
+  const kgQueryInput = document.getElementById('kg-query-input');
+  if (kgTraceBtn && kgQueryInput) {
+    kgTraceBtn.addEventListener('click', () => executeGraphTrace());
+    kgQueryInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') executeGraphTrace(); });
+  }
+
+  const kgCloseTraceBtn = document.getElementById('kg-close-trace');
+  if (kgCloseTraceBtn) {
+    kgCloseTraceBtn.addEventListener('click', () => {
+      document.getElementById('kg-trace-result').classList.add('hidden');
+      clearKgHighlight();
+    });
+  }
+
+  async function executeGraphTrace() {
+    const q = kgQueryInput.value.trim();
+    if (!q) return;
+    kgTraceBtn.disabled = true;
+    kgTraceBtn.innerHTML = '<span class="material-symbols-outlined text-[15px] animate-spin">refresh</span> Tracing…';
+    try {
+      const res = await fetch('/api/v1/graph/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query_text: q,
+          max_hops: currentKgHops,
+          min_edge_weight: currentKgWeight,
+          max_entities: 15
+        })
+      });
+      if (res.ok) {
+        const trace = await res.json();
+        const traceBox = document.getElementById('kg-trace-result');
+        const traceText = document.getElementById('kg-trace-text');
+        traceBox.classList.remove('hidden');
+        traceText.textContent = trace.subgraph_text || 'Discovered 0 relations matching traversal path.';
+        highlightGraphPath(trace);
+      }
+    } catch (e) {
+      console.error('Graph trace failed', e);
+    } finally {
+      kgTraceBtn.disabled = false;
+      kgTraceBtn.innerHTML = '<span class="material-symbols-outlined text-[15px]">alt_route</span> Trace Path';
+    }
+  }
+
+  function clearKgHighlight() {
+    document.querySelectorAll('#kg-nodes g').forEach(g => {
+      const outerRing = g.querySelector('.ember-ring');
+      if (outerRing) outerRing.remove();
+      const circle = g.querySelector('circle');
+      if (circle) {
+        circle.setAttribute('stroke', '#B0B3AD');
+        circle.setAttribute('stroke-width', '1.5');
+      }
+    });
+    document.querySelectorAll('#kg-edges line').forEach(l => {
+      l.setAttribute('stroke', '#708C78');
+      l.setAttribute('stroke-width', '1.5');
+      l.setAttribute('marker-end', 'url(#arrow-neutral)');
+    });
+  }
+
+  function highlightGraphPath(trace) {
+    clearKgHighlight();
+    if (!trace || !trace.matched_entities) return;
+    const matchedNames = new Set(trace.matched_entities.map(e => (e.name || '').toLowerCase()));
+    document.querySelectorAll('#kg-nodes g').forEach(g => {
+      const entityName = (g.dataset.name || '').toLowerCase();
+      if (matchedNames.has(entityName)) {
+        const circle = g.querySelector('circle');
+        if (circle) {
+          circle.setAttribute('stroke', '#8B4F3B');
+          circle.setAttribute('stroke-width', '2.5');
+          const ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          ring.setAttribute('cx', circle.getAttribute('cx'));
+          ring.setAttribute('cy', circle.getAttribute('cy'));
+          ring.setAttribute('r', parseInt(circle.getAttribute('r'), 10) + 6);
+          ring.setAttribute('fill', 'none');
+          ring.setAttribute('stroke', '#F0A38A');
+          ring.setAttribute('class', 'pulse-ember ember-ring');
+          g.appendChild(ring);
+        }
+      }
+    });
+
+    if (trace.relations) {
+      const relPairs = new Set(trace.relations.map(r => `${(r.source || '').toLowerCase()}->${(r.target || '').toLowerCase()}`));
+      document.querySelectorAll('#kg-edges line').forEach(l => {
+        const src = (l.dataset.source || '').toLowerCase();
+        const tgt = (l.dataset.target || '').toLowerCase();
+        if (relPairs.has(`${src}->${tgt}`) || relPairs.has(`${tgt}->${src}`)) {
+          l.setAttribute('stroke', '#C2410C');
+          l.setAttribute('stroke-width', '2.5');
+          l.setAttribute('marker-end', 'url(#arrow-ember)');
+        }
+      });
+    }
+  }
+
+  function applyKgFilter() {
+    document.querySelectorAll('#kg-nodes g').forEach(g => {
+      const type = g.dataset.type || '';
+      const visible = (currentKgFilter === 'all' || type.toUpperCase() === currentKgFilter.toUpperCase());
+      g.style.opacity = visible ? '1' : '0.2';
+    });
+    document.querySelectorAll('#kg-edges line').forEach(l => {
+      const weight = parseFloat(l.dataset.weight || '1.0');
+      l.style.opacity = weight >= currentKgWeight ? '0.4' : '0.05';
+    });
+  }
+
+  function renderKnowledgeGraph(stats) {
+    const empty = document.getElementById('kg-empty-state');
+    const nodesGroup = document.getElementById('kg-nodes');
+    const edgesGroup = document.getElementById('kg-edges');
+    const labelsGroup = document.getElementById('kg-edge-labels');
+    const commGroup = document.getElementById('kg-communities');
+
+    nodesGroup.innerHTML = '';
+    edgesGroup.innerHTML = '';
+    labelsGroup.innerHTML = '';
+    commGroup.innerHTML = '';
+
+    const entities = stats.sample_entities || [];
+    const relations = stats.sample_relations || [];
+
+    if (entities.length === 0) {
+      renderKnowledgeGraphDemo();
+      return;
+    }
+
+    empty.hidden = true;
+    renderSvgNetwork(entities, relations);
+  }
+
+  function renderKnowledgeGraphDemo() {
+    const demoEntities = [
+      { name: 'Acme Corp', category: 'ORGANIZATION', x: 250, y: 230, r: 22 },
+      { name: 'Nova Systems Inc', category: 'ORGANIZATION', x: 420, y: 270, r: 20 },
+      { name: 'Apex Ltd', category: 'ORGANIZATION', x: 180, y: 190, r: 14 },
+      { name: 'Deloitte UK', category: 'ORGANIZATION', x: 380, y: 130, r: 15 },
+      { name: 'Alex Chen', category: 'PERSON', x: 140, y: 280, r: 12 },
+      { name: 'Tranche-A', category: 'CLAUSE', x: 640, y: 260, r: 16 },
+      { name: 'Series-D Covenant', category: 'CLAUSE', x: 570, y: 220, r: 15 },
+      { name: 'EBITDA Floor', category: 'METRIC', x: 740, y: 310, r: 14 },
+      { name: 'AWS-East Cluster', category: 'CONCEPT', x: 320, y: 460, r: 14 },
+      { name: 'SLA §4.1', category: 'CLAUSE', x: 440, y: 440, r: 13 },
+      { name: '99.95% Availability', category: 'METRIC', x: 230, y: 510, r: 12 }
+    ];
+
+    const demoRelations = [
+      { source: 'Acme Corp', target: 'Nova Systems Inc', predicate: 'acquired_by', weight: 0.95 },
+      { source: 'Apex Ltd', target: 'Acme Corp', predicate: 'subsidiary_of', weight: 0.85 },
+      { source: 'Deloitte UK', target: 'Acme Corp', predicate: 'audited_by', weight: 0.70 },
+      { source: 'Alex Chen', target: 'Acme Corp', predicate: 'advises', weight: 0.65 },
+      { source: 'Nova Systems Inc', target: 'Series-D Covenant', predicate: 'covenant_in', weight: 0.90 },
+      { source: 'Series-D Covenant', target: 'Tranche-A', predicate: 'secures', weight: 0.80 },
+      { source: 'Tranche-A', target: 'EBITDA Floor', predicate: 'stipulates', weight: 0.85 },
+      { source: 'Nova Systems Inc', target: 'AWS-East Cluster', predicate: 'deployed_on', weight: 0.75 },
+      { source: 'AWS-East Cluster', target: 'SLA §4.1', predicate: 'governed_by', weight: 0.80 },
+      { source: 'SLA §4.1', target: '99.95% Availability', predicate: 'guarantees', weight: 0.90 }
+    ];
+
+    renderSvgNetwork(demoEntities, demoRelations);
+  }
+
+  function renderSvgNetwork(entities, relations) {
+    const nodesGroup = document.getElementById('kg-nodes');
+    const edgesGroup = document.getElementById('kg-edges');
+    const labelsGroup = document.getElementById('kg-edge-labels');
+    const commGroup = document.getElementById('kg-communities');
+
+    nodesGroup.innerHTML = '';
+    edgesGroup.innerHTML = '';
+    labelsGroup.innerHTML = '';
+    commGroup.innerHTML = '';
+
+    // Render Community clusters
+    commGroup.innerHTML = `
+      <path d="M 120,130 C 240,90 440,110 460,280 C 470,340 340,360 210,340 C 120,320 90,220 120,130 Z" fill="#E8E9E3" stroke="#D9DBD4" stroke-dasharray="4,4" stroke-width="1"></path>
+      <text x="140" y="125" font-family="JetBrains Mono" font-size="9" fill="#5D605B" font-weight="600">COMMUNITY: M&amp;A &amp; CORPORATE</text>
+      <path d="M 510,170 C 650,140 780,180 790,320 C 800,390 670,420 540,380 C 480,350 470,240 510,170 Z" fill="#E8E9E3" stroke="#D9DBD4" stroke-dasharray="4,4" stroke-width="1"></path>
+      <text x="540" y="165" font-family="JetBrains Mono" font-size="9" fill="#5D605B" font-weight="600">COMMUNITY: DEBT &amp; COVENANTS</text>
+    `;
+
+    // Map entity coordinates
+    const entityPos = new Map();
+    const count = entities.length;
+    entities.forEach((e, idx) => {
+      let x = e.x, y = e.y;
+      if (x === undefined || y === undefined) {
+        const angle = (idx / count) * 2 * Math.PI;
+        const radius = 220 + (idx % 3) * 35;
+        x = Math.round(500 + radius * Math.cos(angle));
+        y = Math.round(310 + radius * Math.sin(angle) * 0.7);
+      }
+      entityPos.set(e.name, { x, y, r: e.r || 15, entity: e });
+    });
+
+    // Render Edges
+    relations.forEach(r => {
+      const src = entityPos.get(r.source);
+      const tgt = entityPos.get(r.target);
+      if (!src || !tgt) return;
+
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', src.x);
+      line.setAttribute('y1', src.y);
+      line.setAttribute('x2', tgt.x);
+      line.setAttribute('y2', tgt.y);
+      line.setAttribute('marker-end', 'url(#arrow-neutral)');
+      line.dataset.source = r.source;
+      line.dataset.target = r.target;
+      line.dataset.weight = r.weight || 0.8;
+      edgesGroup.appendChild(line);
+
+      // Edge Label
+      const midX = (src.x + tgt.x) / 2;
+      const midY = (src.y + tgt.y) / 2;
+      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      text.setAttribute('x', midX);
+      text.setAttribute('y', midY - 3);
+      text.textContent = r.predicate || '';
+      labelsGroup.appendChild(text);
+    });
+
+    // Render Nodes
+    entities.forEach(e => {
+      const pos = entityPos.get(e.name);
+      if (!pos) return;
+
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.dataset.name = e.name;
+      g.dataset.type = e.category || 'CONCEPT';
+      g.style.cursor = 'pointer';
+
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('cx', pos.x);
+      circle.setAttribute('cy', pos.y);
+      circle.setAttribute('r', pos.r);
+      circle.setAttribute('fill', '#FFFFFF');
+      circle.setAttribute('stroke', '#B0B3AD');
+      circle.setAttribute('stroke-width', '1.5');
+      g.appendChild(circle);
+
+      // Category color dot in center
+      const dotColor = (e.category === 'ORGANIZATION') ? '#8B4F3B' : (e.category === 'PERSON') ? '#47664B' : (e.category === 'METRIC') ? '#7A591C' : '#5D605B';
+      const innerDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      innerDot.setAttribute('cx', pos.x);
+      innerDot.setAttribute('cy', pos.y);
+      innerDot.setAttribute('r', '4');
+      innerDot.setAttribute('fill', dotColor);
+      g.appendChild(innerDot);
+
+      // Label background & text
+      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      text.setAttribute('x', pos.x);
+      text.setAttribute('y', pos.y + pos.r + 12);
+      text.setAttribute('font-family', 'JetBrains Mono');
+      text.setAttribute('font-size', '9');
+      text.setAttribute('font-weight', '500');
+      text.setAttribute('fill', '#30332F');
+      text.setAttribute('text-anchor', 'middle');
+      text.textContent = e.name;
+      g.appendChild(text);
+
+      g.addEventListener('click', () => openEntityInspector(e, relations));
+      nodesGroup.appendChild(g);
+    });
+  }
+
+  function openEntityInspector(entity, relations) {
+    const inspector = document.getElementById('inspector');
+    const body = document.getElementById('inspectorBody');
+    inspector.hidden = false;
+
+    const connected = (relations || []).filter(r => r.source === entity.name || r.target === entity.name);
+    const relHtml = connected.map(r => `
+      <div class="p-2 border border-surface-container-high rounded bg-surface-container-low text-xs font-mono mb-1.5 flex items-center justify-between">
+        <span>${r.source} <strong>→ ${r.predicate} →</strong> ${r.target}</span>
+        <span class="text-on-surface-variant text-[10px]">wt: ${r.weight || 1.0}</span>
+      </div>
+    `).join('') || '<div class="text-xs text-on-surface-variant">No direct connected relations logged.</div>';
+
+    body.innerHTML = `
+      <div class="flex items-center gap-2 mb-3">
+        <span class="w-3 h-3 rounded-full bg-primary"></span>
+        <span class="font-headline font-bold text-base text-on-surface">${entity.name}</span>
+      </div>
+      <div class="font-mono text-xs text-on-surface-variant uppercase tracking-wider mb-4">TYPE: ${entity.category || 'ENTITY'}</div>
+      <button id="inspector-trace-entity-btn" class="w-full mb-4 px-3 py-2 bg-primary text-on-primary font-label text-xs font-semibold rounded-lg hover:opacity-90 flex items-center justify-center gap-2">
+        <span class="material-symbols-outlined text-[15px]">route</span> Trace Relations for this Entity
+      </button>
+      <div class="border-t border-surface-container-high pt-3 mb-4">
+        <div class="font-label font-semibold text-xs text-on-surface mb-2">Connected Knowledge Graph Relations (${connected.length})</div>
+        ${relHtml}
+      </div>
+      <div class="border-t border-surface-container-high pt-3">
+        <div class="font-label font-semibold text-xs text-on-surface mb-2">Source Provenance</div>
+        <div class="text-xs text-on-surface-variant font-mono">Document: ${entity.doc_id || 'Indexed Document Corpus'}</div>
+        <div class="text-xs text-on-surface-variant font-mono mt-1">Chunk: ${entity.chunk_id || 'Extracted during Ingestion'}</div>
+      </div>
+    `;
+
+    document.getElementById('inspector-trace-entity-btn').addEventListener('click', () => {
+      document.getElementById('kg-query-input').value = `Relations for ${entity.name}`;
+      executeGraphTrace();
+    });
+  }
+
+  // ============================================================
+  // Settings (Phase 18.9)
+  // ============================================================
+  function loadSettings() {
+    // Tab switching
+    document.querySelectorAll('#settings-tab-group button, button[data-tab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        document.querySelectorAll('.settings-tab-btn').forEach(b => {
+          b.classList.remove('bg-surface-container', 'border-l-2', 'border-primary', 'font-semibold', 'text-on-surface');
+          b.classList.add('text-on-surface-variant');
+        });
+        btn.classList.add('bg-surface-container', 'border-l-2', 'border-primary', 'font-semibold', 'text-on-surface');
+        btn.classList.remove('text-on-surface-variant');
+
+        document.querySelectorAll('.settings-pane').forEach(p => p.classList.add('hidden'));
+        const activePane = document.getElementById(`settings-pane-${tab}`);
+        if (activePane) activePane.classList.remove('hidden');
+      });
+    });
+
+    // Paper warmth
+    const warmthSlider = document.getElementById('settings-warmth-slider');
+    const warmthBadge = document.getElementById('settings-warmth-badge');
+    const warmthSwatch = document.getElementById('settings-warmth-swatch');
+
+    function applyWarmth(val) {
+      const r = Math.round(244 + (val / 100) * 9);
+      const g = Math.round(244 + (val / 100) * 5);
+      const b = Math.round(240 - (val / 100) * 0);
+      const col = `rgb(${r}, ${g}, ${b})`;
+      document.body.style.backgroundColor = col;
+      if (warmthSwatch) warmthSwatch.style.backgroundColor = col;
+      if (warmthBadge) {
+        warmthBadge.textContent = val < 30 ? 'Cool Slate' : val > 70 ? 'Sepia Amber' : 'Warm Parchment';
+      }
+      localStorage.setItem('ri_warmth', val);
+    }
+
+    if (warmthSlider) {
+      const savedWarmth = localStorage.getItem('ri_warmth');
+      if (savedWarmth !== null) {
+        warmthSlider.value = savedWarmth;
+        applyWarmth(parseInt(savedWarmth, 10));
+      }
+      warmthSlider.addEventListener('input', (e) => applyWarmth(parseInt(e.target.value, 10)));
+    }
+
+    // Display density
+    document.querySelectorAll('#settings-density-group button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const density = btn.dataset.density;
+        document.querySelectorAll('#settings-density-group button').forEach(b => {
+          b.classList.remove('bg-surface', 'text-on-surface', 'font-medium', 'border', 'border-surface-container-high', 'shadow-xs');
+          b.classList.add('text-on-surface-variant');
+        });
+        btn.classList.add('bg-surface', 'text-on-surface', 'font-medium', 'border', 'border-surface-container-high', 'shadow-xs');
+        btn.classList.remove('text-on-surface-variant');
+        document.body.classList.toggle('compact-mode', density === 'compact');
+        localStorage.setItem('ri_density', density);
+      });
+    });
+    const savedDensity = localStorage.getItem('ri_density');
+    if (savedDensity === 'compact') {
+      document.body.classList.add('compact-mode');
+      const compactBtn = document.querySelector('#settings-density-group button[data-density="compact"]');
+      if (compactBtn) compactBtn.click();
+    }
+
+    // Accessibility toggles
+    const motionToggle = document.getElementById('settings-reduced-motion');
+    if (motionToggle) {
+      const savedMotion = localStorage.getItem('ri_reduced_motion') === 'true';
+      motionToggle.checked = savedMotion;
+      motionToggle.addEventListener('change', (e) => localStorage.setItem('ri_reduced_motion', e.target.checked));
+    }
+
+    const contrastToggle = document.getElementById('settings-high-contrast');
+    if (contrastToggle) {
+      const savedContrast = localStorage.getItem('ri_high_contrast') === 'true';
+      contrastToggle.checked = savedContrast;
+      document.body.classList.toggle('high-contrast-mode', savedContrast);
+      contrastToggle.addEventListener('change', (e) => {
+        document.body.classList.toggle('high-contrast-mode', e.target.checked);
+        localStorage.setItem('ri_high_contrast', e.target.checked);
+      });
+    }
+
+    // Danger zone actions
+    const purgeBtn = document.getElementById('settings-purge-dlq-btn');
+    if (purgeBtn) {
+      purgeBtn.addEventListener('click', async () => {
+        if (confirm('Permanently purge all dead-letter tasks?')) {
+          await fetch('/api/v1/queue/dlq/replay', { method: 'POST' });
+          alert('Dead-letter queue purged.');
+        }
+      });
+    }
+
+    const resetBtn = document.getElementById('settings-reset-all-btn');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => {
+        if (confirm('Are you sure you want to reset all local workspaces and preferences?')) {
+          localStorage.clear();
+          window.location.reload();
+        }
+      });
+    }
+  }
 
   // ============================================================
   // Boot
   // ============================================================
+  updateModeButtons(currentRetrievalMode);
+  updateRouteButtons(currentEmbeddingRoute);
   const initialHash = window.location.hash.replace('#', '').split('/');
   loadSessions();
   loadDocuments();
