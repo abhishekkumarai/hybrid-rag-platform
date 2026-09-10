@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Retrieval Intelligence Workbench</title>
+<title>IRA - Intelligent RAG Assistant</title>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -121,11 +121,11 @@
 <!-- ============ LEFT NAV RAIL ============ -->
 <aside id="navRail" class="flex flex-col justify-between h-screen w-60 py-4 px-3 shrink-0 bg-surface-container-low border-r border-surface-container-high z-30 transition-all duration-200">
   <div>
-    <div class="flex items-center gap-3 px-3 py-2 mb-6 border-b border-surface-container-high pb-4">
-      <div class="w-7 h-7 rounded bg-primary flex items-center justify-center text-on-primary font-mono text-xs font-bold shrink-0">RI</div>
+    <div id="brandHomeBtn" class="flex items-center gap-3 px-3 py-2 mb-6 border-b border-surface-container-high pb-4 cursor-pointer hover:opacity-80 transition" title="Go to Workspaces Home">
+      <div class="w-7 h-7 rounded bg-primary flex items-center justify-center text-on-primary font-mono text-xs font-bold shrink-0">IRA</div>
       <div class="overflow-hidden nav-label">
-        <div class="font-headline font-bold text-on-surface text-sm tracking-tight leading-tight">Workbench</div>
-        <div class="font-mono text-[10px] text-on-surface-variant leading-none mt-0.5">Warm Ink &amp; Ember</div>
+        <div class="font-headline font-bold text-on-surface text-sm tracking-tight leading-tight">IRA</div>
+        <div class="font-mono text-[10px] text-on-surface-variant leading-none mt-0.5 truncate" title="Intelligent RAG Assistant">Intelligent RAG Assistant</div>
       </div>
     </div>
     <nav class="space-y-1" id="navItems">
@@ -153,7 +153,7 @@
   <header class="flex justify-between items-center w-full px-6 h-14 bg-surface border-b border-surface-container-high shrink-0 z-20">
     <div class="flex items-center gap-4 min-w-0">
       <div class="flex items-baseline gap-1.5 shrink-0">
-        <span class="font-headline font-bold tracking-tight text-on-surface text-base">Retrieval Intelligence</span>
+        <span id="headerHomeBtn" class="font-headline font-bold tracking-tight text-on-surface text-base cursor-pointer hover:text-primary transition" title="Go to Workspaces Home">IRA <span class="text-xs font-normal text-on-surface-variant hidden md:inline">(Intelligent RAG Assistant)</span></span>
         <span class="font-mono text-xs text-on-surface-variant">/</span>
         <span class="font-headline font-medium text-xs text-primary cursor-pointer hover:underline" id="breadcrumb" title="Click to view all Workspaces">Workspaces</span>
       </div>
@@ -1066,6 +1066,16 @@
   const breadcrumbBtn = document.getElementById('breadcrumb');
   if (breadcrumbBtn) {
     breadcrumbBtn.addEventListener('click', () => navigate('gallery'));
+  }
+
+  const brandHomeBtn = document.getElementById('brandHomeBtn');
+  if (brandHomeBtn) {
+    brandHomeBtn.addEventListener('click', () => navigate('gallery'));
+  }
+
+  const headerHomeBtn = document.getElementById('headerHomeBtn');
+  if (headerHomeBtn) {
+    headerHomeBtn.addEventListener('click', () => navigate('gallery'));
   }
 
   const backToGalleryBtn = document.getElementById('backToGalleryBtn');
