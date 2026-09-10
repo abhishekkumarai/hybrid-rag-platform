@@ -35,6 +35,8 @@ x-app-base: &app-base
     - ./configs:/app/configs
     - ./services:/app/services
     - ./contracts:/app/contracts
+    - ./components:/app/components
+    - ./tests:/app/tests
     - ./ui:/app/ui
   depends_on:
     qdrant:

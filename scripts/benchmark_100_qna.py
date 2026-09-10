@@ -3,7 +3,11 @@ benchmark_100_qna.py - 100-query RAG benchmark.
 Run: docker exec rag_gateway python scripts/benchmark_100_qna.py
 """
 from __future__ import annotations
-import json, statistics, sys, time
+
+import json
+import statistics
+import sys
+import time
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent

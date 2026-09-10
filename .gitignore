@@ -31,5 +31,6 @@ notebook/
 
 # Editor / OS
 .vscode/
+.claude/
 .DS_Store
 Thumbs.db

@@ -1415,6 +1415,30 @@ def compact_context(req: CompactorRequest) -> CompactedContext:
         prune_tables=req.prune_tables,
     )
 
+# --- Evaluation Endpoints (Popular RAG Metrics) ---
+
+
+@app.get("/api/v1/eval/report")
+def get_evaluation_report() -> dict[str, Any]:
+    """Returns the latest RAG evaluation report with popular industry metrics (RAGAS, TruLens, TREC IR)."""
+    report_file = Path("data/eval_report.json")
+    if report_file.exists():
+        try:
+            return json.loads(report_file.read_text(encoding="utf-8"))
+        except Exception as e:
+            logger.warning(f"Could not read cached eval report: {e}")
+
+    # If no report exists yet, run evaluation harness
+    from tests.eval.eval_harness import run_evaluation
+    return run_evaluation(output_report_path=report_file)
+
+
+@app.post("/api/v1/eval/run")
+def trigger_evaluation_run() -> dict[str, Any]:
+    """Triggers an on-demand evaluation run computing popular metrics across the benchmark corpus."""
+    report_file = Path("data/eval_report.json")
+    from tests.eval.eval_harness import run_evaluation
+    return run_evaluation(output_report_path=report_file)
 
 @app.get("/", response_class=HTMLResponse)
 def index_page() -> str:

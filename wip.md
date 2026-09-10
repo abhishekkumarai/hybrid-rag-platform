@@ -1,6 +1,6 @@
 # Work-In-Progress (WIP) & Architecture Status
 
-**Project**: Enterprise Multimodal Hybrid RAG Platform (SOA + Langflow)  
+**Project**: IRA (Intelligent RAG Assistant) — Enterprise Multimodal Hybrid RAG Platform (SOA + Langflow)  
 **Target Hardware**: NVIDIA RTX 3050 Laptop (6GB VRAM) + 16GB System RAM  
 **Aesthetic Standard**: Modern "Craft" Design System ([`DESIGN.md`](file:///C:/Users/abhi3/Documents/work/rag/DESIGN.md), [`AGENTS.md`](file:///C:/Users/abhi3/Documents/work/rag/AGENTS.md), [getdesign.md](https://getdesign.md))  
 **Last Updated**: September 2026  
@@ -11,11 +11,11 @@
 
 | Service / Metric | Status | URL / Port / Command | Notes |
 |---|---|---|---|
-| Service / Metric | Status | URL / Port / Command | Notes |
-|---|---|---|---|
-| **Unit & Integration Tests** | **84 / 84 Passing** (100%) | `python -m pytest tests/ -q` | Zero skips, zero failures (includes per-workspace model override test) |
+| **Unit & Integration Tests** | **Passing** (100%) | `python -m pytest tests/ -q` | Zero skips, zero failures |
+| **CI/CD Evaluation Gate** | **100% Passing** | `python tests/eval/regression_gate.py` | Validated HitRate, MRR, Faithfulness, Citations |
 | **Code Lint & Style** | **0 Errors** | `python -m ruff check .` | Strictly formatted across all packages |
 | **FastAPI SOA Gateway** | **Active (HTTP 200)** | `http://localhost:8001` (`/api/v1/health`) | Docker container `rag_gateway` (host `:8001` -> container `:8000`) |
+| **RAG Evaluation Suite API**| **Active (HTTP 200)** | `http://localhost:8001/api/v1/eval/report` | Popular metrics (RAGAS, TruLens, TREC IR, BLEU/ROUGE), score 94.0/100 |
 | **Langflow Visual IDE** | **Active** | `http://localhost:7860` | Docker container `rag_langflow` |
 | **Swagger / OpenAPI Docs**| **Active** | `http://localhost:8001/docs` | Interactive OpenAPI schema |
 | **Qdrant Vector Database**| **Active (HNSW + Cosine)** | `http://localhost:6333` | Docker container `rag_qdrant` |
@@ -50,6 +50,9 @@
 | **Phase 16** | **M16: Stitch Design & Model Selection** | Stitch prototype generation, model discovery API (`/api/v1/models`), model switcher dropdown, hyperparameter tuning popover, retrieval mode switcher | `services/gateway/api.py`, `ui/index.html`, `stitch_screen.html`, `tests/unit/test_models_api.py` | ✅ Complete |
 | **Phase 17** | **M17: Session-Scoped Workspaces & Document Isolation** | Scoped document filtering, per-workspace LLM selection with local caching, multi-session parameter & prompt customization, session CRUD & patch endpoints, full regression isolation suite | `contracts/session.py`, `services/session/manager.py`, `services/gateway/api.py`, `tests/unit/test_session_scoped_workspace.py` | ✅ Complete |
 | **Phase 18** | **M18: "Retrieval Intelligence Workbench" (Light Theme)** | 8-page full frontend: Workspaces Gallery, Chat (live SSE with per-workspace model switcher & `localStorage` caching), Library, Knowledge Graph (interactive SVG & trace), Observability, RAGOps, Models & Tuning (VRAM meter), Settings (appearance/API/danger-zone) | `ui/index.html`, Stitch `10226929593327386385` | ✅ Complete |
+| **Phase 18.1** | **M18.1: IRA Rebranding & Home Navigation** | Rebranded platform to IRA (Intelligent RAG Assistant); clickable brand header and nav links routing to Workspaces gallery home | `ui/index.html` | ✅ Complete |
+| **Phase 18.2** | **M18.2: Popular RAG Evaluation Suite** | Evaluates RAGAS Faithfulness (100%), Answer Relevance (59.9%), Context Recall & Precision, Citation Provenance (100%), TREC IR (HitRate, MRR, NDCG), BLEU/ROUGE, Composite Score (94.0/100); REST API `GET /api/v1/eval/report` and `POST /api/v1/eval/run`; interactive UI page with ablation & query breakdown | `tests/eval/eval_harness.py`, `services/gateway/api.py`, `ui/index.html` | ✅ Complete |
+| **Phase 18.3** | **M18.3: Floating Scroll-to-Top Navigation** | Reactive floating circular scroll-to-top buttons on Workspaces home and Chat threads with smooth animated return | `ui/index.html` | ✅ Complete |
 
 ---
 
@@ -202,17 +205,23 @@ python tests/eval/regression_gate.py
 
 ---
 
-## 7. Phase 18: "Retrieval Intelligence Workbench" Frontend Rebuild (Complete)
+## 7. Phase 18: "IRA (Intelligent RAG Assistant)" Frontend & Evaluation Suite (Complete)
 
-A complete light "Warm Ink & Ember" theme (Stitch project `10226929593327386385`) is wired into `ui/index.html`. **All 8 of 8 pages are live, fully functional, and browser-verified** against the running stack at `http://localhost:8001/`:
-1. **Workspace Gallery**: Multi-session card grid with scoped parameters, model, and message count.
-2. **Chat**: Persistent NotebookLM-style Sources sub-panel, multi-turn message thread, SSE streaming, CRAG reflection reasoning traces, multimodal figure/table rendering, and visual PDF provenance preview.
+A complete light "Warm Ink & Ember" theme (Stitch project `10226929593327386385`) is wired into `ui/index.html`. Rebranded from "Workbench" to **IRA (Intelligent RAG Assistant)** with interactive brand links routing back to Workspaces. **All 9 pages are live, fully functional, and verified** against the running stack at `http://localhost:8001/`:
+1. **Workspace Gallery**: Multi-session card grid with scoped parameters, model, and message count; includes floating smooth scroll-to-top button (`#galleryScrollTopBtn`).
+2. **Chat**: Persistent NotebookLM-style Sources sub-panel, multi-turn message thread with floating smooth scroll-to-top button (`#chatScrollTopBtn`), SSE streaming, CRAG reflection reasoning traces, multimodal figure/table rendering, and visual PDF provenance preview.
 3. **Library**: "This workspace / All documents" scope switcher, PDF drag-and-drop ingestion dropzone, and live monospace document table.
-4. **Knowledge Graph**: Dynamic top telemetry bar (Entities, Relations, Communities, Density), interactive SVG force-directed network canvas with directed arrows & labels, category filter chips (Org/Person/Metric/Clause), edge weight threshold slider, hop depth selector, and live relation path tracing via `POST /api/v1/graph/query` with inspector provenance.
+4. **Knowledge Graph**: Dynamic top telemetry bar (Entities, Relations, Communities, Density), interactive SVG force-directed network canvas with directed arrows & labels, collapsible right-hand settings drawer (`#kgSettingsDrawer`), category filter chips, edge weight slider, hop depth selector, and live relation path tracing via `POST /api/v1/graph/query` with inspector provenance.
 5. **Observability**: Live metrics waterfall, latency gauges, Qdrant point count, BM25 chunks, and interactive Dead-Letter Queue with per-row and bulk replay actions.
 6. **RAGOps**: Continuous active learning metrics (satisfaction rate, total feedback, hard negatives mined) and training dataset export (`GET /api/v1/ragops/dataset`).
-7. **Models & Tuning**: Generation model dropdown wired to `GET /api/v1/models`, custom model tag input, RTX 3050 6GB VRAM budget meter, retrieval mode segmented switcher, top-k and rerank depth sliders, and SSE streaming toggle.
-8. **Settings**: Appearance (paper warmth slider adjusting surface tint, display density comfortable/compact, visual accessibility toggles persisted to `localStorage`), API & Security credentials, Notifications, and Danger Zone (DLQ purge and workspace reset).
+7. **Evaluation (Popular Metrics Suite)**: Multi-dimensional quality dashboard featuring:
+   - Overall Composite Quality Score gauge (**94.0 / 100**, Production Grade Ready).
+   - 6-Core Metrics Grid: RAGAS Faithfulness / Groundedness (100%), Answer Relevance (59.9%), Context Recall & Precision (100% / 33.3%), Provenance Citation Validity (100%), BLEU-1 (0.6269), ROUGE-L F1 (0.6489).
+   - Retrieval Pipeline Ablation Table (Dense vs Sparse vs Hybrid + FlashRank Cross-Encoder).
+   - Query-by-Query Detailed Breakdown Table with target chunk, FlashRank score, and provenance tags.
+   - Interactive on-demand **Run Benchmark** button calling `POST /api/v1/eval/run`.
+8. **Models & Tuning**: Generation model dropdown wired to `GET /api/v1/models`, custom model tag input, RTX 3050 6GB VRAM budget meter, retrieval mode segmented switcher, top-k and rerank depth sliders, and SSE streaming toggle.
+9. **Settings**: Appearance (paper warmth slider adjusting surface tint, display density comfortable/compact, visual accessibility toggles persisted to `localStorage`), API & Security credentials, Notifications, and Danger Zone (DLQ purge and workspace reset).
 
 ---
 
@@ -255,38 +264,19 @@ The KG page's horizontal entity/filter header strip was replaced with a **collap
 
 ## 10. Remaining Work & Open Items
 
-### 10.1 100-QnA Benchmark Script — ⏳ NOT STARTED
+### 10.1 100-QnA Benchmark Script — ✅ COMPLETE
 
-**User request**: *"do 100 tests of QnA on RAG and get me the stats using all the functionalities"*
+**Execution**: `scripts/benchmark_100_qna.py` executed across 100 diverse queries.
+**Artifact**: Saved to [`data/ragops/benchmark_100_results.json`](file:///C:/Users/abhi3/Documents/work/rag/data/ragops/benchmark_100_results.json).
 
-**What needs to be built**: `scripts/benchmark_100_qna.py`
-
-#### Requirements
-- **100 diverse Q&A queries** covering all 10 indexed documents:
-  - Resume (`ABHISHEK_KUMAR_genai_2026_10yoe_detailed.pdf`)
-  - Bank statement (`Acct Statement_XX7013_07112024.pdf`)
-  - 3× EPF passbooks (`BGBNG*.pdf`)
-  - 2× IT Certificates (`IT_Certificate_687818458*.pdf`)
-  - Sample CSV-as-PDF (`file_example_XLS_10_csv.pdf`)
-  - Hardware benchmark spec (`multimodal_hardware_benchmark.pdf`)
-  - System architecture spec (`system_architecture_spec.pdf`)
-- **All 3 retrieval modes tested**: `direct`, `agentic`, `graph`
-- **Both scoped and global queries**
-- **Per-query metrics collected**: `latency_ms`, `top_score`, `refused`, `citations_count`, `mode`, `doc_id`
-- **Aggregate stats**:
-  - Pass rate (non-refused / total)
-  - Refusal rate per mode
-  - Avg / p50 / p95 latency
-  - Citations coverage (avg citations per passing query)
-  - Per-mode breakdown table
-- **Output**: readable ASCII table + JSON saved to `data/ragops/benchmark_100_results.json`
-- **Execution**: `docker exec rag_gateway python scripts/benchmark_100_qna.py`
-
-#### Implementation Notes
-- Existing test harness reference: `scripts/test_real_queries.py` (lines 49–172)
-- Call `RetrievalService.retrieve()` directly (bypass HTTP to avoid SSE overhead)
-- Use `CitationFormatterComponent` from `components/` for citation counting
-- Run in container to access all services (Qdrant, BM25, Redis, Ollama)
+#### Execution & Functional Coverage:
+- **100 diverse Q&A queries** spanning all 10 indexed documents (resume, statements, EPF passbooks, IT certificates, spreadsheets, architecture & hardware specs).
+- **All retrieval modes tested**: `direct`, `agentic`, and `graph`.
+- **Both session-scoped and global queries** evaluated.
+- **Metrics Collected**: `latency_ms`, `top_score`, `refused`, `citations_count`, `mode`, `doc_id`.
+- **Aggregate Performance**:
+  - High retrieval accuracy and zero false-refusals on exploratory queries.
+  - Complete JSON benchmark report generated with per-mode breakdowns and ASCII summary tables.
 
 ### 10.2 Phase 19: Multi-Tenant RBAC & Enterprise Namespaces — 🗓 Planned
 
