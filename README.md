@@ -95,6 +95,9 @@ All inter-service payloads are Pydantic models under `contracts/` — no service
 
 - PostgreSQL 16, host-installed (not a Docker service — see below), only needed for Langflow flow and chat
   persistence. Create a `rag_db` database and set `POSTGRES_PASSWORD` in `.env` to match.
+- Optional: to use Langflow's built-in **Knowledge Bases** feature with its Postgres DB provider, also
+  create a `langflow_vectors` database with the `vector` (pgvector) extension enabled, and set
+  `PGVECTOR_CONNECTION_STRING` for the `langflow` service in `docker-compose.yml` — see Troubleshooting.
 
 ## Quick start
 
@@ -131,7 +134,8 @@ docker compose exec ollama ollama pull llama3.1:8b
 | `ollama` | 11434 | Opt-in, `local-llm` profile only |
 
 Host-installed, not compose services: **PostgreSQL** (`127.0.0.1:5432`, database `rag_db` — Langflow flow
-and chat persistence) and, by default, **Ollama** (`127.0.0.1:11434`).
+and chat persistence; optionally also `langflow_vectors` — Langflow's Knowledge Bases Postgres DB provider,
+see Troubleshooting) and, by default, **Ollama** (`127.0.0.1:11434`).
 
 ### Running locally instead
 
@@ -218,6 +222,26 @@ SSRF allowlist on outbound component requests; `docker-compose.yml`'s `langflow`
 `LANGFLOW_SSRF_ALLOWED_HOSTS=host.docker.internal,localhost,127.0.0.1` so that host is permitted. If you
 change the Base URL in an already-running Langflow UI (rather than re-importing the flow JSON), update it
 there directly — the JSON only takes effect on import.
+
+**Langflow Knowledge Bases → `PostgresBackend needs the 'PGVECTOR_CONNECTION_STRING' environment
+variable...`.** This is Langflow's own Settings → DB Providers → Postgres backend for its built-in
+Knowledge Bases feature — unrelated to `LANGFLOW_DATABASE_URL` (Langflow's app metadata) and unrelated to
+this project's own Qdrant + BM25s retrieval stack. To enable it:
+
+1. Create a dedicated database and point `docker-compose.yml`'s `langflow` service at it via
+   `PGVECTOR_CONNECTION_STRING: postgresql+psycopg://postgres:${POSTGRES_PASSWORD}@host.docker.internal:5432/langflow_vectors`
+   (must use the `postgresql+psycopg://` driver prefix, not plain `postgresql://`).
+2. The published `langflowai/langflow` image doesn't bundle the `pgvector` Python package (only
+   `psycopg`/`langchain-community`, which cover `LANGFLOW_DATABASE_URL` but not this backend) —
+   `docker/langflow.Dockerfile` layers it on (`pip install pgvector`); the `langflow` service builds
+   that instead of pulling the bare image.
+3. Enable the `vector` extension on that database: `CREATE EXTENSION vector;` as a Postgres superuser
+   (Langflow checks for it but never installs it itself). On Linux this is a package install
+   (`postgresql-16-pgvector` or similar); on Windows there's no official build — either compile from
+   source with Visual Studio, or use a third-party prebuilt binary such as
+   `andreiramani/pgvector_pgsql_windows` (verify its checksum before use), which means stopping the
+   Postgres service, copying its `lib\vector.dll` and `share\extension\vector*` files into the
+   PostgreSQL install directory, and restarting the service.
 
 ## Notes
 

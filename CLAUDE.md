@@ -115,6 +115,36 @@ correct system-wide, and mirrored in the gitignored `.env` for compose). Langflo
 consumer of Postgres (its own schema/migrations; confirmed working against `rag_db`) — the app services
 (gateway/worker/scheduler) load `storage.postgres_url` but nothing calls it today.
 
+**Langflow's Knowledge Bases Postgres DB provider** (added 2026-09-15) is a second, separate use of the
+same host Postgres instance — unrelated to `LANGFLOW_DATABASE_URL` above (Langflow's own app metadata).
+Langflow's Settings > DB Providers > Postgres backend (`PostgresBackend` in `lfx.base.knowledge_bases.backends.postgres`)
+is configured by one deployment-wide env var, `PGVECTOR_CONNECTION_STRING`
+(`docker-compose.yml`'s `langflow` service), pointed at its own database, `langflow_vectors`, kept
+separate from `rag_db` so KB embedding tables never collide with the app's own data. Connection string
+must use the `postgresql+psycopg://` driver prefix (psycopg3), not plain `postgresql://`.
+
+Two things had to be fixed beyond the env var, both now resolved:
+- **`pgvector` Python package missing from the Langflow image.** `langflowai/langflow:latest` ships
+  `psycopg`/`langchain-community` (for `LANGFLOW_DATABASE_URL`) but not the `pgvector` package that
+  `PostgresBackend` imports from `pgvector.sqlalchemy` — it's behind the opt-in `langflow[pgvector]`
+  extra, which no published image tag includes. Fixed by `docker/langflow.Dockerfile`
+  (`FROM langflowai/langflow:latest` + `pip install pgvector>=0.4.2`), with `docker-compose.yml`'s
+  `langflow` service building that instead of pulling the bare image.
+- **`vector` extension missing from this host's native Windows PostgreSQL 16.** Unlike Linux
+  (apt/yum packages), Windows has no official pgvector build. Installed via the third-party prebuilt
+  binary `andreiramani/pgvector_pgsql_windows` (release `0.8.6_16`, sha256 verified against GitHub's
+  reported digest before use) — stopped the `postgresql-x64-16` service, copied `lib\vector.dll` +
+  `share\extension\vector*` into `C:\Program Files\PostgreSQL\16\`, restarted the service, then ran
+  `CREATE EXTENSION vector;` on `langflow_vectors` (now `pgvector 0.8.6`). This touches a Postgres
+  instance shared with unrelated local projects, so it was done deliberately (required an elevated
+  terminal), not as a side effect of other work — the same steps would need repeating if this
+  Postgres install is ever reinstalled/upgraded to a new major version.
+
+Verified end-to-end 2026-09-15 via `PostgresBackend(...).test_connection()` inside the `rag_langflow`
+container → `ok=True, message="Connected to Postgres 16.6 (pgvector 0.8.6)."`. The existing Qdrant +
+BM25s retrieval stack this project actually serves is unaffected either way — this DB provider only
+feeds Langflow's own built-in Knowledge Bases feature, not `services/retrieval`.
+
 ## Gotchas
 
 - **CWD-dependent paths.** `services/graph/store.py`, `services/feedback/store.py` and

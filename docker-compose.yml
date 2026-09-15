@@ -134,7 +134,10 @@ services:
     command: ["python", "-m", "services.scheduler.reconciler"]
 
   langflow:
-    image: langflowai/langflow:latest
+    build:
+      context: .
+      dockerfile: docker/langflow.Dockerfile
+    image: hybrid-rag-langflow:local
     container_name: rag_langflow
     restart: unless-stopped
     ports:
@@ -145,6 +148,14 @@ services:
       LANGFLOW_SUPERUSER_PASSWORD: ${LANGFLOW_SUPERUSER_PASSWORD:-admin}
       LANGFLOW_COMPONENTS_PATH: /app/components
       LANGFLOW_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD to your local Postgres password (already exported system-wide on this host)}@host.docker.internal:5432/rag_db
+      # Deployment-level DB provider for Langflow's Knowledge Bases feature (Settings > DB
+      # Providers > Postgres) — a single env var read directly by PostgresBackend, distinct from
+      # LANGFLOW_DATABASE_URL above (Langflow's own app metadata). Uses its own database,
+      # `langflow_vectors`, on the same host Postgres instance, kept separate from `rag_db` so KB
+      # embedding tables never collide with the app's own data. The `vector` extension must be
+      # enabled on `langflow_vectors` by a superuser (`CREATE EXTENSION vector;`) before a
+      # Postgres-backend Knowledge Base can be created — Langflow verifies it but never installs it.
+      PGVECTOR_CONNECTION_STRING: postgresql+psycopg://postgres:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD to your local Postgres password (already exported system-wide on this host)}@host.docker.internal:5432/langflow_vectors
       # The Ollama model component in the flow reaches the host's Ollama via host.docker.internal
       # (localhost/127.0.0.1 inside this container means the container itself, not the host).
       # Langflow's built-in SSRF guard blocks outbound requests to hosts not on this allowlist.
