@@ -5,17 +5,26 @@
 #
 # By default the app services reach Ollama on the host via host.docker.internal, which keeps an
 # existing GPU-accelerated Ollama install working untouched. See OLLAMA_BASE_URL below.
+#
+# Postgres is NOT containerized here — this host already runs a native PostgreSQL 16 service on
+# 5432 (used by other local projects too), so app services and Langflow reach it via
+# host.docker.internal:5432 / database `rag_db`, same as Ollama above. POSTGRES_DB/POSTGRES_USER
+# are pinned (not ${VAR:-default}) rather than read from the shell: this host also exports
+# POSTGRES_DB/POSTGRES_USER for an unrelated project, and letting compose substitution pick those
+# up here previously created a stray, wrongly-named database inside the (now-removed) postgres
+# container. POSTGRES_PASSWORD still comes from the shell env, which already holds the correct
+# local Postgres password.
 
 x-app-env: &app-env
   QDRANT_HOST: qdrant
   QDRANT_PORT: 6333
   REDIS_HOST: redis
   REDIS_PORT: 6379
-  POSTGRES_HOST: postgres
+  POSTGRES_HOST: host.docker.internal
   POSTGRES_PORT: 5432
-  POSTGRES_DB: ${POSTGRES_DB:-rag}
-  POSTGRES_USER: ${POSTGRES_USER:-postgres}
-  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+  POSTGRES_DB: rag_db
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD to your local Postgres password (already exported system-wide on this host)}
   OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
   RAG_PROFILE: ${RAG_PROFILE:-quality}
   PYTHONPATH: /app
@@ -76,26 +85,6 @@ services:
       timeout: 3s
       retries: 5
 
-  postgres:
-    image: postgres:16-alpine
-    container_name: rag_postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-rag}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-    # Published on 5433 by default: this project's host already runs a PostgreSQL on 5432,
-    # and binding it here would collide. Containers reach it as postgres:5432 regardless.
-    ports:
-      - "${POSTGRES_HOST_PORT:-5433}:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
   # Opt-in: `docker compose --profile local-llm up -d`.
   # Requires NVIDIA Container Toolkit; on Windows that means running Docker under WSL2.
   # Models are stored in the ollama_models volume and must be pulled into it, e.g.
@@ -155,15 +144,17 @@ services:
       LANGFLOW_SUPERUSER: ${LANGFLOW_SUPERUSER:-admin}
       LANGFLOW_SUPERUSER_PASSWORD: ${LANGFLOW_SUPERUSER_PASSWORD:-admin}
       LANGFLOW_COMPONENTS_PATH: /app/components
-      LANGFLOW_DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-rag}
+      LANGFLOW_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD to your local Postgres password (already exported system-wide on this host)}@host.docker.internal:5432/rag_db
+      # The Ollama model component in the flow reaches the host's Ollama via host.docker.internal
+      # (localhost/127.0.0.1 inside this container means the container itself, not the host).
+      # Langflow's built-in SSRF guard blocks outbound requests to hosts not on this allowlist.
+      LANGFLOW_SSRF_ALLOWED_HOSTS: host.docker.internal,localhost,127.0.0.1
     volumes:
       - ./components:/app/components
       - ./flows:/app/flows
       - ./data/langflow_data:/root/.langflow
-    depends_on:
-      postgres:
-        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
-  postgres_data:
   ollama_models:

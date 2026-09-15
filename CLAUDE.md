@@ -17,11 +17,16 @@ make services-up / services-down        # full docker stack up/down
 make scheduler / worker                 # reconciler and Redis queue daemons
 ```
 
-Docker: `docker-compose.yml` defines the entire stack — `qdrant`, `redis`, `postgres`, `gateway`,
-`worker`, `scheduler`, `langflow`, plus an opt-in `ollama` behind the `local-llm` profile. `gateway`,
-`worker` and `scheduler` share one image built from `Dockerfile` and differ only in their `command`.
-`docker compose up -d --build` runs everything; `docker compose up -d qdrant redis postgres` gives just
-the infrastructure for a local `make serve`.
+Docker: `docker-compose.yml` defines `qdrant`, `redis`, `gateway`, `worker`, `scheduler`, `langflow`, plus
+an opt-in `ollama` behind the `local-llm` profile — **not** `postgres`; see Configuration below, Postgres
+is host-installed, not a compose service. `gateway`, `worker` and `scheduler` share one image built from
+`Dockerfile` and differ only in their `command`. `docker compose up -d --build` runs everything;
+`docker compose up -d qdrant redis` gives just the infrastructure for a local `make serve`.
+`GATEWAY_HOST_PORT` in `.env` controls the host-side port for the dockerized gateway (defaults to 8001 in
+`docker-compose.yml`, but is overridden to `8010` in this machine's `.env` — 8001 and 8000 both collide
+with unrelated local projects here, one a Docker container, the other a native, non-Docker Django dev
+server). `make serve`/`run.ps1 serve` (the native, non-Docker path) still hardcode port 8000 regardless —
+that will also collide with the same native Django server if both run at once on this machine.
 
 ```powershell
 .\run.ps1 serve                         # PowerShell equivalents
@@ -91,9 +96,24 @@ VRAM-resident). Add new tunables to the YAML plus the matching Pydantic model in
 `services/common/config.py` — nothing reads settings from the environment directly.
 
 Env overrides are opt-in per key and enumerated explicitly at the bottom of `load_config()`:
-`POSTGRES_{HOST,PORT,DB,USER,PASSWORD}`, `QDRANT_{HOST,PORT}`, `REDIS_{HOST,PORT}`, `OLLAMA_BASE_URL`.
+`POSTGRES_{HOST,PORT,DB,USER,PASSWORD}`, `QDRANT_{HOST,PORT}`, `REDIS_{HOST,PORT}`,
+`NEO4J_{URI,USER,PASSWORD,DATABASE}`, `OLLAMA_BASE_URL`.
 **Adding a setting that must work in Docker means adding its override there too** — the YAML defaults are
 all `127.0.0.1`, which is wrong inside a container, and compose supplies service names through these vars.
+`docker-compose.yml` still defines no `neo4j` service — the override now exists so one can be pointed at
+(local or external), but until it is, `neo4j_uri` stays `bolt://127.0.0.1:7687` inside a container (its own
+loopback), which fails and falls back to a per-process, non-persistent in-memory graph (see Gotchas).
+
+**Postgres is host-installed, not a `docker-compose` service** (migrated 2026-09-15). This machine already
+runs a native PostgreSQL 16 service on `127.0.0.1:5432` (shared with unrelated local projects), database
+`rag_db`. `docker-compose.yml`'s `x-app-env` pins `POSTGRES_HOST=host.docker.internal`,
+`POSTGRES_DB=rag_db`, `POSTGRES_USER=postgres` directly (not `${VAR:-default}`) rather than reading them
+from the shell, because this host also exports `POSTGRES_DB`/`POSTGRES_USER` system-wide for a different
+project — letting compose substitution pick those up previously created a stray, wrongly-named database
+inside the old `postgres` container. Only `POSTGRES_PASSWORD` is still read from the environment (already
+correct system-wide, and mirrored in the gitignored `.env` for compose). Langflow is the only current
+consumer of Postgres (its own schema/migrations; confirmed working against `rag_db`) — the app services
+(gateway/worker/scheduler) load `storage.postgres_url` but nothing calls it today.
 
 ## Gotchas
 

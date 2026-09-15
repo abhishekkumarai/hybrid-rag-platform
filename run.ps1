@@ -27,7 +27,7 @@ function Show-Help {
     Write-Host "  demo           - Run end-to-end pipeline test against Ollama & Qdrant"
     Write-Host "  test           - Run all pytest unit & integration tests"
     Write-Host "  check          - Run ruff linter and full pytest suite"
-    Write-Host "  services-up    - Start infrastructure only (Qdrant, Redis, PostgreSQL)"
+    Write-Host "  services-up    - Start infrastructure only (Qdrant, Redis)"
     Write-Host "  services-down  - Stop all Docker containers"
     Write-Host "  stack-up       - Build and start the entire stack (infra + gateway + worker + scheduler)"
     Write-Host "  stack-down     - Stop the entire stack"
@@ -69,8 +69,8 @@ switch ($Target.ToLower()) {
         python -m pytest tests -v
     }
     "services-up" {
-        Write-Host "Starting infrastructure (Qdrant, Redis, PostgreSQL)..." -ForegroundColor Green
-        docker compose up -d qdrant redis postgres
+        Write-Host "Starting infrastructure (Qdrant, Redis)... Postgres is host-installed, not dockerized." -ForegroundColor Green
+        docker compose up -d qdrant redis
     }
     "services-down" {
         Write-Host "Stopping Docker containers..." -ForegroundColor Green

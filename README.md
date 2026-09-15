@@ -93,22 +93,26 @@ All inter-service payloads are Pydantic models under `contracts/` — no service
   ollama pull bge-m3          # embeddings
   ```
 
-- PostgreSQL (only needed for Langflow flow and chat persistence)
+- PostgreSQL 16, host-installed (not a Docker service — see below), only needed for Langflow flow and chat
+  persistence. Create a `rag_db` database and set `POSTGRES_PASSWORD` in `.env` to match.
 
 ## Quick start
 
 ### Everything in Docker
 
-The whole stack — Qdrant, Redis, PostgreSQL, the gateway, the ingestion worker, the directory
-reconciler, and Langflow — is defined in `docker-compose.yml`:
+The whole stack — Qdrant, Redis, the gateway, the ingestion worker, the directory reconciler, and Langflow —
+is defined in `docker-compose.yml`:
 
 ```bash
 cp .env.example .env          # optional: override ports, credentials, profile
 docker compose up -d --build  # gateway :8000, Langflow :7860
 ```
 
-Ollama stays on the host by default, so an existing GPU-accelerated install keeps working — the app
-containers reach it at `host.docker.internal:11434`. To run it as a container instead (requires the NVIDIA
+Ollama and PostgreSQL both stay on the host by default rather than running as containers, so an existing
+GPU-accelerated Ollama install and this machine's native Postgres keep working untouched — the app
+containers and Langflow reach them at `host.docker.internal:11434` and `host.docker.internal:5432`
+respectively. `extra_hosts: host.docker.internal:host-gateway` in `docker-compose.yml` is what makes that
+hostname resolve from inside the containers. To run Ollama as a container instead (requires the NVIDIA
 Container Toolkit, meaning Docker under WSL2 on Windows):
 
 ```bash
@@ -123,15 +127,17 @@ docker compose exec ollama ollama pull llama3.1:8b
 | `scheduler` | — | `data/documents/` reconciler |
 | `qdrant` | 6333 | Dense vector store |
 | `redis` | 6379 | Ingestion queue and DLQ |
-| `postgres` | 5432 | Langflow flow and chat persistence |
 | `langflow` | 7860 | Visual node canvas |
 | `ollama` | 11434 | Opt-in, `local-llm` profile only |
+
+Host-installed, not compose services: **PostgreSQL** (`127.0.0.1:5432`, database `rag_db` — Langflow flow
+and chat persistence) and, by default, **Ollama** (`127.0.0.1:11434`).
 
 ### Running locally instead
 
 ```bash
 uv sync                       # or: pip install -e ".[parse,dev]"
-docker compose up -d qdrant redis postgres
+docker compose up -d qdrant redis   # Postgres and Ollama are host-installed, not dockerized
 make serve                    # http://localhost:8000
 ```
 
@@ -199,6 +205,19 @@ measurable rather than assumed.
 
 Every service logs through `services/common/logger.py` to both colored console output and rotating
 per-service files in `logs/` — routing decisions, chunk counts, RRF and rerank scores, and stage latencies.
+
+## Troubleshooting
+
+**Langflow → host Ollama: `Access to IP address 0.0.0.0 is blocked by SSRF protection`.** Langflow runs in
+its own container, so inside it `localhost`/`127.0.0.1` refer to the Langflow container itself, not your
+host — an `OllamaModel` component pointed at `http://localhost:11434` (or a value that resolves to
+`0.0.0.0`) can never reach a host-installed Ollama. Point the component's **Base URL** at
+`http://host.docker.internal:11434` instead (this is what `flows/hybrid_rag_flow.json` ships with, and what
+`OLLAMA_BASE_URL` defaults to for the gateway/worker/scheduler containers). Langflow also enforces its own
+SSRF allowlist on outbound component requests; `docker-compose.yml`'s `langflow` service sets
+`LANGFLOW_SSRF_ALLOWED_HOSTS=host.docker.internal,localhost,127.0.0.1` so that host is permitted. If you
+change the Base URL in an already-running Langflow UI (rather than re-importing the flow JSON), update it
+there directly — the JSON only takes effect on import.
 
 ## Notes
 

@@ -9,7 +9,7 @@ hardware:
 storage:
   postgres_host: "127.0.0.1"
   postgres_port: 5432
-  postgres_db: "postgres"
+  postgres_db: "rag_db"
   postgres_user: "postgres"
   qdrant_host: "127.0.0.1"
   qdrant_port: 6333
