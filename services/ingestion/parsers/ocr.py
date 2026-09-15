@@ -17,9 +17,23 @@ class OCRParser:
     """Extracts text from scanned pages using OCR."""
 
     def __init__(self) -> None:
+        # PyMuPDF's OCR uses MuPDF's own bundled Tesseract integration (not a subprocess call to
+        # the `tesseract` binary), and takes the language-data directory via `tessdata=`, not the
+        # executable path. TESSERACT_CMD (a path to tesseract.exe) previously wasn't wired to
+        # anything: `set_small_glyph_heights` is unrelated. Derive the sibling `tessdata` dir from
+        # it, matching a standard Tesseract install layout.
+        self.tessdata_dir: str | None = None
         tesseract_cmd = os.environ.get("TESSERACT_CMD")
         if tesseract_cmd and Path(tesseract_cmd).exists():
             fitz.TOOLS.set_small_glyph_heights(False)
+            candidate_tessdata = Path(tesseract_cmd).parent / "tessdata"
+            if candidate_tessdata.is_dir():
+                self.tessdata_dir = str(candidate_tessdata)
+            else:
+                logger.warning(
+                    f"TESSERACT_CMD is set but no 'tessdata' directory found next to it "
+                    f"({candidate_tessdata}); OCR will rely on MuPDF's bundled/default tessdata."
+                )
 
     def parse(self, file_path: str, doc_id: str) -> list[Block]:
         path = Path(file_path)
@@ -35,7 +49,10 @@ class OCRParser:
 
             # Try PyMuPDF native OCR textpage
             try:
-                textpage = page.get_textpage_ocr(language="eng", dpi=150)
+                ocr_kwargs = {"language": "eng", "dpi": 150}
+                if self.tessdata_dir:
+                    ocr_kwargs["tessdata"] = self.tessdata_dir
+                textpage = page.get_textpage_ocr(**ocr_kwargs)
                 ocr_blocks = textpage.extractBLOCKS()
                 for b in ocr_blocks:
                     x0, y0, x1, y1, text, _, b_type = b

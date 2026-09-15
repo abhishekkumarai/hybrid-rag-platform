@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import shutil
 import time
@@ -9,7 +10,7 @@ from pathlib import Path
 from typing import Any, AsyncGenerator
 
 import requests
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
@@ -100,6 +101,32 @@ def get_services() -> tuple[IngestionService, IndexingService, RetrievalService]
     return _ingestion_service, _indexing_service, _retrieval_service
 
 
+STORE_RELOAD_INTERVAL_SECONDS = 60
+
+
+async def _periodic_store_reload() -> None:
+    """Keeps this process's in-memory BM25/graph stores in sync with documents indexed by the
+    separate scheduler/worker processes, which construct their own `IndexingService` (and thus
+    their own BM25Store/GraphStore instances) and have no way to update this process's memory
+    directly. Both stores persist to disk on every write, so periodically re-reading that disk
+    state is the cross-process sync mechanism. Qdrant needs no equivalent — it's an external
+    service, not in-process state."""
+    while True:
+        await asyncio.sleep(STORE_RELOAD_INTERVAL_SECONDS)
+        if _indexing_service is None:
+            continue
+        try:
+            _indexing_service.bm25.reload()
+            _indexing_service.graph.load_from_disk()
+        except Exception as exc:
+            logger.warning(f"Periodic BM25/graph store reload failed: {exc}")
+
+
+@app.on_event("startup")
+async def _start_background_tasks() -> None:
+    asyncio.create_task(_periodic_store_reload())
+
+
 def get_agentic_coordinator() -> AgenticCoordinator:
     global _agentic_coordinator
     if _agentic_coordinator is None:
@@ -121,11 +148,14 @@ class GraphExtractRequest(BaseModel):
 class ChatRequest(BaseModel):
     query: str = Field(min_length=1, description="User question")
     session_id: str | None = Field(default=None, description="Active chat session ID for multi-turn conversational memory")
-    top_k: int = Field(default=20, ge=1, le=100)
-    top_rerank: int = Field(default=6, ge=1, le=20)
-    stream: bool = Field(default=True, description="Whether to stream response tokens via SSE")
-    model: str = Field(default="llama3.2:3b", description="Ollama model name")
-    mode: str = Field(default="auto", description="Retrieval mode: 'auto', 'agentic', 'graph', or 'direct'")
+    # These default to None (unset), not their eventual runtime default, so the /chat handler can
+    # tell "client omitted this field" apart from "client explicitly requested the default value" —
+    # only the former should fall back to the session's stored preference.
+    top_k: int | None = Field(default=None, ge=1, le=100)
+    top_rerank: int | None = Field(default=None, ge=1, le=20)
+    stream: bool | None = Field(default=None, description="Whether to stream response tokens via SSE")
+    model: str | None = Field(default=None, description="Ollama model name")
+    mode: str | None = Field(default=None, description="Retrieval mode: 'auto', 'agentic', 'graph', or 'direct'")
 
 
 class ChunkAndIndexRequest(BaseModel):
@@ -165,7 +195,11 @@ def health_check() -> dict[str, Any]:
     _, indexing, _ = get_services()
     neo4j_ok = getattr(indexing.graph, "is_connected", False)
 
-    status = "healthy" if (qdrant_ok and ollama_ok) else "degraded"
+    # Neo4j is intentionally excluded from this gate: its absence is a supported, designed-for
+    # fallback to the in-memory NetworkX graph (see services/graph/neo4j_store.py), not a failure.
+    # Redis is not optional in the same way — SessionManager/RAGOpsStore depend on it for anything
+    # beyond a single-process in-memory/disk fallback, so its outage should surface as degraded.
+    status = "healthy" if (qdrant_ok and ollama_ok and redis_ok) else "degraded"
     return {
         "status": status,
         "services": {
@@ -196,7 +230,7 @@ class ModelListResponse(BaseModel):
 @app.get("/api/v1/models", response_model=ModelListResponse)
 def list_available_models() -> ModelListResponse:
     """Lists locally installed Ollama models and indicates the default active model."""
-    default_model = "llama3.1:8b" if settings.hardware.profile == "quality" else "llama3.2:3b"
+    default_model = settings.hardware.llm_model
     models: list[ModelInfo] = []
     ollama_alive = False
 
@@ -221,20 +255,12 @@ def list_available_models() -> ModelListResponse:
         logger.warning(f"Could not fetch models from Ollama ({settings.hardware.ollama_base_url}): {e}")
 
     if not models:
-        fallback_models = [
-            default_model,
-            "llama3.2:3b" if default_model != "llama3.2:3b" else "llama3.1:8b",
-            "qwen2.5:7b",
-            "deepseek-r1:8b",
-            "mistral:7b",
-        ]
-        models = [
-            ModelInfo(
-                name=m,
-                is_default=(m == default_model),
-            )
-            for m in fallback_models
-        ]
+        # Ollama is unreachable, so we have no way to know what's actually installed. Offering a
+        # list of plausible-sounding-but-unverified model names here (as this used to do) causes
+        # a client that doesn't check `ollama_alive` to offer models that error out on selection.
+        # The one name we do know is honest is the configured default — surface just that,
+        # clearly still tied to `ollama_alive=False`.
+        models = [ModelInfo(name=default_model, is_default=True)]
 
     if not any(m.is_default for m in models) and models:
         models[0].is_default = True
@@ -254,7 +280,7 @@ class GpuModelVram(BaseModel):
 
 
 class GpuStatusResponse(BaseModel):
-    gpu_name: str = "NVIDIA GeForce RTX 3050 6GB Laptop GPU"
+    gpu_name: str = "Unknown GPU"
     total_vram_mb: float = 6144.0
     used_vram_mb: float = 0.0
     free_vram_mb: float = 6144.0
@@ -305,18 +331,19 @@ def get_gpu_hardware_status() -> GpuStatusResponse:
     try:
         import subprocess
         res = subprocess.run(
-            ["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits"],
+            ["nvidia-smi", "--query-gpu=name,memory.used,memory.total", "--format=csv,noheader,nounits"],
             capture_output=True,
             text=True,
             timeout=1.5,
         )
         if res.returncode == 0 and res.stdout.strip():
             parts = [p.strip() for p in res.stdout.strip().split(",")]
-            if len(parts) >= 2:
-                used_mb = float(parts[0])
-                tot_mb = float(parts[1])
+            if len(parts) >= 3:
+                gpu_name = parts[0]
+                used_mb = float(parts[1])
+                tot_mb = float(parts[2])
                 return GpuStatusResponse(
-                    gpu_name="NVIDIA GeForce RTX 3050 6GB Laptop GPU",
+                    gpu_name=gpu_name,
                     total_vram_mb=tot_mb,
                     used_vram_mb=used_mb,
                     free_vram_mb=max(0.0, tot_mb - used_mb),
@@ -332,7 +359,7 @@ def get_gpu_hardware_status() -> GpuStatusResponse:
     pct = round((used_mb / total_mb) * 100, 1) if total_mb else 0.0
 
     return GpuStatusResponse(
-        gpu_name="NVIDIA GeForce RTX 3050 6GB Laptop GPU",
+        gpu_name="Unknown GPU",
         total_vram_mb=total_mb,
         used_vram_mb=used_mb,
         free_vram_mb=free_mb,
@@ -350,7 +377,7 @@ def queue_stats() -> dict[str, int]:
 
 
 @app.get("/api/v1/queue/dlq")
-def list_dlq(limit: int = 50) -> list[dict[str, Any]]:
+def list_dlq(limit: int = Query(default=50, ge=1, le=1000)) -> list[dict[str, Any]]:
     """Lists dead-letter queue items requiring operator inspection."""
     dlq_mgr = DLQManager()
     return dlq_mgr.list_dead_letters(limit=limit)
@@ -438,11 +465,25 @@ def preview_page(
         raise HTTPException(status_code=500, detail=f"Error rendering page preview: {e}")
 
 
+def _safe_join(base: Path, name: str) -> Path:
+    """Joins `name` onto `base` and verifies the result stays inside `base`.
+
+    Rejects absolute paths and `..` traversal in `name` — a plain `base / name` join silently
+    discards `base` entirely when `name` is itself absolute (`Path('a') / '/etc/passwd' ==
+    Path('/etc/passwd')`), which is what makes an unguarded join exploitable.
+    """
+    resolved_base = base.resolve()
+    candidate = (resolved_base / name).resolve()
+    if not candidate.is_relative_to(resolved_base):
+        raise HTTPException(status_code=400, detail="Invalid path")
+    return candidate
+
+
 @app.get("/api/v1/figures/{figure_name}")
 @app.get("/data/figures/{figure_name}")
 def get_figure_image(figure_name: str) -> Response:
     """Serves an extracted figure or diagram PNG crop."""
-    fig_path = Path("data/figures") / figure_name
+    fig_path = _safe_join(Path("data/figures"), figure_name)
     if not fig_path.exists() or not fig_path.is_file():
         raise HTTPException(status_code=404, detail=f"Figure '{figure_name}' not found")
     return Response(content=fig_path.read_bytes(), media_type="image/png")
@@ -456,7 +497,8 @@ def ingest_file(
     """Accepts multipart PDF file upload, stores to data/documents/, probes layout, and extracts blocks."""
     upload_dir = Path("data/documents")
     upload_dir.mkdir(parents=True, exist_ok=True)
-    file_path = upload_dir / (file.filename or "uploaded_document.pdf")
+    safe_filename = Path(file.filename or "uploaded_document.pdf").name or "uploaded_document.pdf"
+    file_path = _safe_join(upload_dir, safe_filename)
 
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
@@ -912,12 +954,17 @@ async def sse_chat_generator(
     )
 
     # 4. Save Assistant Turn to Session History
+    # Apply the same citation-provenance formatting as the sync /api/v1/chat path so a session's
+    # stored message content has one consistent shape regardless of whether that turn streamed —
+    # previously only the sync path appended the "Verified Sources" section here.
     full_answer = "".join(full_answer_parts)
+    formatter = CitationFormatterComponent()
+    full_output = formatter.format_response(full_answer, [c.model_dump() for c in final_citations])
     session_manager.append_message(
         session_id,
         ChatMessage(
             role="assistant",
-            content=full_answer,
+            content=full_output,
             citations=final_citations,
             latency_ms=round(total_ms, 2),
         ),
@@ -926,7 +973,7 @@ async def sse_chat_generator(
     # 5. Emit Live Telemetry, Citations, and Agentic Trace
     citations_data = [c.model_dump() for c in final_citations]
     yield f"event: telemetry\ndata: {telemetry.model_dump_json()}\n\n"
-    yield f"event: done\ndata: {json.dumps({'citations': citations_data, 'top_score': top_score, 'is_agentic': is_agentic, 'agent_steps': [s.model_dump() for s in agent_steps], 'sub_queries': sub_queries_list})}\n\n"
+    yield f"event: done\ndata: {json.dumps({'answer': full_output, 'raw_answer': full_answer, 'citations': citations_data, 'top_score': top_score, 'is_agentic': is_agentic, 'agent_steps': [s.model_dump() for s in agent_steps], 'sub_queries': sub_queries_list})}\n\n"
 
 
 @app.post("/api/v1/chat")
@@ -941,31 +988,14 @@ def chat(req: ChatRequest):
         session = session_manager.create_session()
         active_session_id = session.id
 
-    effective_model = (
-        session.parameters.model
-        if (req.model == "llama3.2:3b" and session.parameters.model)
-        else req.model
-    )
-    effective_mode = (
-        session.parameters.retrieval_mode
-        if (req.mode == "auto" and session.parameters.retrieval_mode)
-        else req.mode
-    )
-    effective_top_k = (
-        session.parameters.top_k
-        if (req.top_k == 20 and session.parameters.top_k)
-        else req.top_k
-    )
-    effective_top_rerank = (
-        session.parameters.top_rerank
-        if (req.top_rerank == 6 and hasattr(session.parameters, "top_rerank") and session.parameters.top_rerank)
-        else req.top_rerank
-    )
-    effective_stream = (
-        session.parameters.stream
-        if hasattr(session.parameters, "stream") and not session.parameters.stream
-        else req.stream
-    )
+    # req.X is None means the client omitted the field — fall back to the session's stored
+    # preference. A client that explicitly sends the literal default value (e.g. top_k=20) is
+    # honored as an explicit request, not silently overridden by the session.
+    effective_model = req.model if req.model is not None else session.parameters.model
+    effective_mode = req.mode if req.mode is not None else session.parameters.retrieval_mode
+    effective_top_k = req.top_k if req.top_k is not None else session.parameters.top_k
+    effective_top_rerank = req.top_rerank if req.top_rerank is not None else session.parameters.top_rerank
+    effective_stream = req.stream if req.stream is not None else session.parameters.stream
     temperature = session.parameters.temperature
     compactor_budget = session.parameters.compactor_budget
     min_score_threshold = session.parameters.min_score_threshold

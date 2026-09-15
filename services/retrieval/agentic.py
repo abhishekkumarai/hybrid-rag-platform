@@ -155,6 +155,27 @@ class AgenticCoordinator:
                     all_candidates_map[cand.id] = cand
             merged_candidates = list(all_candidates_map.values())
 
+            # Re-evaluate against the *original* query after the corrective hop rather than
+            # assuming the reformulation fixed things — a query that reformulates into an
+            # equally-off-topic one must not fall through to a confident-sounding answer.
+            crag_assessment = self.crag.evaluate(query, merged_candidates)
+            steps.append(
+                AgentStep(
+                    step_type="crag_reflection",
+                    step_index=len(steps) + 1,
+                    title="Corrective RAG (CRAG) Re-Evaluation",
+                    detail=(
+                        f"Post-reformulation confidence: {crag_assessment.status} "
+                        f"(score: {crag_assessment.top_score:.4f})"
+                    ),
+                    data={"status": crag_assessment.status, "top_score": crag_assessment.top_score},
+                )
+            )
+            if crag_assessment.status != "CONFIDENT":
+                # One corrective retry only; still not confident means refuse rather than
+                # synthesize an answer on weak/ambiguous evidence.
+                return [], [], steps, decomp_plan, crag_assessment, True
+
         elif crag_assessment.status == "REFUSE":
             steps.append(
                 AgentStep(

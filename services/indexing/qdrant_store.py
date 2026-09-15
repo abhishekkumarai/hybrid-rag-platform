@@ -12,6 +12,10 @@ from services.common.logger import get_logger
 
 logger = get_logger("indexing.qdrant")
 
+# Reused across calls so ingesting a document with many chunks doesn't open/tear down a fresh TCP
+# (and TLS, where applicable) connection to Ollama per chunk.
+_embedding_session = requests.Session()
+
 
 def get_ollama_embedding(
     text: str,
@@ -21,7 +25,7 @@ def get_ollama_embedding(
 ) -> list[float]:
     """Fetches dense embedding from Ollama; falls back to deterministic hash vector if offline."""
     try:
-        res = requests.post(
+        res = _embedding_session.post(
             f"{ollama_url}/api/embeddings",
             json={"model": model, "prompt": text},
             timeout=10.0,

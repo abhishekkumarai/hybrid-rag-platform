@@ -79,7 +79,7 @@ class IndexingService:
             indexed_count=len(chunks),
             dense_indexed=dense_count > 0 or len(chunks) == 0,
             sparse_indexed=sparse_count > 0 or len(chunks) == 0,
-            graph_indexed=True,
+            graph_indexed=ent_count > 0 or rel_count > 0 or len(chunks) == 0,
             duration_ms=round(duration_ms, 2),
         )
 
@@ -87,19 +87,20 @@ class IndexingService:
         """Indexes pre-chunked items directly."""
         start = time.perf_counter()
 
-        _ = self.qdrant.index(request.chunks)
-        _ = self.bm25.index(request.chunks)
-        _ = self.graph.index_chunks(request.chunks)
+        dense_count = self.qdrant.index(request.chunks)
+        sparse_count = self.bm25.index(request.chunks)
+        ent_count, rel_count = self.graph.index_chunks(request.chunks)
         if not self.qdrant.in_memory:
             self.graph.save_to_disk()
 
         duration_ms = (time.perf_counter() - start) * 1000
+        chunk_count = len(request.chunks)
 
         return IndexResponse(
             doc_id=request.doc_id,
-            indexed_count=len(request.chunks),
-            dense_indexed=True,
-            sparse_indexed=True,
-            graph_indexed=True,
+            indexed_count=chunk_count,
+            dense_indexed=dense_count > 0 or chunk_count == 0,
+            sparse_indexed=sparse_count > 0 or chunk_count == 0,
+            graph_indexed=ent_count > 0 or rel_count > 0 or chunk_count == 0,
             duration_ms=round(duration_ms, 2),
         )

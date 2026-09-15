@@ -19,13 +19,14 @@ class DLQManager:
 
     def list_dead_letters(self, limit: int = 50) -> list[dict[str, Any]]:
         """Returns list of tasks currently sitting in the DLQ."""
-        raw_items = self.queue.client.lrange(DLQ_QUEUE, 0, limit - 1)
+        bounded_limit = max(1, min(limit, 1000))
+        raw_items = self.queue.client.lrange(DLQ_QUEUE, 0, bounded_limit - 1)
         results = []
         for item in raw_items:
             try:
                 results.append(json.loads(item))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Skipping unparsable DLQ item ({e}); returned list is incomplete")
         return results
 
     def replay_task(self, task_id: str) -> bool:

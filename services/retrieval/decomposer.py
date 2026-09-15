@@ -30,6 +30,7 @@ class QueryDecomposer:
     def __init__(self, ollama_url: str = "http://localhost:11434", model: str = "llama3.2:3b") -> None:
         self.ollama_url = ollama_url.rstrip("/")
         self.model = model
+        self.session = requests.Session()
 
     def is_multi_hop_candidate(self, query: str) -> bool:
         """Determines if a query requires multi-hop retrieval based on keywords and syntax."""
@@ -124,7 +125,7 @@ class QueryDecomposer:
             f"Respond ONLY with a JSON array of strings, e.g.: [\"sub-question 1\", \"sub-question 2\"]"
         )
         try:
-            resp = requests.post(
+            resp = self.session.post(
                 f"{self.ollama_url}/api/generate",
                 json={
                     "model": self.model,

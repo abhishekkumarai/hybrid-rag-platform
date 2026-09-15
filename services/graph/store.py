@@ -19,7 +19,7 @@ from services.graph.extractor import EntityRelationshipExtractor
 
 logger = get_logger("graph.store")
 
-DEFAULT_GRAPH_PATH = Path("data/graph/knowledge_graph.json")
+DEFAULT_GRAPH_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "graph" / "knowledge_graph.json"
 
 
 class GraphStore:

@@ -12,7 +12,7 @@ from services.common.logger import get_logger
 
 logger = get_logger("ingestion.multimodal")
 
-FIGURES_DIR = Path("data/figures")
+FIGURES_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "figures"
 FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 
 

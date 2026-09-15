@@ -14,20 +14,20 @@ DATA_DOCS_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "docume
 
 
 def resolve_document_path(doc_identifier: str) -> Path | None:
-    """Finds document file matching doc_id or file name in data/documents/."""
-    # 1. Direct path check
-    direct = Path(doc_identifier)
-    if direct.exists() and direct.is_file():
-        return direct
+    """Finds document file matching doc_id or file name, confined to data/documents/."""
+    base = DATA_DOCS_DIR.resolve()
 
-    # 2. Check within data/documents
-    candidate = DATA_DOCS_DIR / doc_identifier
-    if candidate.exists() and candidate.is_file():
+    # 1. Direct match within data/documents/. Resolve and verify containment rather than trusting
+    # the joined path directly: an absolute or `..`-traversal doc_identifier must not escape base
+    # (Path('base') / '/etc/passwd' silently discards 'base' on join, which is exactly the hole
+    # this guards against).
+    candidate = (base / doc_identifier).resolve()
+    if candidate.is_relative_to(base) and candidate.is_file():
         return candidate
 
-    # 3. Fuzzy search by stem or prefix
+    # 2. Fuzzy search by stem or prefix, confined to the same directory
     target_clean = doc_identifier.lower().replace(".pdf", "")
-    for f in DATA_DOCS_DIR.glob("*.pdf"):
+    for f in base.glob("*.pdf"):
         if target_clean in f.name.lower() or f.stem.lower() in target_clean:
             return f
 

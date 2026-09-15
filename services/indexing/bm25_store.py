@@ -38,6 +38,14 @@ class BM25Store:
             except Exception as e:
                 logger.warning(f"Could not load existing BM25 index: {e}")
 
+    def reload(self) -> None:
+        """Re-reads the on-disk index, picking up chunks indexed by another process (e.g. the
+        scheduler/worker, which construct their own `BM25Store` instance and can't update this
+        process's in-memory copy directly)."""
+        self.corpus_chunks = []
+        self.retriever = None
+        self._load_if_exists()
+
     def index(self, chunks: list[Chunk]) -> int:
         """Indexes a list of chunks, builds BM25 index, and persists to disk."""
         if not chunks:

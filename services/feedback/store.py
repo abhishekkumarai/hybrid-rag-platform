@@ -16,7 +16,7 @@ from services.common.logger import get_logger
 
 logger = get_logger("ragops.store")
 
-RAGOPS_DIR = Path("data/ragops")
+RAGOPS_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "ragops"
 FEEDBACK_FILE = RAGOPS_DIR / "feedback.jsonl"
 HARD_NEGATIVES_FILE = RAGOPS_DIR / "hard_negatives.jsonl"
 

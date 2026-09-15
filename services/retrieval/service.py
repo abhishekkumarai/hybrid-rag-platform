@@ -157,6 +157,7 @@ class RetrievalService:
             citations=citations,
             refused=refused,
             top_score=top_score,
+            reranker_degraded=self.reranker.last_call_degraded,
             duration_ms=round(duration_ms, 2),
         )
 

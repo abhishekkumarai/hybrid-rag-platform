@@ -52,4 +52,9 @@ class RetrieveResponse(BaseModel):
     citations: list[Citation] = Field(description="Extracted citations for top candidates")
     refused: bool = Field(default=False, description="True if top rerank score < min_rerank_score")
     top_score: float = Field(default=0.0, description="Highest cross-encoder score among candidates")
+    reranker_degraded: bool = Field(
+        default=False,
+        description="True if the cross-encoder reranker was unavailable/failed and scores fell "
+        "back to raw RRF — top_score/refused are then less reliable than usual.",
+    )
     duration_ms: float = Field(ge=0.0, description="Total retrieval and reranking latency in ms")

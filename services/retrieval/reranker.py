@@ -18,6 +18,10 @@ class FlashRankReranker:
         self.model_name = model_name
         self.min_score_cutoff = min_score_cutoff
         self.ranker: Any = None
+        # True after any rerank() call that fell back to raw RRF scores (cross-encoder unavailable
+        # or threw) instead of actually reranking — callers should surface this rather than let
+        # CRAG's cross-encoder-tuned thresholds silently apply to uncalibrated scores.
+        self.last_call_degraded: bool = False
         self._init_ranker()
 
     def _init_ranker(self) -> None:
@@ -62,6 +66,7 @@ class FlashRankReranker:
         cutoff = min_score_cutoff if min_score_cutoff is not None else self.min_score_cutoff
         start = time.perf_counter()
         is_exploratory = self.is_exploratory_or_summary_query(query)
+        self.last_call_degraded = False
 
         if self.ranker:
             try:
@@ -85,10 +90,12 @@ class FlashRankReranker:
                 candidates.sort(key=lambda x: x.rerank_score, reverse=True)
             except Exception as e:
                 logger.warning(f"FlashRank reranking failed ({e}), using RRF scores as fallback")
+                self.last_call_degraded = True
                 for c in candidates:
                     c.rerank_score = c.rrf_score
         else:
             # Fallback: RRF score normalized
+            self.last_call_degraded = True
             for c in candidates:
                 c.rerank_score = c.rrf_score
 
@@ -119,7 +126,7 @@ class FlashRankReranker:
 
         logger.info(
             f"Reranking completed in {duration_ms:.2f}ms: top_score={top_score:.4f}, "
-            f"cutoff={self.min_score_cutoff}, refused={refused}"
+            f"cutoff={self.min_score_cutoff}, refused={refused}, degraded={self.last_call_degraded}"
         )
 
         return top_candidates, citations, refused

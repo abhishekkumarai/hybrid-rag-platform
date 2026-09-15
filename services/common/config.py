@@ -133,6 +133,14 @@ def load_config(profile: str | None = None) -> AppConfig:
         storage_data["redis_host"] = os.environ["REDIS_HOST"]
     if "REDIS_PORT" in os.environ:
         storage_data["redis_port"] = int(os.environ["REDIS_PORT"])
+    if "NEO4J_URI" in os.environ:
+        storage_data["neo4j_uri"] = os.environ["NEO4J_URI"]
+    if "NEO4J_USER" in os.environ:
+        storage_data["neo4j_user"] = os.environ["NEO4J_USER"]
+    if "NEO4J_PASSWORD" in os.environ:
+        storage_data["neo4j_password"] = os.environ["NEO4J_PASSWORD"]
+    if "NEO4J_DATABASE" in os.environ:
+        storage_data["neo4j_database"] = os.environ["NEO4J_DATABASE"]
 
     hardware_data = data.setdefault("hardware", {})
     if "OLLAMA_BASE_URL" in os.environ:
