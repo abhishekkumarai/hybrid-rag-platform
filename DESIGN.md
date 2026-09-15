@@ -338,7 +338,7 @@ The platform follows a responsive 2-column cockpit with modal drawers:
    - Document Ingestion Dropzone (drag-and-drop PDF/multimodal upload, chunking telemetry).
    - Ingested Documents Registry with status badges (`Ready`, `Vectorized`, `Chunks: N`).
 2. **Main Cockpit (`flex: 1`, scrollable chat viewport)**:
-   - Header bar with retrieval mode selector (`Auto`, `Agentic Multi-Hop`, `Direct`), clear chat, and RAGOps observability modal trigger.
+   - Header bar with retrieval mode selector (`Auto`, `Agentic Multi-Hop`, `Direct`, `Graph` — GraphRAG multi-hop entity/relation traversal), clear chat, and RAGOps observability modal trigger.
    - Message Stream:
      - User messages aligned right/compact in `{colors.surface-hover}`.
      - Assistant messages full-width in `{colors.surface-card}` with markdown rendering, syntax highlighting, and citation badges.

@@ -599,9 +599,9 @@
 
           <!-- Empty / Info State Overlay when 0 nodes -->
           <div id="kg-empty-state" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none p-6 text-center" hidden>
-            <span class="material-symbols-outlined text-[44px] text-outline-variant">hub</span>
-            <div class="font-headline font-semibold text-base text-on-surface mt-2">Graph Awaiting Ingestion</div>
-            <p class="text-xs text-on-surface-variant max-w-md mt-1">Upload and index documents in Library to automatically populate semantic entities and multi-hop associative relations.</p>
+            <span id="kg-empty-icon" class="material-symbols-outlined text-[44px] text-outline-variant">hub</span>
+            <div id="kg-empty-title" class="font-headline font-semibold text-base text-on-surface mt-2">Graph Awaiting Ingestion</div>
+            <p id="kg-empty-desc" class="text-xs text-on-surface-variant max-w-md mt-1">Upload and index documents in Library to automatically populate semantic entities and multi-hop associative relations.</p>
           </div>
         </div>
       </div>
@@ -729,6 +729,10 @@
         <div class="border border-surface-container-high rounded-xl p-4 bg-surface-container-lowest">
           <div class="font-mono text-[10px] text-on-surface-variant">QUEUE DEPTH</div>
           <div id="obs-queue" class="font-mono text-lg font-semibold text-on-surface mt-1">—</div>
+        </div>
+        <div class="border border-surface-container-high rounded-xl p-4 bg-surface-container-lowest">
+          <div class="font-mono text-[10px] text-on-surface-variant">PROCESSING</div>
+          <div id="obs-processing" class="font-mono text-lg font-semibold text-on-surface mt-1">—</div>
         </div>
         <div class="border border-surface-container-high rounded-xl p-4 bg-surface-container-lowest">
           <div class="font-mono text-[10px] text-on-surface-variant">DEAD-LETTER</div>
@@ -2234,57 +2238,63 @@
   // ============================================================
   // Models & Tuning (ported from the prior dark-theme implementation)
   // ============================================================
-  const MODEL_VRAM = {
-    'llama3.2:3b': { vram: 2.2, pct: 37, desc: 'Headroom: ~3.8 GB free for Qdrant HNSW and BM25 memory.' },
-    'llama3.1:8b': { vram: 4.9, pct: 82, desc: 'High utilization: ~1.1 GB VRAM headroom on RTX 3050.' },
-    'qwen2.5:7b': { vram: 4.5, pct: 75, desc: 'Balanced: ~1.5 GB VRAM headroom remaining.' },
-    'mistral:7b': { vram: 4.2, pct: 70, desc: 'Optimal: ~1.8 GB VRAM headroom remaining.' },
-    'deepseek-r1:7b': { vram: 4.8, pct: 80, desc: 'Deep reasoning: ~1.2 GB VRAM headroom remaining.' },
-    'deepseek-r1:8b': { vram: 5.1, pct: 85, desc: 'Heavy reasoning: ~0.9 GB VRAM headroom on RTX 3050.' },
-  };
+  // Used only if GET /api/v1/hardware/gpu is unreachable (gateway down, etc).
+  const MODEL_VRAM_FALLBACK = { vram: 3.5, pct: 58, desc: 'Estimated footprint — live GPU telemetry unavailable.' };
 
-  function updateVramBudget(modelName) {
-    const cleanName = (modelName || '').toLowerCase().trim();
-    let meta = MODEL_VRAM[cleanName];
-    if (!meta) {
-      const matchKey = Object.keys(MODEL_VRAM).find(k => cleanName.startsWith(k.split(':')[0]));
-      meta = matchKey ? MODEL_VRAM[matchKey] : { vram: 3.5, pct: 58, desc: 'Custom model estimated ~3.5 GB footprint.' };
-    }
+  function paintVramBudget(usedGb, pct, desc) {
+    const pctClamped = Math.max(0, Math.min(100, pct));
+    const barClass = `h-2 rounded-full transition-all duration-300 ${pctClamped > 80 ? 'bg-error' : pctClamped > 70 ? 'bg-tertiary' : 'bg-primary'}`;
+    const barClassThin = barClass.replace('h-2', 'h-1.5');
+    const badgeText = `${usedGb.toFixed(1)} / 6.0 GB (${Math.round(pctClamped)}%)`;
+
     const badge = document.getElementById('models-vram-badge');
     const bar = document.getElementById('models-vram-bar');
-    const desc = document.getElementById('models-vram-desc');
-    if (badge) badge.textContent = `${meta.vram} / 6.0 GB (${meta.pct}%)`;
-    if (bar) {
-      bar.style.width = `${meta.pct}%`;
-      bar.className = `h-2 rounded-full transition-all duration-300 ${meta.pct > 80 ? 'bg-error' : meta.pct > 70 ? 'bg-tertiary' : 'bg-primary'}`;
-    }
-    if (desc) desc.textContent = meta.desc;
+    const descEl = document.getElementById('models-vram-desc');
+    if (badge) badge.textContent = badgeText;
+    if (bar) { bar.style.width = `${pctClamped}%`; bar.className = barClass; }
+    if (descEl) descEl.textContent = desc;
 
     // Synchronize top header VRAM display
     const hBadge = document.getElementById('headerVramBadge');
     const hBar = document.getElementById('headerVramBar');
-    if (hBadge) hBadge.textContent = `${meta.vram} / 6.0 GB (${meta.pct}%)`;
-    if (hBar) {
-      hBar.style.width = `${meta.pct}%`;
-      hBar.className = `h-1.5 rounded-full transition-all duration-300 ${meta.pct > 80 ? 'bg-error' : meta.pct > 70 ? 'bg-tertiary' : 'bg-primary'}`;
-    }
+    if (hBadge) hBadge.textContent = badgeText;
+    if (hBar) { hBar.style.width = `${pctClamped}%`; hBar.className = barClassThin; }
 
     // Synchronize workspace settings drawer VRAM display
     const dBadge = document.getElementById('drawerVramBadge');
     const dBar = document.getElementById('drawerVramBar');
     const dDesc = document.getElementById('drawerVramDesc');
-    if (dBadge) dBadge.textContent = `${meta.vram} / 6.0 GB (${meta.pct}%)`;
-    if (dBar) {
-      dBar.style.width = `${meta.pct}%`;
-      dBar.className = `h-1.5 rounded-full transition-all duration-300 ${meta.pct > 80 ? 'bg-error' : meta.pct > 70 ? 'bg-tertiary' : 'bg-primary'}`;
-    }
-    if (dDesc) dDesc.textContent = meta.desc;
+    if (dBadge) dBadge.textContent = badgeText;
+    if (dBar) { dBar.style.width = `${pctClamped}%`; dBar.className = barClassThin; }
+    if (dDesc) dDesc.textContent = desc;
+  }
+
+  async function updateVramBudget(modelName) {
+    try {
+      const res = await fetch('/api/v1/hardware/gpu');
+      if (res.ok) {
+        const g = await res.json();
+        const totalGb = (g.total_vram_mb || 6144) / 1024;
+        const usedGb = (g.used_vram_mb || 0) / 1024;
+        const freeGb = (g.free_vram_mb || (g.total_vram_mb - g.used_vram_mb) || 0) / 1024;
+        const pct = g.vram_percent ?? (totalGb ? (usedGb / totalGb) * 100 : 0);
+        const active = (g.models || []).map(m => m.name).join(', ');
+        const desc = active
+          ? `Live (${g.source}): ${active} — ~${freeGb.toFixed(1)} GB free.`
+          : `Live (${g.source}): no model currently resident — ~${freeGb.toFixed(1)} GB free.`;
+        paintVramBudget(usedGb, pct, desc);
+        return;
+      }
+    } catch (e) { console.warn('Failed to load live GPU telemetry, using estimate', e); }
+    const meta = MODEL_VRAM_FALLBACK;
+    paintVramBudget(meta.vram, meta.pct, meta.desc);
   }
 
   const headerVramPill = document.getElementById('headerVramPill');
   if (headerVramPill) {
     headerVramPill.addEventListener('click', () => navigate('models'));
   }
+  setInterval(() => updateVramBudget(currentModel), 15000);
 
   function applyModelChoice(name) {
     currentModel = name;
@@ -2905,6 +2915,14 @@
     } catch (e) { console.error('Failed to load metrics', e); }
 
     try {
+      const res = await fetch('/api/v1/queue/stats');
+      if (res.ok) {
+        const s = await res.json();
+        document.getElementById('obs-processing').textContent = s.processing ?? 0;
+      }
+    } catch (e) { console.error('Failed to load queue stats', e); }
+
+    try {
       const res = await fetch('/api/v1/queue/dlq');
       const body = document.getElementById('obs-dlq-body');
       const empty = document.getElementById('obs-dlq-empty');
@@ -3183,12 +3201,37 @@
         kgGraphData = stats;
         renderKnowledgeGraph(stats);
       } else {
-        renderKnowledgeGraphDemo();
+        showKgUnavailableState();
       }
     } catch (e) {
       console.error('Failed to load graph stats', e);
-      renderKnowledgeGraphDemo();
+      showKgUnavailableState();
     }
+  }
+
+  function showKgUnavailableState() {
+    const icon = document.getElementById('kg-empty-icon');
+    const title = document.getElementById('kg-empty-title');
+    const desc = document.getElementById('kg-empty-desc');
+    if (icon) icon.textContent = 'cloud_off';
+    if (title) title.textContent = 'Graph Data Unavailable';
+    if (desc) desc.textContent = 'Could not reach the graph service. Check that the gateway and Neo4j/NetworkX backend are running, then retry.';
+    ['kg-stat-entities', 'kg-stat-relations', 'kg-stat-communities'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = '—';
+    });
+    const densityEl = document.getElementById('kg-stat-density');
+    if (densityEl) densityEl.textContent = '—';
+    clearKnowledgeGraphSvg();
+    const empty = document.getElementById('kg-empty-state');
+    if (empty) empty.hidden = false;
+  }
+
+  function clearKnowledgeGraphSvg() {
+    ['kg-nodes', 'kg-edges', 'kg-edge-labels', 'kg-communities'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = '';
+    });
   }
 
   const toggleKgDrawerBtn = document.getElementById('toggleKgDrawerBtn');
@@ -3366,57 +3409,24 @@
 
   function renderKnowledgeGraph(stats) {
     const empty = document.getElementById('kg-empty-state');
-    const nodesGroup = document.getElementById('kg-nodes');
-    const edgesGroup = document.getElementById('kg-edges');
-    const labelsGroup = document.getElementById('kg-edge-labels');
-    const commGroup = document.getElementById('kg-communities');
-
-    nodesGroup.innerHTML = '';
-    edgesGroup.innerHTML = '';
-    labelsGroup.innerHTML = '';
-    commGroup.innerHTML = '';
+    clearKnowledgeGraphSvg();
 
     const entities = stats.sample_entities || [];
     const relations = stats.sample_relations || [];
 
     if (entities.length === 0) {
-      renderKnowledgeGraphDemo();
+      const icon = document.getElementById('kg-empty-icon');
+      const title = document.getElementById('kg-empty-title');
+      const desc = document.getElementById('kg-empty-desc');
+      if (icon) icon.textContent = 'hub';
+      if (title) title.textContent = 'Graph Awaiting Ingestion';
+      if (desc) desc.textContent = 'Upload and index documents in Library to automatically populate semantic entities and multi-hop associative relations.';
+      if (empty) empty.hidden = false;
       return;
     }
 
-    empty.hidden = true;
+    if (empty) empty.hidden = true;
     renderSvgNetwork(entities, relations);
-  }
-
-  function renderKnowledgeGraphDemo() {
-    const demoEntities = [
-      { name: 'Acme Corp', category: 'ORGANIZATION', x: 250, y: 230, r: 22 },
-      { name: 'Nova Systems Inc', category: 'ORGANIZATION', x: 420, y: 270, r: 20 },
-      { name: 'Apex Ltd', category: 'ORGANIZATION', x: 180, y: 190, r: 14 },
-      { name: 'Deloitte UK', category: 'ORGANIZATION', x: 380, y: 130, r: 15 },
-      { name: 'Alex Chen', category: 'PERSON', x: 140, y: 280, r: 12 },
-      { name: 'Tranche-A', category: 'CLAUSE', x: 640, y: 260, r: 16 },
-      { name: 'Series-D Covenant', category: 'CLAUSE', x: 570, y: 220, r: 15 },
-      { name: 'EBITDA Floor', category: 'METRIC', x: 740, y: 310, r: 14 },
-      { name: 'AWS-East Cluster', category: 'CONCEPT', x: 320, y: 460, r: 14 },
-      { name: 'SLA §4.1', category: 'CLAUSE', x: 440, y: 440, r: 13 },
-      { name: '99.95% Availability', category: 'METRIC', x: 230, y: 510, r: 12 }
-    ];
-
-    const demoRelations = [
-      { source: 'Acme Corp', target: 'Nova Systems Inc', predicate: 'acquired_by', weight: 0.95 },
-      { source: 'Apex Ltd', target: 'Acme Corp', predicate: 'subsidiary_of', weight: 0.85 },
-      { source: 'Deloitte UK', target: 'Acme Corp', predicate: 'audited_by', weight: 0.70 },
-      { source: 'Alex Chen', target: 'Acme Corp', predicate: 'advises', weight: 0.65 },
-      { source: 'Nova Systems Inc', target: 'Series-D Covenant', predicate: 'covenant_in', weight: 0.90 },
-      { source: 'Series-D Covenant', target: 'Tranche-A', predicate: 'secures', weight: 0.80 },
-      { source: 'Tranche-A', target: 'EBITDA Floor', predicate: 'stipulates', weight: 0.85 },
-      { source: 'Nova Systems Inc', target: 'AWS-East Cluster', predicate: 'deployed_on', weight: 0.75 },
-      { source: 'AWS-East Cluster', target: 'SLA §4.1', predicate: 'governed_by', weight: 0.80 },
-      { source: 'SLA §4.1', target: '99.95% Availability', predicate: 'guarantees', weight: 0.90 }
-    ];
-
-    renderSvgNetwork(demoEntities, demoRelations);
   }
 
   function renderSvgNetwork(entities, relations) {
