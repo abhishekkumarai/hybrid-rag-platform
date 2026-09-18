@@ -100,6 +100,13 @@ Hardened [`services/indexing/chunker.py`](services/indexing/chunker.py):
 - **Table Breadcrumb Token Budgeting**: Reserved header tokens in `split_large_table` and added 1-row overlap continuity across split tables.
 - **Config Wiring**: Connected `overlap_tokens` from `configs/default.yaml` in `IndexingService`.
 
+### 3.6 PaddleOCR Ingestion Route (REC-61)
+Integrated [PaddleOCR](https://github.com/PADDLEPADDLE/PADDLEOCR) as a dedicated parsing route alongside `fast_text`, `layout`, and `ocr`:
+- Implemented [`PaddleOCRParser`](services/ingestion/parsers/paddle_ocr.py) with 150-DPI PyMuPDF rasterization, textline orientation correction, and 72-DPI coordinate scaling.
+- Added multimodal table/figure bounding box masking on the current page to prevent text duplication.
+- Provided fallback to native PyMuPDF OCR / text extraction if the model fails on specific pages.
+- Wired route selector in API gateway (`services/gateway/api.py`), session contracts (`contracts/session.py`), and UI controls (`ui/index.html`).
+
 ---
 
 ## 4. Comprehensive 4,000-Query Retrieval Benchmark (REC-60)
