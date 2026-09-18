@@ -196,16 +196,61 @@ Hybrid + Rerank (FlashRank)    | 63.40     | 87.28     | 90.00      | 0.7369  | 
 
 ---
 
-## 5. Verification & Regression Testing
+## 5. End-to-End Context, Compression & Synthesis Models Pipeline
 
-### 5.1 Automated Unit & Integration Tests
+To clarify the full end-to-end operational pipeline, the retrieved document evidence flows through a multi-stage chain of specialized models:
+
+```mermaid
+flowchart LR
+    A["User Query"] --> B["bge-m3 (Ollama)<br/>Dense Embedding (8K ctx)"]
+    A --> C["BM25-Okapi<br/>Sparse Inverted Index"]
+    B --> D["Reciprocal Rank Fusion<br/>(k=60) Top-20"]
+    C --> D
+    D --> E["ms-marco-TinyBERT-L-2-v2<br/>FlashRank Cross-Encoder (CPU)"]
+    E --> F["ContextCompactor<br/>3,072 Token Budget Envelope"]
+    F --> G["llama3.1:latest (Ollama)<br/>Synthesis Context Reader (4K-8K num_ctx)"]
+    G --> H["Grounded Answer with<br/>Visual Provenance Citations"]
+```
+
+### 5.1 Context Models Specification Matrix
+
+| Pipeline Stage | Model / Component | Parameters / Dimensions | Context Window (`num_ctx`) | Execution Target | Role & Operational Constraints |
+|---|---|---|---|---|---|
+| **1. Dense Embedding** | `bge-m3:latest` | 1024 dimensions | 8,192 tokens | Ollama GPU / CPU | Computes dense vector representations for document chunks and user queries for Qdrant HNSW indexing. |
+| **2. Sparse Indexing** | BM25-Okapi (`bm25s`) | Non-parametric | Tokenized text length | Memory / Disk | Matches exact keywords, codes, numerical tokens, and document IDs. |
+| **3. Rank Fusion** | Reciprocal Rank Fusion | Constant $k=60$ | Top-20 candidate pool | In-Memory (Python) | Harmonizes dense and sparse rank distributions without requiring calibrated raw score scales. |
+| **4. Context Reranker** | `ms-marco-TinyBERT-L-2-v2` | TinyBERT (FlashRank) | 512 tokens | Local CPU (AVX2/ONNX) | Re-scores fused candidates via full cross-attention; applies `min_score_cutoff = 0.15` to filter ungrounded chunks. |
+| **5. Context Compactor** | [`ContextCompactor`](services/retrieval/compactor.py) | Rule-based NLP | 3,072 token budget | In-Memory (Python) | Deduplicates sentences (Jaccard similarity), prunes bulky table columns, and budgets tokens to protect the LLM context envelope. |
+| **6. Multi-Hop Planning** | `llama3.1:latest` | 8B Parameters | 4,096 tokens | Ollama (RTX 3050) | Decomposes complex comparative queries into targeted sub-queries (`is_multi_hop_candidate`). |
+| **7. Context Synthesis (Final Reader)** | **`llama3.1:latest`** *(Default)*<br/>`llama3.2:3b` *(Fast Profile)* | 8B (Llama 3.1)<br/>3B (Llama 3.2) | **Clamped 2,048 - 4,096** (on 6GB RTX 3050)<br/>Up to 8,192 (on 16GB+) | Ollama GPU (`/api/generate`) | **The Final Context Model**: Ingests compacted document excerpts and conversation history to synthesize the final grounded response. |
+
+### 5.2 Context Window Allocation & Hardware Safety
+On the **NVIDIA GeForce RTX 3050 Laptop GPU (6GB VRAM)**:
+1. **VRAM Constraints**: Running an 8B model (`llama3.1:latest`) requires ~4.7 GB of VRAM. An unconstrained 8K context KV cache would cause Ollama CUDA memory allocation failure (`CUDA error: out of memory`).
+2. **Context Clamping Guard**: In [`services/gateway/api.py`](services/gateway/api.py), `safe_num_ctx` dynamically clamps the context window:
+   ```python
+   is_large_model = any(tag in model_name.lower() for tag in ("8b", "7b", "14b", "13b", "70b"))
+   max_hardware_ctx = 4096 if is_large_model else 8192
+   safe_num_ctx = min(max(compactor_budget + 512, 2048), max_hardware_ctx)
+   ```
+3. **Budget Partitioning**:
+   - **Compacted Document Evidence**: 3,072 tokens max.
+   - **Conversation Turn History**: ~350 tokens (last 3 conversation turns).
+   - **Generation Output**: 256 tokens (`num_predict=256`).
+   - **Total Active Context**: ~3,678 tokens, fitting safely within the 4,096 hardware limit on 6GB VRAM.
+
+---
+
+## 6. Verification & Regression Testing
+
+### 6.1 Automated Unit & Integration Tests
 All tests pass with 100% success rate:
 - `pytest tests/unit/test_chunker.py`: 9 passed (sliding window overlap, sub-sentence fallback, table budgets).
 - `pytest tests/unit/test_multimodal.py`: 3 passed (per-page bounding box scoping).
 - `pytest tests/unit/ -q`: **95 passed, 0 failed**.
 - `ruff check .`: **0 lint errors**.
 
-### 5.2 Reproduction Commands
+### 6.2 Reproduction Commands
 To re-run the 4,000-query benchmark suite at any time:
 ```powershell
 python tests/eval/benchmark_4000.py
@@ -214,7 +259,7 @@ Output results will be printed in ASCII format and persisted to `data/retrieval_
 
 ---
 
-## 6. Prevention & Architectural Guardrails
+## 7. Prevention & Architectural Guardrails
 
 1. **Spatial Scoping Invariant**: Any geometric or bounding box coordinate extraction from multi-page documents must always be bundled with `page_number`. Coordinate math across disparate pages is strictly forbidden.
 2. **Deterministic Pre-Purge Invariant**: Document ingestion and re-indexing routines must execute atomic pre-purges on both lexical and vector storage layers prior to upserting new chunks.
