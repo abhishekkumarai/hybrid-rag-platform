@@ -11,6 +11,7 @@ from services.common.logger import get_logger
 from services.ingestion.parsers.fast_text import FastTextParser
 from services.ingestion.parsers.layout import LayoutParser
 from services.ingestion.parsers.ocr import OCRParser
+from services.ingestion.parsers.paddle_ocr import PaddleOCRParser
 from services.ingestion.probe import probe_document
 
 logger = get_logger("ingestion.service")
@@ -23,6 +24,7 @@ class IngestionService:
         self.fast_parser = FastTextParser()
         self.layout_parser = LayoutParser()
         self.ocr_parser = OCRParser()
+        self.paddle_parser = PaddleOCRParser()
 
     def _generate_doc_id(self, path: Path) -> str:
         """Generates a stable document ID using filename stem and file content hash."""
@@ -61,6 +63,8 @@ class IngestionService:
             blocks = self.layout_parser.parse(str(file_path), doc_id)
         elif selected_route == "ocr":
             blocks = self.ocr_parser.parse(str(file_path), doc_id)
+        elif selected_route == "paddleocr":
+            blocks = self.paddle_parser.parse(str(file_path), doc_id)
         else:
             blocks = self.fast_parser.parse(str(file_path), doc_id)
 

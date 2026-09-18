@@ -38,7 +38,7 @@ class LayoutProbeComponent(Component):
             DropdownInput(
                 name="profile_override",
                 display_name="Profile Override",
-                options=["auto", "fast_text", "layout", "ocr"],
+                options=["auto", "fast_text", "layout", "ocr", "paddleocr"],
                 value="auto",
             ),
         ]

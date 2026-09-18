@@ -37,7 +37,7 @@ class Block(BaseModel):
 
 class DocumentProfile(BaseModel):
     """Profile metrics computed by the 8-page heuristic layout probe."""
-    route: Literal["fast_text", "layout", "ocr"] = Field(description="Selected parsing engine")
+    route: Literal["fast_text", "layout", "ocr", "paddleocr"] = Field(description="Selected parsing engine")
     page_count: int = Field(ge=0, description="Total document pages")
     sample_pages: list[int] = Field(description="Page numbers sampled by the probe (max 8)")
     text_coverage: float = Field(ge=0.0, le=1.0, description="Average character-bearing area ratio")
@@ -51,7 +51,7 @@ class DocumentProfile(BaseModel):
 class IngestRequest(BaseModel):
     """Request payload for IngestionService.parse."""
     file_path: str = Field(description="Absolute or relative path to the document file")
-    profile_override: Literal["fast_text", "layout", "ocr"] | None = Field(
+    profile_override: Literal["fast_text", "layout", "ocr", "paddleocr"] | None = Field(
         default=None, description="Force a specific parser route bypassing probe"
     )
     doc_id: str | None = Field(default=None, description="Optional custom document ID")

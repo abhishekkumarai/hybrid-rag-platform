@@ -542,7 +542,7 @@ def ingest_file(
         shutil.copyfileobj(file.file, buffer)
 
     ingestion, _, _ = get_services()
-    profile_override = route if route in ("fast_text", "layout", "ocr") else None
+    profile_override = route if route in ("fast_text", "layout", "ocr", "paddleocr") else None
     res = ingestion.parse(IngestRequest(file_path=str(file_path), profile_override=profile_override))
     logger.info(f"API Ingest: uploaded '{file.filename}' -> {len(res.blocks)} blocks ({res.profile.route})")
     return res
