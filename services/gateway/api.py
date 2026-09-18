@@ -369,6 +369,44 @@ def get_gpu_hardware_status() -> GpuStatusResponse:
     )
 
 
+class HnswStatusResponse(BaseModel):
+    collection_name: str
+    hnsw_m: int
+    hnsw_ef_construct: int
+    default_ef_search: int
+    status: str
+    points_count: int | None = None
+    indexed_vectors_count: int | None = None
+
+
+class HnswRebuildRequest(BaseModel):
+    hnsw_m: int = Field(ge=4, le=64, description="Qdrant HNSW graph connectivity (m) — higher improves recall at the cost of index size/build time")
+    hnsw_ef_construct: int = Field(ge=16, le=512, description="Qdrant HNSW build-time search depth (ef_construct) — higher improves index quality at the cost of build time")
+
+
+@app.get("/api/v1/admin/hnsw", response_model=HnswStatusResponse)
+def get_hnsw_status() -> HnswStatusResponse:
+    """Reports the live Qdrant collection's HNSW index config and rebuild/optimizer progress.
+
+    m and ef_construct are collection-wide (not per-session, unlike ef_search) — see
+    QdrantStore.update_hnsw_config for why.
+    """
+    _, indexing, _ = get_services()
+    return HnswStatusResponse(**indexing.qdrant.get_index_status())
+
+
+@app.post("/api/v1/admin/hnsw/rebuild", response_model=HnswStatusResponse)
+def rebuild_hnsw_index(req: HnswRebuildRequest) -> HnswStatusResponse:
+    """Applies new HNSW m/ef_construct to the shared Qdrant collection and triggers a background
+    re-index of every already-embedded chunk across every workspace. This affects all users/sessions
+    and is not instant — poll GET /api/v1/admin/hnsw afterward to watch `status`/`indexed_vectors_count`
+    until the rebuild completes.
+    """
+    _, indexing, _ = get_services()
+    indexing.qdrant.update_hnsw_config(req.hnsw_m, req.hnsw_ef_construct)
+    return HnswStatusResponse(**indexing.qdrant.get_index_status())
+
+
 @app.get("/api/v1/queue/stats")
 def queue_stats() -> dict[str, int]:
     """Returns real-time task count for pending, processing, and dead-letter queues."""
@@ -619,6 +657,7 @@ async def sse_chat_generator(
     doc_ids: list[str] | None = None,
     compactor_budget: int = 3072,
     min_score_threshold: float = 0.15,
+    ef_search: int | None = None,
 ) -> AsyncGenerator[str, None]:
     """Streams Ollama generation tokens via SSE with agentic multi-hop support and live telemetry."""
     t_start = time.perf_counter()
@@ -652,6 +691,7 @@ async def sse_chat_generator(
             force_multi_hop=(mode == "agentic"),
             context_budget=compactor_budget,
             doc_ids=doc_ids,
+            ef_search=ef_search,
         )
         retrieval_ms = (time.perf_counter() - t_ret_start) * 1000
         sub_queries_list = [sq.query_text for sq in decomp_plan.sub_queries]
@@ -711,6 +751,7 @@ async def sse_chat_generator(
                 top_rerank=top_rerank,
                 min_rerank_score=min_score_threshold,
                 doc_ids=doc_ids,
+                ef_search=ef_search,
             )
         )
         retrieval_ms = (time.perf_counter() - t_ret_start) * 1000
@@ -805,6 +846,7 @@ async def sse_chat_generator(
                 top_rerank=top_rerank,
                 min_rerank_score=min_score_threshold,
                 doc_ids=doc_ids,
+                ef_search=ef_search,
             )
         )
         retrieval_ms = (time.perf_counter() - t_ret_start) * 1000
@@ -999,6 +1041,7 @@ def chat(req: ChatRequest):
     temperature = session.parameters.temperature
     compactor_budget = session.parameters.compactor_budget
     min_score_threshold = session.parameters.min_score_threshold
+    ef_search = session.parameters.hnsw_ef_search
     doc_ids = session.files if session.files else None
     system_prompt = session.system_prompt
 
@@ -1016,6 +1059,7 @@ def chat(req: ChatRequest):
                 doc_ids=doc_ids,
                 compactor_budget=compactor_budget,
                 min_score_threshold=min_score_threshold,
+                ef_search=ef_search,
             ),
             media_type="text/event-stream",
         )
@@ -1047,6 +1091,7 @@ def chat(req: ChatRequest):
             force_multi_hop=(effective_mode == "agentic"),
             context_budget=compactor_budget,
             doc_ids=doc_ids,
+            ef_search=ef_search,
         )
         retrieval_ms = (time.perf_counter() - t_ret_start) * 1000
         sub_queries_list = [sq.query_text for sq in decomp_plan.sub_queries]
@@ -1104,6 +1149,7 @@ def chat(req: ChatRequest):
                 top_rerank=effective_top_rerank,
                 min_rerank_score=min_score_threshold,
                 doc_ids=doc_ids,
+                ef_search=ef_search,
             )
         )
         retrieval_ms = (time.perf_counter() - t_ret_start) * 1000
@@ -1200,6 +1246,7 @@ def chat(req: ChatRequest):
                 top_rerank=effective_top_rerank,
                 min_rerank_score=min_score_threshold,
                 doc_ids=doc_ids,
+                ef_search=ef_search,
             )
         )
         retrieval_ms = (time.perf_counter() - t_ret_start) * 1000

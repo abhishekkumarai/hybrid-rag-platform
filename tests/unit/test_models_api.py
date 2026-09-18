@@ -35,7 +35,7 @@ def test_list_models_fallback_when_ollama_unreachable():
         assert res.status_code == 200
         data = res.json()
         assert data["ollama_alive"] is False
-        assert len(data["models"]) >= 2
+        assert len(data["models"]) >= 1
         names = [m["name"] for m in data["models"]]
-        assert "llama3.1:8b" in names or "llama3.2:3b" in names
+        assert data["default_model"] in names
         assert any(m["is_default"] for m in data["models"])

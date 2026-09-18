@@ -13,6 +13,13 @@ class SearchQuery(BaseModel):
     min_rerank_score: float = Field(default=0.15, ge=0.0, le=1.0, description="Cutoff threshold for refusal")
     collection_name: str = Field(default="rag_docs", description="Target Qdrant collection name")
     doc_ids: list[str] | None = Field(default=None, description="Optional list of document IDs to constrain retrieval")
+    ef_search: int | None = Field(
+        default=None,
+        ge=16,
+        le=512,
+        description="Qdrant HNSW search-time ef override (higher = more accurate but slower); "
+        "None uses the service's configured default",
+    )
 
 
 class Candidate(BaseModel):

@@ -37,6 +37,11 @@ retrieval:
   rrf_k: 60
   min_score_cutoff: 0.15
   collection_name: "rag_docs"
+  # HNSW index (m, ef_construct: fixed at collection creation) and default search-time ef
+  # (ef_search: overridable per-query via SearchQuery.ef_search / per-session in the UI).
+  hnsw_m: 32
+  hnsw_ef_construct: 256
+  hnsw_ef_search: 128
 
 logging:
   level: "INFO"

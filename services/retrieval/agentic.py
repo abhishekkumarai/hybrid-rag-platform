@@ -69,6 +69,7 @@ class AgenticCoordinator:
         enable_compression: bool = True,
         context_budget: int = 3072,
         doc_ids: list[str] | None = None,
+        ef_search: int | None = None,
     ) -> tuple[list[Candidate], list[Citation], list[AgentStep], DecompositionPlan, CRAGAssessment, bool]:
         """Executes full agentic loop: decompose -> sub-retrievals -> CRAG reflection -> cross-rerank.
 
@@ -101,7 +102,13 @@ class AgenticCoordinator:
             hop_num = idx + 1
             logger.info(f"Executing Hop {hop_num}/{len(decomp_plan.sub_queries)}: '{sq.query_text}'")
             sub_res = self.retrieval.retrieve(
-                SearchQuery(query_text=sq.query_text, top_k=top_k, top_rerank=top_rerank, doc_ids=doc_ids)
+                SearchQuery(
+                    query_text=sq.query_text,
+                    top_k=top_k,
+                    top_rerank=top_rerank,
+                    doc_ids=doc_ids,
+                    ef_search=ef_search,
+                )
             )
 
             for cand in sub_res.candidates:
@@ -147,7 +154,13 @@ class AgenticCoordinator:
 
             # Execute corrective retrieval hop
             corr_res = self.retrieval.retrieve(
-                SearchQuery(query_text=crag_assessment.reformulated_query, top_k=top_k, top_rerank=top_rerank, doc_ids=doc_ids)
+                SearchQuery(
+                    query_text=crag_assessment.reformulated_query,
+                    top_k=top_k,
+                    top_rerank=top_rerank,
+                    doc_ids=doc_ids,
+                    ef_search=ef_search,
+                )
             )
             for cand in corr_res.candidates:
                 score = cand.rerank_score if cand.rerank_score > 0 else cand.rrf_score

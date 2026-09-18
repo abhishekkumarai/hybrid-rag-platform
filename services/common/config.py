@@ -69,6 +69,9 @@ class RetrievalConfig(BaseModel):
     rrf_k: int = 60
     min_score_cutoff: float = 0.15
     collection_name: str = "rag_docs"
+    hnsw_m: int = 32
+    hnsw_ef_construct: int = 256
+    hnsw_ef_search: int = 128
 
 
 class LoggingConfig(BaseModel):

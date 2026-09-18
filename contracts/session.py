@@ -22,6 +22,12 @@ class SessionParameters(BaseModel):
     top_rerank: int = Field(default=6, ge=1, le=20)
     min_score_threshold: float = Field(default=0.15, ge=0.0, le=1.0)
     compactor_budget: int = Field(default=3072, ge=512, le=8192)
+    hnsw_ef_search: int = Field(
+        default=128,
+        ge=16,
+        le=512,
+        description="Qdrant HNSW search-time ef — higher trades search latency for recall",
+    )
     stream: bool = True
 
 

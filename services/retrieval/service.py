@@ -84,6 +84,7 @@ class RetrievalService:
             top_k=request.top_k,
             ollama_url=self.ollama_url,
             doc_ids=resolved_doc_ids,
+            ef_search=request.ef_search,
         )
         sparse_results = self.bm25.search(
             query,
