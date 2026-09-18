@@ -40,16 +40,21 @@ class FastTextParser:
             p_num = p_idx + 1
             page_dict = page.get_text("dict")
             order = 0
+            page_occupied = (
+                occupied_bboxes.get(p_num, [])
+                if isinstance(occupied_bboxes, dict)
+                else occupied_bboxes
+            )
 
             for b in page_dict.get("blocks", []):
                 b_type = b.get("type", 0)
                 bbox = tuple(b.get("bbox", (0.0, 0.0, 0.0, 0.0)))
                 b_rect = fitz.Rect(*bbox)
 
-                # Skip if text is inside an extracted table or figure
-                if occupied_bboxes and any(
+                # Skip only if text is inside an extracted table or figure on the SAME page
+                if page_occupied and any(
                     b_rect.intersects(fitz.Rect(*ob)) and (b_rect & fitz.Rect(*ob)).get_area() > 0.4 * b_rect.get_area()
-                    for ob in occupied_bboxes
+                    for ob in page_occupied
                 ):
                     continue
 

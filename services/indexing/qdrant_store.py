@@ -191,7 +191,20 @@ class QdrantStore:
         if not chunks:
             return 0
 
-        from qdrant_client.models import PointStruct
+        from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct
+
+        incoming_doc_ids = {c.doc_id for c in chunks if c.doc_id}
+        if not self.in_memory and incoming_doc_ids:
+            for d_id in incoming_doc_ids:
+                try:
+                    self.client.delete(
+                        collection_name=self.collection_name,
+                        points_selector=Filter(
+                            must=[FieldCondition(key="doc_id", match=MatchValue(value=d_id))]
+                        ),
+                    )
+                except Exception as e:
+                    logger.debug(f"Pre-indexing purge for doc_id='{d_id}' skipped: {e}")
 
         points: list[PointStruct] = []
         for idx, chunk in enumerate(chunks):

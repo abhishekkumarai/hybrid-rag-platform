@@ -27,7 +27,8 @@ class IndexingService:
         qdrant_port: int | None = None,
         in_memory: bool = False,
         bm25_dir: Path | str | None = None,
-        max_tokens: int = 512,
+        max_tokens: int | None = None,
+        overlap_tokens: int | None = None,
         graph_store: Any | None = None,
     ) -> None:
         from services.common.config import load_config
@@ -38,7 +39,8 @@ class IndexingService:
         if qdrant_port is None:
             qdrant_port = cfg.storage.qdrant_port
 
-        self.max_tokens = max_tokens
+        self.max_tokens = max_tokens if max_tokens is not None else cfg.chunking.max_tokens
+        self.overlap_tokens = overlap_tokens if overlap_tokens is not None else cfg.chunking.overlap_tokens
         self.qdrant = QdrantStore(host=qdrant_host, port=qdrant_port, in_memory=in_memory)
         self.bm25 = BM25Store(index_dir=bm25_dir)
         self.graph = graph_store or Neo4jGraphStore(
@@ -53,8 +55,13 @@ class IndexingService:
         """Chunks document blocks and indexes them into dense, sparse, and graph stores."""
         start = time.perf_counter()
 
-        # 1. Content-Aware Chunking
-        chunks = chunk_blocks(blocks, doc_id=doc_id, max_tokens=self.max_tokens)
+        # 1. Content-Aware Chunking (REC-59)
+        chunks = chunk_blocks(
+            blocks,
+            doc_id=doc_id,
+            max_tokens=self.max_tokens,
+            overlap_tokens=self.overlap_tokens,
+        )
 
         # 2. Dense Indexing (Qdrant)
         dense_count = self.qdrant.index(chunks)

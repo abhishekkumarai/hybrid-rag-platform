@@ -53,16 +53,17 @@ class BM25Store:
 
         import bm25s
 
-        # Deduplicate incoming chunks against existing corpus by chunk id
-        existing_ids = {c["id"] for c in self.corpus_chunks}
-        new_chunks = [c for c in chunks if c.id not in existing_ids]
-
-        if not new_chunks:
-            logger.info("All chunks already present in BM25 index, skipping re-index.")
-            return 0
+        # Purge existing chunks for incoming document IDs or chunk IDs to prevent stale duplicate chunks
+        incoming_doc_ids = {c.doc_id for c in chunks if c.doc_id}
+        incoming_ids = {c.id for c in chunks}
+        self.corpus_chunks = [
+            c
+            for c in self.corpus_chunks
+            if c.get("doc_id") not in incoming_doc_ids and c.get("id") not in incoming_ids
+        ]
 
         # Append new chunk dicts
-        for c in new_chunks:
+        for c in chunks:
             self.corpus_chunks.append({
                 "id": c.id,
                 "doc_id": c.doc_id,
@@ -72,6 +73,9 @@ class BM25Store:
                 "token_count": c.token_count,
                 "headings": c.headings,
                 "is_table": c.is_table,
+                "is_figure": getattr(c, "is_figure", False),
+                "image_path": getattr(c, "image_path", None),
+                "caption": getattr(c, "caption", None),
             })
 
         # Re-tokenize and build BM25-Okapi index
@@ -88,8 +92,8 @@ class BM25Store:
         with open(metadata_file, "w", encoding="utf-8") as f:
             json.dump(self.corpus_chunks, f, indent=2)
 
-        logger.info(f"BM25Store: indexed {len(new_chunks)} new chunks (total {len(self.corpus_chunks)})")
-        return len(new_chunks)
+        logger.info(f"BM25Store: indexed {len(chunks)} chunks (total {len(self.corpus_chunks)})")
+        return len(chunks)
 
     @staticmethod
     def _matches_doc_scope(candidate_doc_id: str | None, doc_id_set: set[str]) -> bool:
@@ -149,9 +153,9 @@ class BM25Store:
 
         import bm25s
 
-        query_tokens = bm25s.tokenize([query], stopwords="en")
+        query_tokens = bm25s.tokenize([query], stopwords="en", show_progress=False)
         k_val = len(self.corpus_chunks) if doc_ids else max(1, min(top_k, len(self.corpus_chunks)))
-        results, scores = self.retriever.retrieve(query_tokens, k=k_val)
+        results, scores = self.retriever.retrieve(query_tokens, k=k_val, show_progress=False)
 
         doc_set = set(doc_ids) if doc_ids else None
         ranked_results: list[tuple[dict[str, Any], float]] = []

@@ -27,30 +27,35 @@ class MultimodalExtractor:
         self,
         doc: fitz.Document,
         doc_id: str,
-    ) -> tuple[list[Block], list[tuple[float, float, float, float]]]:
+    ) -> tuple[list[Block], dict[int, list[tuple[float, float, float, float]]]]:
         """Extracts all tables and figures across document pages.
 
         Returns:
             blocks: List of table and figure Blocks with metadata.
-            occupied_bboxes: List of bounding boxes occupied by tables and figures to avoid duplication with text blocks.
+            occupied_bboxes: Dict mapping page number (1-based) to bounding boxes occupied
+                             by tables and figures on that page to avoid false cross-page suppression.
         """
         multimodal_blocks: list[Block] = []
-        occupied_bboxes: list[tuple[float, float, float, float]] = []
+        occupied_bboxes: dict[int, list[tuple[float, float, float, float]]] = {}
 
         for p_idx, page in enumerate(doc):
             p_num = p_idx + 1
             order = 0
+            page_occupied: list[tuple[float, float, float, float]] = []
 
             # 1. Deep Table Extraction
             table_blocks, t_bboxes = self._extract_tables_for_page(page, p_num, doc_id, order)
             multimodal_blocks.extend(table_blocks)
-            occupied_bboxes.extend(t_bboxes)
+            page_occupied.extend(t_bboxes)
             order += len(table_blocks)
 
             # 2. Deep Figure & Diagram Extraction
             fig_blocks, f_bboxes = self._extract_figures_for_page(page, p_num, doc_id, order)
             multimodal_blocks.extend(fig_blocks)
-            occupied_bboxes.extend(f_bboxes)
+            page_occupied.extend(f_bboxes)
+
+            if page_occupied:
+                occupied_bboxes[p_num] = page_occupied
 
         logger.info(
             f"MultimodalExtractor: extracted {len(multimodal_blocks)} multimodal blocks "

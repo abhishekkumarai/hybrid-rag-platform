@@ -37,10 +37,15 @@ class LayoutParser:
         mm_blocks, occupied_bboxes = self.multimodal_extractor.extract_tables_and_figures(doc, doc_id)
         blocks.extend(mm_blocks)
 
-        # 2. Extract remaining text blocks (skipping table and figure areas)
+        # 2. Extract remaining text blocks (skipping table and figure areas on the same page)
         for p_idx, page in enumerate(doc):
             p_num = p_idx + 1
             order = 1000 + p_idx * 100  # Offset order for text blocks
+            page_occupied = (
+                occupied_bboxes.get(p_num, [])
+                if isinstance(occupied_bboxes, dict)
+                else occupied_bboxes
+            )
 
             page_blocks = page.get_text("blocks")
             for b in page_blocks:
@@ -50,10 +55,10 @@ class LayoutParser:
 
                 b_rect = fitz.Rect(x0, y0, x1, y1)
 
-                # Skip if block is inside or significantly overlaps an extracted table or figure
-                inside_mm = any(
+                # Skip if block is inside or significantly overlaps an extracted table or figure on THIS page
+                inside_mm = page_occupied and any(
                     b_rect.intersects(fitz.Rect(*ob)) and (b_rect & fitz.Rect(*ob)).get_area() > 0.4 * b_rect.get_area()
-                    for ob in occupied_bboxes
+                    for ob in page_occupied
                 )
                 if inside_mm:
                     continue

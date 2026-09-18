@@ -273,12 +273,17 @@ class SessionManager:
         return "\n".join(lines)
 
     def reformulate_query(self, query: str, session_id: str | None) -> str:
-        """Enriches anaphoric follow-up queries with entity keywords from recent turns."""
+        """Enriches short anaphoric follow-up queries with context from recent turns."""
         if not session_id:
             return query
 
-        anaphoric_triggers = {"he", "his", "him", "she", "her", "it", "its", "they", "their", "there", "that company", "that role"}
-        words = set(query.lower().split())
+        query_words = query.strip().split()
+        # Full queries with 8+ words have sufficient context on their own
+        if len(query_words) >= 8:
+            return query
+
+        anaphoric_triggers = {"he", "his", "him", "she", "her", "it", "its", "they", "their", "there", "that", "this", "these", "those"}
+        words = set(w.lower().strip(".,?!:;") for w in query_words)
         has_anaphora = bool(words.intersection(anaphoric_triggers))
 
         if not has_anaphora:
@@ -293,10 +298,7 @@ class SessionManager:
         if not prior_user_turns:
             return query
 
-        first_query = prior_user_turns[0]
-        last_query = prior_user_turns[-1]
-        logger.info(f"Query reformulation triggered: '{query}' using prior turns: '{last_query}'")
-        if first_query != last_query:
-            return f"{first_query} {last_query} - {query}"
-        return f"{last_query} - {query}"
+        last_query = prior_user_turns[-1].strip()
+        logger.info(f"Query reformulation triggered for short query: '{query}' with context: '{last_query}'")
+        return f"{query} ({last_query})"
 

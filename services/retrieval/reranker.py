@@ -99,7 +99,24 @@ class FlashRankReranker:
             for c in candidates:
                 c.rerank_score = c.rrf_score
 
-        top_candidates = candidates[:top_n]
+        # Deduplicate candidates with identical or near-identical text (REC-59)
+        deduped_candidates: list[Candidate] = []
+        seen_texts: set[str] = set()
+        seen_ids: set[str] = set()
+
+        for c in candidates:
+            if c.id in seen_ids:
+                continue
+            # Text signature (first 35 words normalized) to eliminate duplicate chunks
+            text_sig = " ".join(c.text.strip().lower().split()[:35])
+            if text_sig and text_sig in seen_texts:
+                continue
+            if text_sig:
+                seen_texts.add(text_sig)
+            seen_ids.add(c.id)
+            deduped_candidates.append(c)
+
+        top_candidates = deduped_candidates[:top_n]
         top_score = top_candidates[0].rerank_score if top_candidates else 0.0
 
         # Refusal Cutoff Check
