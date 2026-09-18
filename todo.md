@@ -453,3 +453,24 @@ not a stray edit. Per explicit user decision, that file was superseded rather th
 
 Deployed and live at `http://localhost:8001/` as of 2026-09-09. Not yet done: Knowledge Graph (18.5) and
 Settings (18.9) remain placeholders, and the polish/cleanup items under 18.10.
+
+---
+
+## Phase 19: REC-62 Ollama Model Benchmark for Stoic Document RAG (4,000 Evaluations)
+*Target: Identify the optimal Ollama LLM for conversational RAG chat completion on consumer hardware by executing a 4,000-query benchmark against the Stoic corpus across all retriever types, with direct API invocation against session `sess_1be92cb06000`.*
+
+- [x] **Task 19.1: Stoic Evaluation Corpus & Query Generator (`tests/eval/benchmark_stoic_4000.py`)**
+  - [x] Generate 4,000 structured evaluation queries spanning 4 Stoic archetypes:
+    1. Direct quote & passage recall (1,000 queries)
+    2. Multi-hop & cross-philosopher comparisons (1,000 queries)
+    3. Core conceptual principles (Dichotomy of Control, Amor Fati, Memento Mori) (1,000 queries)
+    4. Practical scenario & conversational problem-solving (1,000 queries)
+- [x] **Task 19.2: Multi-Retriever Benchmark on Stoic Corpus (4,000 evaluations)**
+  - [x] Benchmark all 4 retrieval engines: Dense (Qdrant), Sparse (BM25s), Hybrid RRF (k=60), Hybrid + FlashRank Rerank.
+  - [x] Record Hit Rate @ 1, 3, 5, 10, MRR, NDCG@5, and latency per modality. Completed in 173.20s (23.1 qps).
+- [x] **Task 19.3: Direct API Chat Completion Benchmarking (`http://localhost:8010/api/v1/chat`)**
+  - [x] Direct invocation against session `sess_1be92cb06000` with the attached Stoic document.
+  - [x] Benchmark candidate Ollama models: `llama3.1:latest` (8B), `llama3.2:3b` (3B), `qwen2.5-coder:7b` (7B), `qwen3.5:4b` (4B).
+  - [x] Measure Time-to-First-Token (TTFT), tokens/second throughput, citation faithfulness (100% across models), and RTX 3050 6GB VRAM footprint (llama3.2:3b uses 2.5 GB, 100% GPU resident).
+- [x] **Task 19.4: Synthesize Results & Model Recommendation (`stoic_rag_model_benchmark_report.md`)**
+  - [x] Produce deliverable Markdown report with comparative tables, trade-off matrix, and final recommendation (`llama3.2:3b` as optimal interactive model).

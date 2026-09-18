@@ -27,6 +27,7 @@ venv/
 # Local OCR scratch notebook (large embedded outputs from external scans)
 rag.ipynb
 highlighted.png
+screenshot_*.png
 notebook/
 
 # Editor / OS
