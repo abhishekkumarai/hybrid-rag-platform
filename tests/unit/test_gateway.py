@@ -439,3 +439,13 @@ def test_gateway_chat_auto_session(mock_get_services, mock_requests_post):
 
 
 
+
+
+def test_sse_chat_generator_does_not_run_on_event_loop():
+    """REC-67: blocking retrieval/Ollama I/O must run in StreamingResponse's threadpool."""
+    import inspect
+
+    from services.gateway.api import sse_chat_generator
+
+    assert not inspect.isasyncgenfunction(sse_chat_generator)
+    assert inspect.isgeneratorfunction(sse_chat_generator)

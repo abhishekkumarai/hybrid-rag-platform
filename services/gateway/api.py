@@ -6,8 +6,9 @@ import asyncio
 import json
 import shutil
 import time
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, AsyncGenerator
+from typing import Any
 
 import requests
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
@@ -645,7 +646,7 @@ def get_metrics(session_id: str | None = None) -> SystemMetrics:
     )
 
 
-async def sse_chat_generator(
+def sse_chat_generator(
     query_text: str,
     top_k: int,
     top_rerank: int,
@@ -658,8 +659,12 @@ async def sse_chat_generator(
     compactor_budget: int = 3072,
     min_score_threshold: float = 0.15,
     ef_search: int | None = None,
-) -> AsyncGenerator[str, None]:
-    """Streams Ollama generation tokens via SSE with agentic multi-hop support and live telemetry."""
+) -> Iterator[str]:
+    """Streams Ollama generation tokens via SSE with agentic multi-hop support and live telemetry.
+
+    Deliberately a *sync* generator: every step (retrieval, rerank, the Ollama `requests` stream)
+    blocks, and StreamingResponse runs sync iterators in its threadpool. As an `async def` it ran
+    on the event loop and stalled every other request for the whole answer."""
     t_start = time.perf_counter()
     _, _, retrieval = get_services()
     coordinator = get_agentic_coordinator()
