@@ -155,7 +155,7 @@
 <!-- ============ LEFT NAV RAIL ============ -->
 <aside id="navRail" class="flex flex-col justify-between h-screen w-60 py-4 px-3 shrink-0 bg-surface-container-low border-r border-surface-container-high z-30 transition-all duration-200">
   <div>
-    <div id="brandHomeBtn" class="flex items-center gap-3 px-3 py-2 mb-6 border-b border-surface-container-high pb-4 cursor-pointer hover:opacity-80 transition" title="Go to Workspaces Home">
+    <div id="brandHomeBtn" class="flex items-center gap-3 px-3 py-2 mb-6 border-b border-surface-container-high pb-4 cursor-pointer hover:opacity-80 transition" title="Go to Projects Home">
       <div class="w-7 h-7 rounded bg-primary flex items-center justify-center text-on-primary font-mono text-xs font-bold shrink-0">IRA</div>
       <div class="overflow-hidden nav-label">
         <div class="font-headline font-bold text-on-surface text-sm tracking-tight leading-tight">IRA</div>
@@ -163,7 +163,7 @@
       </div>
     </div>
     <nav class="space-y-1" id="navItems">
-      <a class="nav-item" data-page="gallery"><span class="material-symbols-outlined text-[20px]">folder_open</span><span class="nav-label">Workspaces</span></a>
+      <a class="nav-item" data-page="gallery"><span class="material-symbols-outlined text-[20px]">folder_open</span><span class="nav-label">Projects</span></a>
       <a class="nav-item" data-page="library"><span class="material-symbols-outlined text-[20px]">menu_book</span><span class="nav-label">Library</span></a>
       <a class="nav-item" data-page="graph"><span class="material-symbols-outlined text-[20px]">hub</span><span class="nav-label">Knowledge Graph</span></a>
       <a class="nav-item" data-page="observability"><span class="material-symbols-outlined text-[20px]">monitor_heart</span><span class="nav-label">Observability</span></a>
@@ -188,9 +188,9 @@
   <header class="flex justify-between items-center w-full px-6 h-14 bg-surface border-b border-surface-container-high shrink-0 z-20">
     <div class="flex items-center gap-4 min-w-0">
       <div class="flex items-baseline gap-1.5 shrink-0">
-        <span id="headerHomeBtn" class="font-headline font-bold tracking-tight text-on-surface text-base cursor-pointer hover:text-primary transition" title="Go to Workspaces Home">IRA <span class="text-xs font-normal text-on-surface-variant hidden md:inline">(Intelligent RAG Assistant)</span></span>
+        <span id="headerHomeBtn" class="font-headline font-bold tracking-tight text-on-surface text-base cursor-pointer hover:text-primary transition" title="Go to Projects Home">IRA <span class="text-xs font-normal text-on-surface-variant hidden md:inline">(Intelligent RAG Assistant)</span></span>
         <span class="font-mono text-xs text-on-surface-variant">/</span>
-        <span class="font-headline font-medium text-xs text-primary cursor-pointer hover:underline" id="breadcrumb" title="Click to view all Workspaces">Workspaces</span>
+        <span class="font-headline font-medium text-xs text-primary cursor-pointer hover:underline" id="breadcrumb" title="Click to view all Projects">Projects</span>
       </div>
     </div>
     <div class="flex items-center gap-3">
@@ -216,12 +216,12 @@
 
   <main id="pageHost" class="flex-1 overflow-hidden relative">
 
-    <!-- ============ PAGE: WORKSPACE GALLERY ============ -->
+    <!-- ============ PAGE: PROJECT GALLERY ============ -->
     <section id="page-gallery" class="page h-full overflow-y-auto p-8">
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 class="font-headline font-bold text-2xl text-on-surface">Workspaces</h1>
-          <p class="text-sm text-on-surface-variant mt-1">Each workspace is a scoped conversation with its own documents, prompt, and model.</p>
+          <h1 class="font-headline font-bold text-2xl text-on-surface">Projects</h1>
+          <p class="text-sm text-on-surface-variant mt-1">Each project is a scoped conversation with its own documents, prompt, and model.</p>
         </div>
         <div class="flex items-center gap-3 flex-wrap">
           <!-- Bulk selection actions toolbar -->
@@ -242,18 +242,18 @@
           </button>
 
           <button id="newWorkspaceBtn" class="flex items-center gap-2 bg-primary text-on-primary font-label text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition">
-            <span class="material-symbols-outlined text-[18px]">add</span> New Workspace
+            <span class="material-symbols-outlined text-[18px]">add</span> New Project
           </button>
         </div>
       </div>
       <div id="galleryGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
       <div id="galleryEmpty" class="page-placeholder" hidden>
         <span class="material-symbols-outlined text-[40px] text-outline-variant">folder_open</span>
-        <div class="font-headline text-on-surface font-medium">No workspaces yet</div>
-        <div class="text-sm text-on-surface-variant">Create your first workspace to start chatting with your documents.</div>
+        <div class="font-headline text-on-surface font-medium">No projects yet</div>
+        <div class="text-sm text-on-surface-variant">Create your first project to start chatting with your documents.</div>
       </div>
-      <!-- Scroll to Top Button for Gallery / Workspaces Home -->
-      <button id="galleryScrollTopBtn" class="scroll-top-btn" title="Scroll to top of Workspaces">
+      <!-- Scroll to Top Button for Gallery / Projects Home -->
+      <button id="galleryScrollTopBtn" class="scroll-top-btn" title="Scroll to top of Projects">
         <span class="material-symbols-outlined text-[20px]">arrow_upward</span>
       </button>
     </section>
@@ -265,7 +265,7 @@
         <div class="p-3 border-b border-surface-container-high space-y-2">
           <input id="wsFileInput" type="file" accept=".pdf" hidden />
           <button id="wsUploadBtn" class="w-full flex items-center justify-center gap-2 bg-primary text-on-primary rounded-lg py-2 text-xs font-label hover:opacity-90 transition font-medium shadow-sm">
-            <span class="material-symbols-outlined text-[16px]">upload_file</span> Upload PDF to Workspace
+            <span class="material-symbols-outlined text-[16px]">upload_file</span> Upload PDF to Project
           </button>
           <button id="addSourceBtn" class="w-full flex items-center justify-center gap-2 border border-surface-container-high bg-surface-container-lowest rounded-lg py-1.5 text-xs font-label text-on-surface-variant hover:border-primary hover:text-primary transition">
             <span class="material-symbols-outlined text-[15px]">library_add</span> Attach from Library
@@ -276,7 +276,7 @@
           <span id="wsUploadStatusText">Ingesting &amp; indexing...</span>
         </div>
         <div class="px-3 pt-2.5 text-[10px] font-mono text-on-surface-variant uppercase tracking-wider flex justify-between items-center">
-          <span>Workspace Sources</span>
+          <span>Project Sources</span>
           <span id="sourcesCountBadge" class="font-mono text-[10px] px-1.5 py-0.2 bg-surface-container-high rounded text-on-surface">0</span>
         </div>
         <div id="sourcesList" class="flex-1 overflow-y-auto p-3 space-y-2"></div>
@@ -289,21 +289,21 @@
       <div class="flex-1 flex flex-col min-w-0">
         <div class="flex items-center justify-between px-5 py-3 border-b border-surface-container-high bg-surface shrink-0">
           <div class="flex items-center gap-2 min-w-0">
-            <button id="backToGalleryBtn" class="flex items-center gap-1 text-xs font-label text-on-surface-variant hover:text-primary px-2 py-1 rounded-md hover:bg-surface-container-low transition shrink-0" title="Return to Workspaces Gallery">
+            <button id="backToGalleryBtn" class="flex items-center gap-1 text-xs font-label text-on-surface-variant hover:text-primary px-2 py-1 rounded-md hover:bg-surface-container-low transition shrink-0" title="Return to Projects Gallery">
               <span class="material-symbols-outlined text-[15px]">arrow_back</span>
-              <span class="font-medium">Workspaces</span>
+              <span class="font-medium">Projects</span>
             </button>
             <span class="text-surface-container-highest shrink-0">/</span>
-            <select id="chatWorkspaceSelect" class="border border-surface-container-high rounded-lg px-2.5 py-1 text-xs font-headline font-semibold bg-surface-container-lowest text-on-surface focus:outline-none focus:border-primary transition cursor-pointer max-w-[180px] md:max-w-[240px] truncate shrink-0" title="Switch workspace">
-              <option value="">Switch workspace…</option>
+            <select id="chatWorkspaceSelect" class="border border-surface-container-high rounded-lg px-2.5 py-1 text-xs font-headline font-semibold bg-surface-container-lowest text-on-surface focus:outline-none focus:border-primary transition cursor-pointer max-w-[180px] md:max-w-[240px] truncate shrink-0" title="Switch project">
+              <option value="">Switch project…</option>
             </select>
-            <span id="currentChatTitle" class="font-headline font-semibold text-sm text-on-surface truncate cursor-text hover:bg-surface-container-low px-1.5 py-0.5 rounded transition" contenteditable="true" title="Click to rename workspace">Select or create a workspace</span>
+            <span id="currentChatTitle" class="font-headline font-semibold text-sm text-on-surface truncate cursor-text hover:bg-surface-container-low px-1.5 py-0.5 rounded transition" contenteditable="true" title="Click to rename project">Select or create a project</span>
             <span class="material-symbols-outlined text-[14px] text-on-surface-variant opacity-60 shrink-0">edit</span>
           </div>
           <div class="flex items-center gap-2 shrink-0">
-            <button id="toggleWsSettingsBtn" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-surface-container-high bg-surface-container-lowest hover:bg-surface-container-low text-on-surface text-xs font-label font-medium transition" title="Toggle Workspace Settings & Tuning">
+            <button id="toggleWsSettingsBtn" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-surface-container-high bg-surface-container-lowest hover:bg-surface-container-low text-on-surface text-xs font-label font-medium transition" title="Toggle Project Settings & Tuning">
               <span class="material-symbols-outlined text-[16px] text-primary">tune</span>
-              <span>Workspace Settings</span>
+              <span>Project Settings</span>
             </button>
           </div>
         </div>
@@ -331,12 +331,12 @@
         </form>
       </div>
 
-      <!-- Workspace Settings Right-Hand Drawer -->
+      <!-- Project Settings Right-Hand Drawer -->
       <aside id="wsSettingsDrawer" class="w-80 shrink-0 h-full border-l border-surface-container-high bg-surface-container-low flex flex-col transition-all duration-200 overflow-hidden">
         <div class="flex items-center justify-between px-4 py-3 border-b border-surface-container-high bg-surface shrink-0">
           <div class="flex items-center gap-2">
             <span class="material-symbols-outlined text-[18px] text-primary">tune</span>
-            <span class="font-headline font-semibold text-xs uppercase tracking-wider text-on-surface">Workspace Settings</span>
+            <span class="font-headline font-semibold text-xs uppercase tracking-wider text-on-surface">Project Settings</span>
           </div>
           <button id="closeWsSettingsBtn" class="w-7 h-7 rounded-md flex items-center justify-center hover:bg-surface-container text-on-surface-variant hover:text-on-surface transition" title="Close Settings">
             <span class="material-symbols-outlined text-[18px]">close</span>
@@ -344,10 +344,10 @@
         </div>
 
         <div class="flex-1 overflow-y-auto p-4 space-y-5 text-xs">
-          <!-- Workspace Name -->
+          <!-- Project Name -->
           <div>
             <div class="flex items-center justify-between">
-              <label class="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-wide">Workspace Name</label>
+              <label class="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-wide">Project Name</label>
               <span class="text-[10px] font-mono text-on-surface-variant">Rename</span>
             </div>
             <input id="drawerWorkspaceName" type="text" placeholder="e.g., Financial Compliance Audit" class="w-full mt-1.5 border border-surface-container-high rounded-lg px-3 py-2 text-xs font-headline font-semibold bg-surface-container-lowest text-on-surface focus:outline-none focus:border-primary transition" />
@@ -429,7 +429,7 @@
             <textarea id="drawerSystemPrompt" rows="3" placeholder="e.g., You are a strict SEC auditor. Answer strictly with verified numerical provenance..." class="w-full mt-1.5 resize-none border border-surface-container-high rounded-lg p-2.5 text-xs bg-surface-container-lowest text-on-surface focus:outline-none focus:border-primary font-mono"></textarea>
           </div>
 
-          <!-- Tuning Sliders (Local to Workspace) -->
+          <!-- Tuning Sliders (Local to Project) -->
           <div class="space-y-4 pt-2 border-t border-surface-container-high">
             <div class="font-label text-xs font-semibold text-on-surface uppercase tracking-wide">Retrieval &amp; Context Tuning</div>
 
@@ -486,11 +486,11 @@
               <input id="drawerStreamToggle" type="checkbox" checked class="w-4 h-4 accent-primary cursor-pointer" />
             </div>
 
-            <!-- Danger Zone: Delete Workspace -->
+            <!-- Danger Zone: Delete Project -->
             <div class="pt-4 border-t border-surface-container-high">
-              <button id="drawerDeleteWsBtn" class="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-error/30 text-error hover:bg-error/10 text-xs font-label font-medium transition cursor-pointer" title="Permanently delete this workspace">
+              <button id="drawerDeleteWsBtn" class="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-error/30 text-error hover:bg-error/10 text-xs font-label font-medium transition cursor-pointer" title="Permanently delete this project">
                 <span class="material-symbols-outlined text-[15px]">delete</span>
-                <span>Delete Workspace</span>
+                <span>Delete Project</span>
               </button>
             </div>
           </div>
@@ -1062,12 +1062,12 @@
     <!-- ============ PAGE: MODELS & TUNING ============ -->
     <section id="page-models" class="page hidden h-full overflow-y-auto p-8">
       <h1 class="font-headline font-bold text-2xl text-on-surface mb-1">Models &amp; Tuning</h1>
-      <p class="text-sm text-on-surface-variant mb-6" id="modelsScopeLabel">Settings are saved to the active workspace.</p>
+      <p class="text-sm text-on-surface-variant mb-6" id="modelsScopeLabel">Settings are saved to the active project.</p>
 
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
       <!-- Left column: per-workspace generation + retrieval parameters -->
       <div class="space-y-6 min-w-0">
-        <div class="font-mono text-[10px] text-on-surface-variant uppercase tracking-wider font-semibold border-b border-surface-container-high pb-2">Workspace parameters</div>
+        <div class="font-mono text-[10px] text-on-surface-variant uppercase tracking-wider font-semibold border-b border-surface-container-high pb-2">Project parameters</div>
         <div>
           <label class="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-wide">Generation model</label>
           <select id="models-select" class="w-full mt-2 border border-surface-container-high rounded-lg px-3 py-2 text-sm font-mono bg-surface-container-lowest"></select>
@@ -1147,8 +1147,8 @@
             <span class="font-label text-xs font-semibold text-on-surface">Vector Index (HNSW) — Global</span>
           </div>
           <p class="text-[11px] text-on-surface-variant font-mono mb-3">
-            Collection-wide Qdrant index parameters, not scoped to a workspace or session. Applying a
-            change re-indexes every embedded chunk across every workspace in the background — it is
+            Collection-wide Qdrant index parameters, not scoped to a project or session. Applying a
+            change re-indexes every embedded chunk across every project in the background — it is
             not instant and affects retrieval for everyone until it completes.
           </p>
 
@@ -1351,8 +1351,8 @@
             <div class="h-px bg-surface-container-high"></div>
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-xs font-medium text-on-surface">Reset Workspaces &amp; Cache</p>
-                <p class="text-[11px] text-on-surface-variant">Clears local workspace state and resets preferences</p>
+                <p class="text-xs font-medium text-on-surface">Reset Projects &amp; Cache</p>
+                <p class="text-[11px] text-on-surface-variant">Clears local project state and resets preferences</p>
               </div>
               <button id="settings-reset-all-btn" class="px-3 py-1.5 bg-error text-on-error text-xs font-semibold rounded-lg hover:opacity-90 transition">Reset All</button>
             </div>
@@ -1378,7 +1378,7 @@
   // Router: shows/hides <section class="page"> blocks by data-page
   // ============================================================
   const PAGES = ['gallery', 'chat', 'library', 'graph', 'observability', 'ragops', 'eval', 'models', 'settings'];
-  const BREADCRUMB = { gallery: 'Workspaces', chat: 'Chat', library: 'Library', graph: 'Knowledge Graph', observability: 'Observability', ragops: 'RAGOps', eval: 'Evaluation', models: 'Models & Tuning', settings: 'Settings' };
+  const BREADCRUMB = { gallery: 'Projects', chat: 'Chat', library: 'Library', graph: 'Knowledge Graph', observability: 'Observability', ragops: 'RAGOps', eval: 'Evaluation', models: 'Models & Tuning', settings: 'Settings' };
   const NAV_PAGE = { gallery: 'gallery', chat: 'gallery', library: 'library', graph: 'graph', observability: 'observability', ragops: 'ragops', eval: 'eval', models: 'models', settings: 'settings' };
 
   function navigate(page, opts = {}) {
@@ -1397,15 +1397,15 @@
     if (page === 'models') updateModelsScopeLabel();
   }
 
-  // Everything on Models & Tuning except the HNSW panel is persisted to the active workspace
+  // Everything on Models & Tuning except the HNSW panel is persisted to the active project
   // (persistWorkspaceParameters -> PATCH /api/v1/sessions/{id}), so say which one.
   function updateModelsScopeLabel() {
     const label = document.getElementById('modelsScopeLabel');
     if (!label) return;
     const sess = allSessions.find(s => s.id === currentSessionId);
     label.textContent = currentSessionId
-      ? `Settings for workspace "${sess ? sess.title : currentSessionId}". The vector index panel is global.`
-      : 'No workspace open. Open one from Workspaces to save these settings to it.';
+      ? `Settings for project "${sess ? sess.title : currentSessionId}". The vector index panel is global.`
+      : 'No project open. Open one from Projects to save these settings to it.';
   }
 
   document.querySelectorAll('.nav-item[data-page]').forEach(el => {
@@ -1754,7 +1754,7 @@
   document.getElementById('closeInspectorBtn').addEventListener('click', () => { document.getElementById('inspector').hidden = true; });
 
   // ============================================================
-  // Sessions (Workspaces)
+  // Sessions (Projects)
   // ============================================================
   function populateWorkspaceSelects() {
     const selects = [
@@ -1774,7 +1774,7 @@
       if (cfg.isChat) {
         const defaultOpt = document.createElement('option');
         defaultOpt.value = '';
-        defaultOpt.textContent = 'Switch workspace…';
+        defaultOpt.textContent = 'Switch project…';
         sel.appendChild(defaultOpt);
       } else {
         const allOpt = document.createElement('option');
@@ -1785,7 +1785,7 @@
 
       if (allSessions && allSessions.length > 0) {
         const group = document.createElement('optgroup');
-        group.label = 'Workspaces';
+        group.label = 'Projects';
         allSessions.forEach(s => {
           const opt = document.createElement('option');
           opt.value = s.id;
@@ -1813,7 +1813,7 @@
     } catch (e) { console.error('Failed to load sessions', e); }
   }
 
-  // Bulk workspace selection
+  // Bulk project selection
   const selectedWorkspaceIds = new Set();
   let isSelectionMode = false;
 
@@ -1876,10 +1876,10 @@
             <div class="font-headline font-semibold text-sm text-on-surface truncate flex-1">${s.title}</div>
           </div>
           <div class="flex items-center gap-1 shrink-0">
-            <button class="ws-rename-btn opacity-60 hover:opacity-100 hover:text-primary transition p-0.5 rounded text-on-surface-variant" title="Rename workspace">
+            <button class="ws-rename-btn opacity-60 hover:opacity-100 hover:text-primary transition p-0.5 rounded text-on-surface-variant" title="Rename project">
               <span class="material-symbols-outlined text-[15px]">edit</span>
             </button>
-            <button class="ws-delete-btn opacity-60 hover:opacity-100 hover:text-error transition p-0.5 rounded text-on-surface-variant" title="Delete workspace">
+            <button class="ws-delete-btn opacity-60 hover:opacity-100 hover:text-error transition p-0.5 rounded text-on-surface-variant" title="Delete project">
               <span class="material-symbols-outlined text-[15px]">delete</span>
             </button>
           </div>
@@ -1913,7 +1913,7 @@
       if (renameBtn) {
         renameBtn.addEventListener('click', async (e) => {
           e.stopPropagation();
-          const newTitle = prompt('Enter new workspace name:', s.title);
+          const newTitle = prompt('Enter new project name:', s.title);
           if (newTitle && newTitle.trim() && newTitle.trim() !== s.title) {
             const cleanTitle = newTitle.trim();
             s.title = cleanTitle;
@@ -1922,7 +1922,7 @@
               const drawerWsName = document.getElementById('drawerWorkspaceName');
               if (drawerWsName) drawerWsName.value = cleanTitle;
               const breadcrumb = document.getElementById('breadcrumb');
-              if (breadcrumb) breadcrumb.textContent = `Workspaces / ${cleanTitle}`;
+              if (breadcrumb) breadcrumb.textContent = `Projects / ${cleanTitle}`;
             }
             try {
               await fetch(`/api/v1/sessions/${s.id}`, {
@@ -1932,7 +1932,7 @@
               });
               renderGallery();
             } catch (err) {
-              console.error('Failed to rename workspace from gallery', err);
+              console.error('Failed to rename project from gallery', err);
             }
           }
         });
@@ -1993,7 +1993,7 @@
     wsDeleteSelectedBtn.addEventListener('click', async () => {
       const count = selectedWorkspaceIds.size;
       if (count === 0) return;
-      if (!confirm(`Are you sure you want to delete ${count} selected workspace${count === 1 ? '' : 's'}? All messages in these workspaces will be permanently removed.`)) {
+      if (!confirm(`Are you sure you want to delete ${count} selected project${count === 1 ? '' : 's'}? All messages in these projects will be permanently removed.`)) {
         return;
       }
       wsDeleteSelectedBtn.disabled = true;
@@ -2008,8 +2008,8 @@
         selectedWorkspaceIds.clear();
         await loadSessions();
       } catch (err) {
-        console.error('Failed to bulk delete workspaces', err);
-        alert(`Error deleting workspaces: ${err.message}`);
+        console.error('Failed to bulk delete projects', err);
+        alert(`Error deleting projects: ${err.message}`);
       } finally {
         wsDeleteSelectedBtn.disabled = false;
         wsDeleteSelectedBtn.innerHTML = '<span class="material-symbols-outlined text-[14px]">delete</span><span>Delete</span>';
@@ -2019,7 +2019,7 @@
   }
 
   async function deleteWorkspace(sessionId, title = '') {
-    if (!confirm(`Are you sure you want to delete workspace "${title || sessionId}"? All conversation messages will be removed.`)) {
+    if (!confirm(`Are you sure you want to delete project "${title || sessionId}"? All conversation messages will be removed.`)) {
       return;
     }
     try {
@@ -2032,11 +2032,11 @@
         }
         await loadSessions();
       } else {
-        alert('Failed to delete workspace.');
+        alert('Failed to delete project.');
       }
     } catch (err) {
-      console.error('Failed to delete workspace', err);
-      alert(`Error deleting workspace: ${err.message}`);
+      console.error('Failed to delete project', err);
+      alert(`Error deleting project: ${err.message}`);
     }
   }
 
@@ -2051,7 +2051,7 @@
       const drawerWsName = document.getElementById('drawerWorkspaceName');
       if (drawerWsName) drawerWsName.value = data.session.title;
       const breadcrumb = document.getElementById('breadcrumb');
-      if (breadcrumb) breadcrumb.textContent = `Workspaces / ${data.session.title}`;
+      if (breadcrumb) breadcrumb.textContent = `Projects / ${data.session.title}`;
       if (!allSessions.some(s => s.id === sessionId)) {
         await loadSessions();
       }
@@ -2061,7 +2061,7 @@
       data.messages.forEach(m => appendChatMessage(m.role, m.content, m.citations));
       renderSourcesPanel(data.session.files || []);
 
-      // Resolve workspace parameters: backend session parameters are the primary authority
+      // Resolve project parameters: backend session parameters are the primary authority
       const p = data.session.parameters || {};
 
       let wsModel = p.model;
@@ -2088,7 +2088,7 @@
         drawerSystemPrompt.value = data.session.system_prompt || '';
       }
 
-      // Populate Workspace Tuning Parameters
+      // Populate Project Tuning Parameters
       setDrawerTemp(p.temperature !== undefined ? p.temperature : 0.7);
       setDrawerTopk(p.top_k !== undefined ? p.top_k : 20);
       setDrawerRerank(p.top_rerank !== undefined ? p.top_rerank : 6);
@@ -2096,7 +2096,7 @@
       setDrawerCutoff(p.min_score_threshold !== undefined ? p.min_score_threshold : 0.15);
       setDrawerEfSearch(p.hnsw_ef_search !== undefined ? p.hnsw_ef_search : 128);
       setDrawerStream(p.stream !== undefined ? p.stream : true);
-    } catch (e) { console.error('Failed to open workspace', e); }
+    } catch (e) { console.error('Failed to open project', e); }
   }
 
   const chatWorkspaceSelect = document.getElementById('chatWorkspaceSelect');
@@ -2138,7 +2138,7 @@
       } catch (e) {}
       await loadSessions();
       openWorkspace(newSess.id);
-    } catch (e) { console.error('Failed to create workspace', e); }
+    } catch (e) { console.error('Failed to create project', e); }
   });
 
   document.getElementById('manageLibraryLink').addEventListener('click', () => {
@@ -2275,7 +2275,7 @@
           <span class="material-symbols-outlined text-[16px] text-on-surface-variant shrink-0">description</span>
           <span class="text-xs text-on-surface truncate">${doc ? doc.name : docId}</span>
         </div>
-        <button class="text-on-surface-variant hover:text-error shrink-0" title="Remove from workspace">
+        <button class="text-on-surface-variant hover:text-error shrink-0" title="Remove from project">
           <span class="material-symbols-outlined text-[15px]">close</span>
         </button>`;
       row.querySelector('button').addEventListener('click', async () => {
@@ -2312,7 +2312,7 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            title: `Workspace: ${file.name.replace(/\.[^/.]+$/, '')}`,
+            title: `Project: ${file.name.replace(/\.[^/.]+$/, '')}`,
             parameters: {
               model: currentModel,
               retrieval_mode: currentRetrievalMode,
@@ -2333,7 +2333,7 @@
           await loadSessions();
         }
       } catch (e) {
-        console.error('Failed to create workspace session before upload', e);
+        console.error('Failed to create project session before upload', e);
       }
     }
 
@@ -2367,9 +2367,9 @@
       if (!indexRes.ok) throw new Error('Indexing failed');
       await indexRes.json();
 
-      // 3. Attach locally to the active workspace session
+      // 3. Attach locally to the active project session
       if (currentSessionId && ingestData.doc_id) {
-        if (statusText) statusText.textContent = `Attaching to workspace...`;
+        if (statusText) statusText.textContent = `Attaching to project...`;
         await fetch(`/api/v1/sessions/${currentSessionId}/files`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2377,13 +2377,13 @@
         });
       }
 
-      // 4. Refresh global document library and workspace sources view
+      // 4. Refresh global document library and project sources view
       await loadDocuments();
       if (currentSessionId) {
         await openWorkspace(currentSessionId);
       }
     } catch (err) {
-      console.error('Workspace upload error:', err);
+      console.error('Project upload error:', err);
       alert(`Upload error: ${err.message}`);
     } finally {
       if (statusEl) statusEl.classList.add('hidden');
@@ -2468,7 +2468,7 @@
       const attachBtn = tr.querySelector('[data-attach]');
       if (attachBtn) attachBtn.addEventListener('click', async () => {
         await fetch(`/api/v1/sessions/${currentSessionId}/files`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ files: [doc.doc_id] }) });
-        alert(`Attached to current workspace.`);
+        alert(`Attached to current project.`);
       });
       body.appendChild(tr);
     });
@@ -2551,7 +2551,7 @@
     if (hBadge) hBadge.textContent = badgeText;
     if (hBar) { hBar.style.width = `${pctClamped}%`; hBar.className = barClassThin; }
 
-    // Synchronize workspace settings drawer VRAM display
+    // Synchronize project settings drawer VRAM display
     const dBadge = document.getElementById('drawerVramBadge');
     const dBar = document.getElementById('drawerVramBar');
     const dDesc = document.getElementById('drawerVramDesc');
@@ -2617,11 +2617,11 @@
     currentModel = newModel;
     applyModelChoice(newModel);
     if (currentSessionId) {
-      // 1. Cache to local storage per workspace
+      // 1. Cache to local storage per project
       try {
         localStorage.setItem(`ri_workspace_model_${currentSessionId}`, newModel);
       } catch (e) {
-        console.warn('Failed to cache workspace model to localStorage', e);
+        console.warn('Failed to cache project model to localStorage', e);
       }
 
       // Update in-memory session list for instant gallery UI update
@@ -2641,7 +2641,7 @@
             body: JSON.stringify({ parameters: { model: newModel } })
           });
         } catch (e) {
-          console.error('Failed to persist workspace model to backend', e);
+          console.error('Failed to persist project model to backend', e);
         }
       }
     }
@@ -2725,7 +2725,7 @@
       try {
         localStorage.setItem(`ri_workspace_mode_${currentSessionId}`, newMode);
       } catch (e) {
-        console.warn('Failed to cache workspace mode to localStorage', e);
+        console.warn('Failed to cache project mode to localStorage', e);
       }
 
       const sess = allSessions.find(s => s.id === currentSessionId);
@@ -2753,7 +2753,7 @@
       try {
         localStorage.setItem(`ri_workspace_route_${currentSessionId}`, newRoute);
       } catch (e) {
-        console.warn('Failed to cache workspace route to localStorage', e);
+        console.warn('Failed to cache project route to localStorage', e);
       }
 
       const sess = allSessions.find(s => s.id === currentSessionId);
@@ -2870,7 +2870,7 @@
         renderGallery();
       }
     } catch (e) {
-      console.error('Failed to persist workspace parameters to backend', e);
+      console.error('Failed to persist project parameters to backend', e);
     }
   }
 
@@ -2958,7 +2958,7 @@
     });
   }
 
-  // Workspace tuning sliders (local to workspace)
+  // Project tuning sliders (local to project)
   const drawerTempSlider = document.getElementById('drawerTempSlider');
   if (drawerTempSlider) {
     drawerTempSlider.addEventListener('input', (e) => {
@@ -3053,7 +3053,7 @@
     currentChatTitle.textContent = newTitle;
     if (drawerWorkspaceName) drawerWorkspaceName.value = newTitle;
     const breadcrumb = document.getElementById('breadcrumb');
-    if (breadcrumb) breadcrumb.textContent = `Workspaces / ${newTitle}`;
+    if (breadcrumb) breadcrumb.textContent = `Projects / ${newTitle}`;
     try {
       await fetch(`/api/v1/sessions/${currentSessionId}`, {
         method: 'PATCH',
@@ -3063,7 +3063,7 @@
       const sess = allSessions.find(s => s.id === currentSessionId);
       if (sess) { sess.title = newTitle; renderGallery(); }
     } catch (e) {
-      console.error('Failed to update workspace name', e);
+      console.error('Failed to update project name', e);
     }
   }
 
@@ -3208,8 +3208,8 @@
       const efc = parseInt(hnswEfcSlider.value, 10);
       if (!confirm(
         `Rebuild the shared vector index with m=${m}, ef_construct=${efc}?\n\n` +
-        `This re-indexes every embedded chunk across every workspace in the background. ` +
-        `Retrieval quality/latency for all workspaces is affected until it finishes.`
+        `This re-indexes every embedded chunk across every project in the background. ` +
+        `Retrieval quality/latency for all projects is affected until it finishes.`
       )) {
         return;
       }
@@ -3259,9 +3259,9 @@
       if (label) {
         if (obsScope !== 'all' && obsScope) {
           const sess = allSessions.find(s => s.id === obsScope);
-          label.textContent = `Telemetry for workspace: "${sess ? sess.title : obsScope}"`;
+          label.textContent = `Telemetry for project: "${sess ? sess.title : obsScope}"`;
         } else {
-          label.textContent = 'Real-time platform health and pipeline performance across all workspaces.';
+          label.textContent = 'Real-time platform health and pipeline performance across all projects.';
         }
       }
 
@@ -3372,9 +3372,9 @@
       if (label) {
         if (ragScope !== 'all' && ragScope) {
           const sess = allSessions.find(s => s.id === ragScope);
-          label.textContent = `Continuous feedback & active learning for workspace: "${sess ? sess.title : ragScope}"`;
+          label.textContent = `Continuous feedback & active learning for project: "${sess ? sess.title : ragScope}"`;
         } else {
-          label.textContent = 'Continuous feedback loop for retrieval and reranking quality across all workspaces.';
+          label.textContent = 'Continuous feedback loop for retrieval and reranking quality across all projects.';
         }
       }
 
@@ -3535,7 +3535,7 @@
     }
 
     // ============================================================
-    // Scroll to Top (Workspaces Gallery & Chat Thread)
+    // Scroll to Top (Projects Gallery & Chat Thread)
     // ============================================================
     const pageGallery = document.getElementById('page-gallery');
     const galleryScrollBtn = document.getElementById('galleryScrollTopBtn');
@@ -4069,7 +4069,7 @@
     const resetBtn = document.getElementById('settings-reset-all-btn');
     if (resetBtn) {
       resetBtn.addEventListener('click', () => {
-        if (confirm('Are you sure you want to reset all local workspaces and preferences?')) {
+        if (confirm('Are you sure you want to reset all local projects and preferences?')) {
           localStorage.clear();
           window.location.reload();
         }

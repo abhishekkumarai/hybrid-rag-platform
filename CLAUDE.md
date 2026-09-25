@@ -170,3 +170,8 @@ gateway. Design tokens and component rules are in [`DESIGN.md`](DESIGN.md); beha
 component reuse hierarchy are in [`docs/frontend-guidelines.md`](docs/frontend-guidelines.md); agent-facing
 UI directives are in [`AGENTS.md`](AGENTS.md). Match the existing dark zinc/obsidian aesthetic — hairline
 1px borders over drop shadows, monospace for all metadata and numerics.
+
+**Terminology:** the UI calls the scoped unit a **Project** (gallery = "Projects"). A Project is the backend
+`ChatSession` (`/api/v1/sessions`, `session_id`): its `files` are the project's documents, `parameters` its
+settings, and telemetry/feedback/eval are keyed by its `session_id`. JS identifiers and `localStorage` keys
+still say `workspace` (`ri_workspace_model_*`) — keep them, renaming would drop saved per-project state.
