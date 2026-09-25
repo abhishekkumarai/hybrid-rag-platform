@@ -98,6 +98,11 @@
   .nav-item.active { background: #faf9f5; color: #30332f; font-weight: 600; border-left: 3px solid #8b4f3b; padding-left: 9px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
   .nav-item.active .material-symbols-outlined { color: #8b4f3b; font-variation-settings: 'FILL' 1; }
 
+  .nav-section { padding: 14px 12px 4px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #8a8d87; }
+  .nav-project { margin: 0 0 4px; }
+  .nav-project .nav-project-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nav-project.is-empty { color: #8a8d87; font-style: italic; }
+
   .status-dot { width: 6px; height: 6px; border-radius: 999px; background: #b0b3ad; }
   .status-dot.active { background: #47664b; }
 
@@ -164,12 +169,21 @@
     </div>
     <nav class="space-y-1" id="navItems">
       <a class="nav-item" data-page="gallery"><span class="material-symbols-outlined text-[20px]">folder_open</span><span class="nav-label">Projects</span></a>
-      <a class="nav-item" data-page="library"><span class="material-symbols-outlined text-[20px]">menu_book</span><span class="nav-label">Library</span></a>
+
+      <!-- Everything in this group is scoped to the active project (a backend ChatSession). -->
+      <div class="nav-section nav-label">Active project</div>
+      <a class="nav-item nav-project is-empty" id="navActiveProject" data-nav="chat" title="Open the active project's chat">
+        <span class="material-symbols-outlined text-[20px]">chat</span>
+        <span class="nav-label nav-project-name" id="navActiveProjectName">None open</span>
+      </a>
+      <a class="nav-item" data-page="library"><span class="material-symbols-outlined text-[20px]">menu_book</span><span class="nav-label">Documents</span></a>
       <a class="nav-item" data-page="graph"><span class="material-symbols-outlined text-[20px]">hub</span><span class="nav-label">Knowledge Graph</span></a>
-      <a class="nav-item" data-page="observability"><span class="material-symbols-outlined text-[20px]">monitor_heart</span><span class="nav-label">Observability</span></a>
       <a class="nav-item" data-page="ragops"><span class="material-symbols-outlined text-[20px]">query_stats</span><span class="nav-label">RAGOps</span></a>
       <a class="nav-item" data-page="eval"><span class="material-symbols-outlined text-[20px]">fact_check</span><span class="nav-label">Evaluation</span></a>
       <a class="nav-item" data-page="models"><span class="material-symbols-outlined text-[20px]">tune</span><span class="nav-label">Models &amp; Tuning</span></a>
+
+      <div class="nav-section nav-label">Platform</div>
+      <a class="nav-item" data-page="observability"><span class="material-symbols-outlined text-[20px]">monitor_heart</span><span class="nav-label">Observability</span></a>
       <a class="nav-item" data-page="settings"><span class="material-symbols-outlined text-[20px]">settings</span><span class="nav-label">Settings</span></a>
     </nav>
   </div>
@@ -502,7 +516,7 @@
     <section id="page-library" class="page hidden h-full overflow-y-auto p-8">
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 class="font-headline font-bold text-2xl text-on-surface">Library</h1>
+          <h1 class="font-headline font-bold text-2xl text-on-surface">Documents</h1>
           <p class="text-sm text-on-surface-variant mt-1" id="libraryScopeLabel">All documents</p>
         </div>
         <div class="flex items-center gap-2">
@@ -1378,13 +1392,15 @@
   // Router: shows/hides <section class="page"> blocks by data-page
   // ============================================================
   const PAGES = ['gallery', 'chat', 'library', 'graph', 'observability', 'ragops', 'eval', 'models', 'settings'];
-  const BREADCRUMB = { gallery: 'Projects', chat: 'Chat', library: 'Library', graph: 'Knowledge Graph', observability: 'Observability', ragops: 'RAGOps', eval: 'Evaluation', models: 'Models & Tuning', settings: 'Settings' };
-  const NAV_PAGE = { gallery: 'gallery', chat: 'gallery', library: 'library', graph: 'graph', observability: 'observability', ragops: 'ragops', eval: 'eval', models: 'models', settings: 'settings' };
+  const BREADCRUMB = { gallery: 'Projects', chat: 'Chat', library: 'Documents', graph: 'Knowledge Graph', observability: 'Observability', ragops: 'RAGOps', eval: 'Evaluation', models: 'Models & Tuning', settings: 'Settings' };
+  const NAV_PAGE = { gallery: 'gallery', chat: 'chat', library: 'library', graph: 'graph', observability: 'observability', ragops: 'ragops', eval: 'eval', models: 'models', settings: 'settings' };
 
   function navigate(page, opts = {}) {
     if (!PAGES.includes(page)) page = 'gallery';
     PAGES.forEach(p => document.getElementById(`page-${p}`).classList.toggle('hidden', p !== page));
-    document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === NAV_PAGE[page]));
+    syncScopesToActiveProject();
+    updateActiveProjectNav();
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', (el.dataset.page || el.dataset.nav) === NAV_PAGE[page]));
     document.getElementById('breadcrumb').textContent = BREADCRUMB[page];
     window.location.hash = page + (opts.sessionId ? `/${opts.sessionId}` : '');
     if (page === 'gallery') loadSessions();
@@ -1411,6 +1427,38 @@
   document.querySelectorAll('.nav-item[data-page]').forEach(el => {
     el.addEventListener('click', () => navigate(el.dataset.page));
   });
+
+  document.getElementById('navActiveProject').addEventListener('click', () => {
+    if (currentSessionId) openWorkspace(currentSessionId);
+    else navigate('gallery');
+  });
+
+  // Project-scoped pages (Documents, Knowledge Graph, RAGOps, Observability, Evaluation) follow
+  // the active project. We re-sync only when the active project *changes*, so an explicit
+  // "All projects" pick on one page survives navigating around within the same project.
+  let scopesSyncedFor = null;
+  function syncScopesToActiveProject() {
+    if (scopesSyncedFor === currentSessionId) return;
+    // No active project (e.g. it was just deleted) -> fall back to the global view.
+    const scope = currentSessionId || 'all';
+    scopesSyncedFor = currentSessionId;
+    libraryScope = scope;
+    currentKgScope = scope;
+    obsScope = scope;
+    ragScope = scope;
+    evalScope = scope;
+    populateWorkspaceSelects();
+  }
+
+  function updateActiveProjectNav() {
+    const item = document.getElementById('navActiveProject');
+    const name = document.getElementById('navActiveProjectName');
+    if (!item || !name) return;
+    const sess = allSessions.find(x => x.id === currentSessionId);
+    item.classList.toggle('is-empty', !currentSessionId);
+    name.textContent = currentSessionId ? (sess ? (sess.title || 'Untitled') : currentSessionId) : 'None open';
+    item.title = currentSessionId ? `Open chat for "${name.textContent}"` : 'Open a project from Projects';
+  }
 
   const breadcrumbBtn = document.getElementById('breadcrumb');
   if (breadcrumbBtn) {
@@ -1448,6 +1496,10 @@
   let knownDocuments = [];
   let allSessions = [];
   let libraryScope = 'all';
+  let obsScope = 'all';
+  let ragScope = 'all';
+  let currentKgScope = 'all';
+  let evalScope = 'all';
   let currentModel = 'llama3.2:3b';
   let currentRetrievalMode = 'auto';
   let currentEmbeddingRoute = 'auto';
@@ -1810,6 +1862,7 @@
       allSessions = data.sessions || [];
       renderGallery();
       populateWorkspaceSelects();
+      updateActiveProjectNav();
     } catch (e) { console.error('Failed to load sessions', e); }
   }
 
@@ -2042,6 +2095,7 @@
 
   async function openWorkspace(sessionId) {
     currentSessionId = sessionId;
+    try { localStorage.setItem('ri_active_project', sessionId); } catch (e) {}
     navigate('chat', { sessionId });
     try {
       const res = await fetch(`/api/v1/sessions/${sessionId}`);
@@ -2438,6 +2492,21 @@
     } catch (e) { console.error('Failed to load documents', e); }
   }
 
+  // Mirror of services/common/doc_scope.py: a project's files may hold the exact doc_id, the raw
+  // filename, or the bare stem; indexed ids are `{stem}_{sha256[:8]}`. No loose prefix matching.
+  function normalizeDocId(id) {
+    return String(id).trim().toLowerCase().replace(/\.[a-z0-9]{1,5}$/, '').replace(/[ -]/g, '_');
+  }
+  function matchesDocScope(docId, scope) {
+    if (!docId) return false;
+    const cand = normalizeDocId(docId);
+    const candStem = cand.replace(/_[0-9a-f]{8}$/, '');
+    return scope.some(t => {
+      const tgt = normalizeDocId(t);
+      return cand === tgt || (!/_[0-9a-f]{8}$/.test(tgt) && candStem === tgt && candStem !== cand);
+    });
+  }
+
   function loadLibraryTable() {
     const body = document.getElementById('libraryTableBody');
     const empty = document.getElementById('libraryEmpty');
@@ -2445,8 +2514,8 @@
     let docs = knownDocuments;
     if (libraryScope !== 'all' && libraryScope) {
       const sess = allSessions.find(s => s.id === libraryScope);
-      const scopedIds = new Set((sess && sess.files) || []);
-      docs = knownDocuments.filter(d => scopedIds.has(d.doc_id));
+      const scopedIds = (sess && sess.files) || [];
+      docs = knownDocuments.filter(d => matchesDocScope(d.doc_id, scopedIds));
       scopeLabel.textContent = `Sources in "${sess ? sess.title : libraryScope}" (${docs.length} of ${knownDocuments.length})`;
     } else {
       scopeLabel.textContent = `All documents (${knownDocuments.length})`;
@@ -3243,7 +3312,6 @@
   // ============================================================
   // Observability
   // ============================================================
-  let obsScope = 'all';
 
   async function loadObservability() {
     try {
@@ -3361,7 +3429,6 @@
   // ============================================================
   // RAGOps
   // ============================================================
-  let ragScope = 'all';
 
   async function loadRagOps() {
     try {
@@ -3564,7 +3631,6 @@
   let currentKgFilter = 'all';
   let currentKgWeight = 0.40;
   let currentKgHops = 2;
-  let currentKgScope = 'all';
   let kgGraphData = null;
 
   async function loadKnowledgeGraph() {
@@ -4083,7 +4149,16 @@
   updateModeButtons(currentRetrievalMode);
   updateRouteButtons(currentEmbeddingRoute);
   const initialHash = window.location.hash.replace('#', '').split('/');
-  loadSessions();
+  // Restore the active project so project-scoped pages keep their scope across reloads.
+  let rememberedProject = null;
+  try { rememberedProject = localStorage.getItem('ri_active_project'); } catch (e) {}
+  loadSessions().then(() => {
+    if (!currentSessionId && rememberedProject && allSessions.some(x => x.id === rememberedProject)) {
+      currentSessionId = rememberedProject;
+      const page = (window.location.hash.replace('#', '').split('/')[0]) || 'gallery';
+      if (page !== 'chat') navigate(page);
+    }
+  });
   loadDocuments();
   loadAvailableModels();
   navigate(initialHash[0] || 'gallery', { sessionId: initialHash[1] });
