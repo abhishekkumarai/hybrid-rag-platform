@@ -684,7 +684,7 @@ async def sse_chat_generator(
     if is_agentic:
         yield f"event: mode\ndata: {json.dumps({'mode': 'agentic'})}\n\n"
         t_ret_start = time.perf_counter()
-        candidates, citations, agent_steps, decomp_plan, crag_res, refused = coordinator.run_plan(
+        agentic_res = coordinator.run_plan_full(
             query=retrieval_query,
             top_k=top_k,
             top_rerank=top_rerank,
@@ -693,6 +693,8 @@ async def sse_chat_generator(
             doc_ids=doc_ids,
             ef_search=ef_search,
         )
+        candidates, citations, agent_steps = agentic_res.candidates, agentic_res.citations, agentic_res.steps
+        decomp_plan, crag_res, refused = agentic_res.plan, agentic_res.crag, agentic_res.refused
         retrieval_ms = (time.perf_counter() - t_ret_start) * 1000
         sub_queries_list = [sq.query_text for sq in decomp_plan.sub_queries]
 
@@ -730,11 +732,9 @@ async def sse_chat_generator(
             decomp_plan=decomp_plan,
             history_context=history_context,
             graph_context=(
-                coordinator.last_graph_response.subgraph_text
-                if coordinator.last_graph_response
-                else ""
+                agentic_res.graph_response.subgraph_text if agentic_res.graph_response else ""
             ),
-            compacted_context=coordinator.last_compacted_context,
+            compacted_context=agentic_res.compacted_context,
         )
         if system_prompt:
             prompt = f"System Persona & Directives:\n{system_prompt}\n\n{prompt}"
@@ -1084,7 +1084,7 @@ def chat(req: ChatRequest):
 
     if is_agentic:
         t_ret_start = time.perf_counter()
-        candidates, citations, agent_steps, decomp_plan, crag_res, refused = coordinator.run_plan(
+        agentic_res = coordinator.run_plan_full(
             query=retrieval_query,
             top_k=effective_top_k,
             top_rerank=effective_top_rerank,
@@ -1093,6 +1093,8 @@ def chat(req: ChatRequest):
             doc_ids=doc_ids,
             ef_search=ef_search,
         )
+        candidates, citations, agent_steps = agentic_res.candidates, agentic_res.citations, agentic_res.steps
+        decomp_plan, crag_res, refused = agentic_res.plan, agentic_res.crag, agentic_res.refused
         retrieval_ms = (time.perf_counter() - t_ret_start) * 1000
         sub_queries_list = [sq.query_text for sq in decomp_plan.sub_queries]
 
@@ -1129,11 +1131,9 @@ def chat(req: ChatRequest):
             decomp_plan=decomp_plan,
             history_context=history_context,
             graph_context=(
-                coordinator.last_graph_response.subgraph_text
-                if coordinator.last_graph_response
-                else ""
+                agentic_res.graph_response.subgraph_text if agentic_res.graph_response else ""
             ),
-            compacted_context=coordinator.last_compacted_context,
+            compacted_context=agentic_res.compacted_context,
         )
         if system_prompt:
             prompt = f"System Persona & Directives:\n{system_prompt}\n\n{prompt}"

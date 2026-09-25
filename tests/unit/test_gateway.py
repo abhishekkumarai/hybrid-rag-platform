@@ -220,7 +220,13 @@ def test_gateway_feedback_endpoints():
 @patch("services.gateway.api.get_agentic_coordinator")
 @patch("services.gateway.api.get_services")
 def test_gateway_chat_agentic_sync(mock_get_services, mock_get_coordinator, mock_requests_post):
-    from contracts.agent import AgentStep, CRAGAssessment, DecompositionPlan, SubQuery
+    from contracts.agent import (
+        AgenticRunResult,
+        AgentStep,
+        CRAGAssessment,
+        DecompositionPlan,
+        SubQuery,
+    )
 
     mock_ingestion = MagicMock()
     mock_indexing = MagicMock()
@@ -260,7 +266,9 @@ def test_gateway_chat_agentic_sync(mock_get_services, mock_get_coordinator, mock
 
     coordinator = MagicMock()
     coordinator.decomposer.is_multi_hop_candidate.return_value = True
-    coordinator.run_plan.return_value = ([candidate], [citation], [step], plan, crag, False)
+    coordinator.run_plan_full.return_value = AgenticRunResult(
+        candidates=[candidate], citations=[citation], steps=[step], plan=plan, crag=crag
+    )
     coordinator.build_agentic_prompt.return_value = "Comparative prompt"
     mock_get_coordinator.return_value = coordinator
 

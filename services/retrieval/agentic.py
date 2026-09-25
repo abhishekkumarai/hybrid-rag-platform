@@ -3,6 +3,7 @@
 import time
 
 from contracts.agent import (
+    AgenticRunResult,
     AgentStep,
     CRAGAssessment,
     DecompositionPlan,
@@ -56,8 +57,6 @@ class AgenticCoordinator:
                 else ContextCompactor()
             )
         )
-        self.last_graph_response: GraphRAGResponse | None = None
-        self.last_compacted_context: CompactedContext | None = None
 
     def run_plan(
         self,
@@ -71,13 +70,42 @@ class AgenticCoordinator:
         doc_ids: list[str] | None = None,
         ef_search: int | None = None,
     ) -> tuple[list[Candidate], list[Citation], list[AgentStep], DecompositionPlan, CRAGAssessment, bool]:
-        """Executes full agentic loop: decompose -> sub-retrievals -> CRAG reflection -> cross-rerank.
+        """Tuple-returning wrapper over `run_plan_full()` for callers that don't need the graph
+        response or compacted context.
 
         Returns:
             (candidates, citations, steps, decomposition_plan, crag_assessment, is_refused)
         """
+        res = self.run_plan_full(
+            query=query,
+            top_k=top_k,
+            top_rerank=top_rerank,
+            force_multi_hop=force_multi_hop,
+            enable_graph=enable_graph,
+            enable_compression=enable_compression,
+            context_budget=context_budget,
+            doc_ids=doc_ids,
+            ef_search=ef_search,
+        )
+        return res.candidates, res.citations, res.steps, res.plan, res.crag, res.refused
+
+    def run_plan_full(
+        self,
+        query: str,
+        top_k: int = 20,
+        top_rerank: int = 6,
+        force_multi_hop: bool = False,
+        enable_graph: bool = True,
+        enable_compression: bool = True,
+        context_budget: int = 3072,
+        doc_ids: list[str] | None = None,
+        ef_search: int | None = None,
+    ) -> AgenticRunResult:
+        """Executes full agentic loop: decompose -> sub-retrievals -> CRAG reflection -> cross-rerank."""
         start_time = time.perf_counter()
         steps: list[AgentStep] = []
+        graph_res: GraphRAGResponse | None = None
+        comp_res: CompactedContext | None = None
 
         # 1. Query Decomposition
         decomp_plan = self.decomposer.decompose(query, force_multi_hop=force_multi_hop)
@@ -187,7 +215,7 @@ class AgenticCoordinator:
             if crag_assessment.status != "CONFIDENT":
                 # One corrective retry only; still not confident means refuse rather than
                 # synthesize an answer on weak/ambiguous evidence.
-                return [], [], steps, decomp_plan, crag_assessment, True
+                return AgenticRunResult(steps=steps, plan=decomp_plan, crag=crag_assessment, refused=True)
 
         elif crag_assessment.status == "REFUSE":
             steps.append(
@@ -199,7 +227,7 @@ class AgenticCoordinator:
                     data={"status": "REFUSE", "top_score": crag_assessment.top_score},
                 )
             )
-            return [], [], steps, decomp_plan, crag_assessment, True
+            return AgenticRunResult(steps=steps, plan=decomp_plan, crag=crag_assessment, refused=True)
         else:
             steps.append(
                 AgentStep(
@@ -214,7 +242,6 @@ class AgenticCoordinator:
         # 3.5 GraphRAG Relational Traversal (Phase 13)
         if enable_graph and self.traverser:
             graph_res = self.traverser.query_graph(query)
-            self.last_graph_response = graph_res
             if graph_res.relations:
                 steps.append(
                     AgentStep(
@@ -258,7 +285,6 @@ class AgenticCoordinator:
                 candidates=final_candidates,
                 budget_tokens=context_budget,
             )
-            self.last_compacted_context = comp_res
             steps.append(
                 AgentStep(
                     step_type="compaction",
@@ -282,7 +308,16 @@ class AgenticCoordinator:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         logger.info(f"Agentic plan completed in {elapsed_ms:.1f}ms with {len(steps)} steps")
 
-        return final_candidates, citations, steps, decomp_plan, crag_assessment, refused
+        return AgenticRunResult(
+            candidates=final_candidates,
+            citations=citations,
+            steps=steps,
+            plan=decomp_plan,
+            crag=crag_assessment,
+            refused=refused,
+            graph_response=graph_res,
+            compacted_context=comp_res,
+        )
 
     def build_agentic_prompt(
         self,

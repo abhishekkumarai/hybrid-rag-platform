@@ -4,6 +4,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from contracts.compactor import CompactedContext
+from contracts.graph import GraphRAGResponse
 from contracts.retrieval import Candidate, Citation
 
 
@@ -67,3 +69,19 @@ class AgenticRetrieveResponse(BaseModel):
     crag_triggered: bool = False
     refused: bool = False
     top_score: float = 0.0
+
+
+class AgenticRunResult(BaseModel):
+    """Everything one `AgenticCoordinator.run_plan_full()` call produced.
+
+    Returned per call rather than stored on the (process-wide singleton) coordinator, so one
+    request can never read another request's graph facts or compacted context."""
+
+    candidates: list[Candidate] = Field(default_factory=list)
+    citations: list[Citation] = Field(default_factory=list)
+    steps: list[AgentStep] = Field(default_factory=list)
+    plan: DecompositionPlan
+    crag: CRAGAssessment
+    refused: bool = False
+    graph_response: GraphRAGResponse | None = None
+    compacted_context: CompactedContext | None = None

@@ -2,6 +2,7 @@
 
 from unittest.mock import MagicMock
 
+from contracts.agent import CRAGAssessment
 from contracts.retrieval import Candidate, Citation, RetrieveResponse
 from services.retrieval.agentic import AgenticCoordinator
 from services.retrieval.crag import CRAGEvaluator
@@ -169,3 +170,43 @@ def test_agentic_coordinator_multi_hop_run():
     prompt = coordinator.build_agentic_prompt(query, cands, plan)
     assert "Comparative Synthesis" in prompt
     assert "Abhishek" in prompt or "Syngene" in prompt
+
+
+def test_run_plan_full_does_not_leak_previous_request_context():
+    """A refused/empty second run must not carry the first run's compacted context or graph facts —
+    the coordinator is a process-wide singleton shared by every project's requests."""
+    mock_retrieval = MagicMock()
+    mock_reranker = MagicMock()
+    cand = Candidate(
+        id="c1", doc_id="project_a_doc", page=1, bbox=(0.0, 0.0, 10.0, 10.0),
+        text="Project A confidential passage.", rrf_score=0.9, rerank_score=0.9,
+    )
+    cit = Citation(
+        doc_id="project_a_doc", page=1, bbox=(0.0, 0.0, 10.0, 10.0),
+        snippet="Project A", formatted_badge="[project_a_doc: 1]",
+    )
+    mock_retrieval.retrieve.side_effect = [
+        RetrieveResponse(query="q", candidates=[cand], citations=[cit], top_score=0.9,
+                         duration_ms=1.0, refused=False),
+        RetrieveResponse(query="q", candidates=[], citations=[], top_score=0.0,
+                         duration_ms=1.0, refused=True),
+    ]
+    mock_reranker.rerank.return_value = ([cand], [cit], False)
+    mock_crag = MagicMock()
+    mock_crag.evaluate.side_effect = [
+        CRAGAssessment(status="CONFIDENT", top_score=0.9),
+        CRAGAssessment(status="REFUSE", top_score=0.0),
+    ]
+    coordinator = AgenticCoordinator(
+        retrieval_service=mock_retrieval, reranker=mock_reranker, crag_evaluator=mock_crag
+    )
+
+    first = coordinator.run_plan_full("What does project A say?")
+    assert first.compacted_context is not None
+    assert "Project A" in first.compacted_context.formatted_prompt_context
+
+    second = coordinator.run_plan_full("Unrelated question in project B")
+    assert second.refused
+    assert second.compacted_context is None
+    assert second.graph_response is None
+    assert not hasattr(coordinator, "last_compacted_context")
