@@ -123,3 +123,21 @@ def test_graph_traverser_associative_path():
     assert len(response.relations) >= 1
     assert "Syngene" in response.subgraph_text
     assert "c1" in response.connected_chunk_ids or "c2" in response.connected_chunk_ids
+
+
+def test_graph_traverser_respects_project_doc_scope():
+    """REC-65: a project scoped to doc1 must not receive relations evidenced only by doc2."""
+    store = GraphStore(auto_load=False)
+    store.add_relation(Relation(source="Abhishek", predicate="worked_at", target="Syngene", doc_id="doc1_aaaaaaaa", chunk_id="c1"))
+    store.add_relation(Relation(source="Syngene", predicate="partnered_with", target="Bristol Myers Squibb", doc_id="doc2_bbbbbbbb", chunk_id="c2"))
+    traverser = GraphTraverser(store)
+    query = "How is Abhishek connected to Bristol Myers Squibb?"
+
+    unscoped = traverser.query_graph(query)
+    assert {r.doc_id for r in unscoped.relations} == {"doc1_aaaaaaaa", "doc2_bbbbbbbb"}
+
+    scoped = traverser.query_graph(query, doc_ids=["doc1.pdf"])
+    assert scoped.relations
+    assert {r.doc_id for r in scoped.relations} == {"doc1_aaaaaaaa"}
+    assert "Bristol Myers Squibb" not in scoped.subgraph_text
+    assert scoped.connected_chunk_ids == ["c1"]

@@ -241,7 +241,7 @@ class AgenticCoordinator:
 
         # 3.5 GraphRAG Relational Traversal (Phase 13)
         if enable_graph and self.traverser:
-            graph_res = self.traverser.query_graph(query)
+            graph_res = self.traverser.query_graph(query, doc_ids=doc_ids)
             if graph_res.relations:
                 steps.append(
                     AgentStep(

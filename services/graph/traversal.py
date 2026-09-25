@@ -13,6 +13,7 @@ from contracts.graph import (
     GraphRAGResponse,
     Relation,
 )
+from services.common.doc_scope import matches_doc_scope
 from services.common.logger import get_logger
 from services.graph.store import GraphStore
 
@@ -31,8 +32,12 @@ class GraphTraverser:
         max_hops: int = 2,
         max_entities: int = 20,
         min_edge_weight: float = 0.1,
+        doc_ids: Sequence[str] | None = None,
     ) -> GraphRAGResponse:
-        """Executes full GraphRAG traversal pipeline for a natural language query."""
+        """Executes full GraphRAG traversal pipeline for a natural language query.
+
+        `doc_ids` scopes the result to a project's documents: relations evidenced only by other
+        documents are dropped, so they never reach that project's prompt."""
         start_time = time.perf_counter()
 
         # 1. Identify focal entities directly mentioned in query
@@ -108,7 +113,17 @@ class GraphTraverser:
                         except Exception:
                             pass
 
-        # 4. Filter and cap relations
+        # 4. Project scope, then filter and cap relations
+        if doc_ids:
+            scope = set(doc_ids)
+            in_scope = [r for r in discovered_relations if matches_doc_scope(r.doc_id, scope)]
+            scoped_chunk_ids = {r.chunk_id for r in in_scope if r.chunk_id}
+            logger.info(
+                f"GraphTraverser: scoped to {len(scope)} docs -> kept {len(in_scope)}/"
+                f"{len(discovered_relations)} relations"
+            )
+            discovered_relations = in_scope
+            discovered_chunk_ids = scoped_chunk_ids
         discovered_relations.sort(key=lambda r: r.weight, reverse=True)
         top_relations = discovered_relations[:max_entities]
 

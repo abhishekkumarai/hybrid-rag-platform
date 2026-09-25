@@ -1454,6 +1454,7 @@ def query_knowledge_graph(req: GraphSearchQuery) -> GraphRAGResponse:
         max_hops=req.max_hops,
         max_entities=req.max_entities,
         min_edge_weight=req.min_edge_weight,
+        doc_ids=req.doc_ids,
     )
 
 

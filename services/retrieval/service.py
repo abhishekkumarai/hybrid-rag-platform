@@ -142,7 +142,9 @@ class RetrievalService:
         graph_res: GraphRAGResponse | None = None
 
         if self.traverser:
-            graph_res = self.traverser.query_graph(request.query_text, max_hops=max_hops)
+            graph_res = self.traverser.query_graph(
+                request.query_text, max_hops=max_hops, doc_ids=request.doc_ids
+            )
 
         return ret_res, graph_res
 

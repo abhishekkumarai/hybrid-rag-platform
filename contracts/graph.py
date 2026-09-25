@@ -61,6 +61,9 @@ class GraphSearchQuery(BaseModel):
     max_hops: int = Field(default=2, ge=1, le=5, description="Maximum traversal depth from focal entities")
     max_entities: int = Field(default=20, ge=1, le=100, description="Maximum entities in returned subgraph")
     min_edge_weight: float = Field(default=0.1, ge=0.0, description="Minimum edge weight threshold")
+    doc_ids: list[str] | None = Field(
+        default=None, description="Restrict traversal to these documents (a project's files)"
+    )
 
 
 class GraphCommunity(BaseModel):
