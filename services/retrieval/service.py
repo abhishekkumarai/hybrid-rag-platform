@@ -7,6 +7,7 @@ import time
 from contracts.compactor import CompactedContext
 from contracts.graph import GraphRAGResponse
 from contracts.retrieval import Candidate, RetrieveResponse, SearchQuery
+from services.common.doc_scope import matches_doc_scope
 from services.common.logger import get_logger
 from services.graph.store import GraphStore
 from services.graph.traversal import GraphTraverser
@@ -39,35 +40,6 @@ class RetrievalService:
         self.compactor = compactor or ContextCompactor()
         self.ollama_url = ollama_url
 
-    @staticmethod
-    def _matches_doc_scope(candidate_doc_id: str | None, doc_id_set: set[str]) -> bool:
-        """Matches a candidate chunk doc_id against target doc_ids supporting exact, stem, prefix, and extension variations."""
-        if not candidate_doc_id:
-            return False
-        if candidate_doc_id in doc_id_set:
-            return True
-
-        cand_lower = candidate_doc_id.lower()
-        cand_clean = cand_lower.replace(".pdf", "")
-
-        for target in doc_id_set:
-            target_lower = target.lower()
-            if cand_lower == target_lower:
-                return True
-            target_clean = target_lower.replace(".pdf", "")
-            if cand_clean == target_clean:
-                return True
-            # Prefix/stem matching (e.g. system_architecture_spec matches system_architecture_spec_81b5f5cd)
-            if cand_clean.startswith(target_clean) or target_clean.startswith(cand_clean):
-                return True
-            # Normalized separator matching
-            t_norm = target_clean.replace("-", "_").replace(" ", "_")
-            c_norm = cand_clean.replace("-", "_").replace(" ", "_")
-            if c_norm == t_norm or c_norm.startswith(t_norm) or t_norm.startswith(c_norm):
-                return True
-
-        return False
-
     def retrieve(self, request: SearchQuery) -> RetrieveResponse:
         start = time.perf_counter()
         query = request.query_text
@@ -94,8 +66,8 @@ class RetrievalService:
 
         # Scoped document filtering safeguard
         if doc_id_set:
-            dense_results = [r for r in dense_results if self._matches_doc_scope(r[0].get("doc_id"), doc_id_set)]
-            sparse_results = [r for r in sparse_results if self._matches_doc_scope(r[0].get("doc_id"), doc_id_set)]
+            dense_results = [r for r in dense_results if matches_doc_scope(r[0].get("doc_id"), doc_id_set)]
+            sparse_results = [r for r in sparse_results if matches_doc_scope(r[0].get("doc_id"), doc_id_set)]
 
         # 2. Reciprocal Rank Fusion (k=60)
         candidates = reciprocal_rank_fusion(
@@ -105,7 +77,7 @@ class RetrievalService:
             top_k=request.top_k,
         )
         if doc_id_set:
-            candidates = [c for c in candidates if self._matches_doc_scope(c.doc_id, doc_id_set)]
+            candidates = [c for c in candidates if matches_doc_scope(c.doc_id, doc_id_set)]
 
             # If candidates are empty or query is exploratory/summary, anchor with document overview chunks
             is_exploratory = FlashRankReranker.is_exploratory_or_summary_query(query)

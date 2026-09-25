@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from contracts.chunk import Chunk
+from services.common.doc_scope import matches_doc_scope
 from services.common.logger import get_logger
 
 logger = get_logger("indexing.bm25")
@@ -95,37 +96,13 @@ class BM25Store:
         logger.info(f"BM25Store: indexed {len(chunks)} chunks (total {len(self.corpus_chunks)})")
         return len(chunks)
 
-    @staticmethod
-    def _matches_doc_scope(candidate_doc_id: str | None, doc_id_set: set[str]) -> bool:
-        """Matches a chunk doc_id against target doc_ids supporting stem and extension variations."""
-        if not candidate_doc_id:
-            return False
-        cand_lower = candidate_doc_id.lower()
-        cand_clean = cand_lower.replace(".pdf", "")
-
-        for target in doc_id_set:
-            target_lower = target.lower()
-            if cand_lower == target_lower:
-                return True
-            target_clean = target_lower.replace(".pdf", "")
-            if cand_clean == target_clean:
-                return True
-            if cand_clean.startswith(target_clean) or target_clean.startswith(cand_clean):
-                return True
-            t_norm = target_clean.replace("-", "_").replace(" ", "_")
-            c_norm = cand_clean.replace("-", "_").replace(" ", "_")
-            if c_norm == t_norm or c_norm.startswith(t_norm) or t_norm.startswith(c_norm):
-                return True
-
-        return False
-
     def resolve_matching_doc_ids(self, requested_doc_ids: list[str]) -> list[str]:
         """Resolves raw or requested doc_ids into concrete indexed doc_ids found in the corpus."""
         target_set = set(requested_doc_ids)
         matched = set()
         for chunk in self.corpus_chunks:
             c_doc = chunk.get("doc_id")
-            if c_doc and self._matches_doc_scope(c_doc, target_set):
+            if c_doc and matches_doc_scope(c_doc, target_set):
                 matched.add(c_doc)
         return list(matched or target_set)
 
@@ -135,7 +112,7 @@ class BM25Store:
         matched_chunks: list[dict[str, Any]] = []
         for chunk in self.corpus_chunks:
             c_doc = chunk.get("doc_id")
-            if c_doc and self._matches_doc_scope(c_doc, target_set):
+            if c_doc and matches_doc_scope(c_doc, target_set):
                 matched_chunks.append(chunk)
                 if len(matched_chunks) >= max_chunks:
                     break
@@ -164,7 +141,7 @@ class BM25Store:
             if f_score <= 0.0:
                 continue
             chunk_data = self.corpus_chunks[int(idx)]
-            if doc_set and not self._matches_doc_scope(chunk_data.get("doc_id"), doc_set):
+            if doc_set and not matches_doc_scope(chunk_data.get("doc_id"), doc_set):
                 continue
             ranked_results.append((chunk_data, f_score))
             if doc_set and len(ranked_results) >= top_k:
