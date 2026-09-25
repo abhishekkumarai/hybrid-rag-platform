@@ -68,6 +68,11 @@
   .cite-tag { display: inline-flex; align-items: center; gap: 4px; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; padding: 3px 8px; border-radius: 6px; background: #f4f4ef; border: 1px solid #e1e3dd; color: #47664b; cursor: pointer; transition: background .1s; }
   .cite-tag:hover { background: #e8e9e3; }
 
+  .eval-tip { position: absolute; pointer-events: none; background: #30332f; color: #faf9f5; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; padding: 6px 8px; border-radius: 4px; max-width: 280px; white-space: normal; z-index: 5; }
+  .pe-tile { padding: 12px; border: 1px solid #e4e4de; border-radius: 8px; background: #fbfbf8; }
+  .pe-tile .k { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: #5d605b; }
+  .pe-tile .v { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 18px; font-weight: 700; color: #30332f; margin-top: 2px; }
+  .pe-tile .s { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; color: #8a8d87; margin-top: 2px; }
   .eval-strip { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 10px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; color: #5d605b; }
   .eval-cell b { font-weight: 600; color: #30332f; }
   .eval-cell.is-low b { color: #a8364b; }
@@ -857,20 +862,66 @@
     <section id="page-eval" class="page hidden h-full overflow-y-auto p-8 relative">
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <div class="flex items-center gap-2.5">
-            <h1 class="font-headline font-bold text-2xl text-on-surface">RAG Evaluation Suite</h1>
-            <span class="font-mono text-[11px] px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 font-semibold">RAGAS • TruLens • TREC</span>
-          </div>
-          <p class="text-sm text-on-surface-variant mt-1">Multi-dimensional quality scoring across retrieval accuracy, hallucination resistance, and answer fidelity.</p>
+          <h1 class="font-headline font-bold text-2xl text-on-surface" id="evalTitle">Evaluation</h1>
+          <p class="text-sm text-on-surface-variant mt-1" id="evalSubtitle">Retrieval and answer quality.</p>
         </div>
-        <div class="flex items-center gap-3">
-          <button id="eval-run-btn" class="flex items-center gap-2 bg-primary text-on-primary font-label text-xs font-semibold px-3.5 py-2 rounded-lg hover:opacity-90 transition shadow-sm cursor-pointer">
+        <div class="flex items-center gap-3 flex-wrap">
+          <span class="font-mono text-[10px] text-on-surface-variant uppercase tracking-wider font-semibold">Scope:</span>
+          <select id="evalScopeSelect" class="border border-surface-container-high rounded-lg px-3 py-1.5 text-xs font-headline font-semibold bg-surface-container-lowest text-on-surface focus:outline-none focus:border-primary transition cursor-pointer max-w-[240px] truncate">
+            <option value="all">Pipeline benchmark (All)</option>
+          </select>
+          <button id="eval-run-btn" class="flex items-center gap-2 bg-primary text-on-primary font-label text-xs font-semibold px-3.5 py-2 rounded-lg hover:opacity-90 transition cursor-pointer">
             <span class="material-symbols-outlined text-[16px]">play_circle</span>
-            <span>Run Benchmark</span>
+            <span id="eval-run-label">Run Benchmark</span>
           </button>
         </div>
       </div>
 
+      <!-- ===== Project view: this project's documents, settings and real chat turns ===== -->
+      <div id="eval-project-view" hidden>
+        <div class="font-mono text-[10px] text-on-surface-variant uppercase tracking-wider font-semibold border-b border-surface-container-high pb-2 mb-4">Live chat turns &middot; reference-free scores</div>
+        <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4" id="pe-tiles"></div>
+        <div class="border border-surface-container-high rounded-xl p-4 bg-surface-container-lowest mb-6">
+          <div class="flex items-baseline justify-between mb-2">
+            <div class="font-label text-xs font-semibold text-on-surface">Groundedness per answered turn</div>
+            <div class="font-mono text-[10px] text-on-surface-variant" id="pe-trend-caption"></div>
+          </div>
+          <div class="relative" id="pe-trend-wrap">
+            <svg id="pe-trend" class="w-full block" height="160" role="img" aria-label="Groundedness per answered turn"></svg>
+            <div id="pe-trend-tip" class="eval-tip" hidden></div>
+          </div>
+          <div id="pe-trend-empty" class="text-xs text-on-surface-variant font-mono py-6 text-center" hidden>No scored turns yet. Ask a question in this project's chat.</div>
+        </div>
+
+        <div class="font-label text-xs font-semibold text-on-surface mb-2">Weakest-grounded answers</div>
+        <div class="overflow-x-auto border border-surface-container-high rounded-xl mb-8">
+          <table class="w-full text-sm">
+            <thead class="bg-surface-container-low text-xs font-mono text-on-surface-variant">
+              <tr><th class="text-left px-4 py-2">Question</th><th class="text-right px-4 py-2">Grounded</th><th class="text-right px-4 py-2">Relevance</th><th class="text-right px-4 py-2">Citations</th><th class="text-right px-4 py-2">Judge</th></tr>
+            </thead>
+            <tbody id="pe-weakest-body"></tbody>
+          </table>
+        </div>
+
+        <div class="font-mono text-[10px] text-on-surface-variant uppercase tracking-wider font-semibold border-b border-surface-container-high pb-2 mb-4 flex items-center justify-between gap-4">
+          <span>Golden set &middot; questions generated from this project's documents</span>
+          <label class="flex items-center gap-1.5 normal-case tracking-normal font-normal cursor-pointer shrink-0"><input type="checkbox" id="pe-rebuild" class="w-3.5 h-3.5"> regenerate questions</label>
+        </div>
+        <div id="pe-run-empty" class="text-xs text-on-surface-variant font-mono mb-4">Not run yet. "Run Project Eval" retrieves each question with this project's settings and checks where its source passage ranks.</div>
+        <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4" id="pe-run-tiles"></div>
+        <div class="font-mono text-[11px] text-on-surface-variant mb-3" id="pe-run-meta"></div>
+        <div class="overflow-x-auto border border-surface-container-high rounded-xl" id="pe-run-table-wrap" hidden>
+          <table class="w-full text-sm">
+            <thead class="bg-surface-container-low text-xs font-mono text-on-surface-variant">
+              <tr><th class="text-left px-4 py-2">Question</th><th class="text-left px-4 py-2">Target chunk</th><th class="text-right px-4 py-2">Rank</th><th class="text-right px-4 py-2">Top score</th></tr>
+            </thead>
+            <tbody id="pe-run-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ===== Global view: synthetic pipeline benchmark (the CI regression gate) ===== -->
+      <div id="eval-global-view">
       <!-- Composite Quality Header Gauge -->
       <div class="border border-surface-container-high rounded-xl p-6 bg-surface-container-lowest mb-6 flex flex-col md:flex-row items-center justify-between gap-6 shadow-sm">
         <div class="flex items-center gap-5">
@@ -879,11 +930,11 @@
             <span class="font-mono text-[9px] uppercase tracking-wider text-on-surface-variant">/ 100</span>
           </div>
           <div>
-            <div class="font-headline font-bold text-base text-on-surface">Overall RAG Quality Index</div>
+            <div class="font-headline font-bold text-base text-on-surface">Pipeline Quality Index (synthetic corpus)</div>
             <p class="text-xs text-on-surface-variant max-w-lg mt-0.5">Weighted composite index combining Hit-Rate, Reciprocal Rank, Faithfulness, Citation Validity, and Relevance.</p>
             <div class="flex items-center gap-2 mt-2">
               <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-mono bg-secondary/15 text-secondary font-medium">
-                <span class="w-1.5 h-1.5 rounded-full bg-secondary"></span> Production Grade Ready
+                <span class="w-1.5 h-1.5 rounded-full bg-secondary"></span> CI regression gate
               </span>
               <span class="font-mono text-[11px] text-on-surface-variant" id="eval-queries-count">6 benchmark test queries evaluated</span>
             </div>
@@ -1072,6 +1123,7 @@
             <tbody id="eval-details-body"></tbody>
           </table>
         </div>
+      </div>
       </div>
     </section>
 
@@ -1839,6 +1891,7 @@
       { el: document.getElementById('kgScopeSelect'), current: currentKgScope, label: 'All documents (Global)' },
       { el: document.getElementById('obsScopeSelect'), current: obsScope, label: 'Global platform (All)' },
       { el: document.getElementById('ragScopeSelect'), current: ragScope, label: 'Global platform (All)' },
+      { el: document.getElementById('evalScopeSelect'), current: evalScope, label: 'Pipeline benchmark (All)' },
     ];
 
     selects.forEach(cfg => {
@@ -3508,6 +3561,16 @@
     }
 
     async function loadEvaluation() {
+      const projectMode = evalScope && evalScope !== 'all';
+      document.getElementById('eval-project-view').hidden = !projectMode;
+      document.getElementById('eval-global-view').hidden = projectMode;
+      document.getElementById('eval-run-label').textContent = projectMode ? 'Run Project Eval' : 'Run Benchmark';
+      const sess = allSessions.find(x => x.id === evalScope);
+      document.getElementById('evalTitle').textContent = projectMode ? `Evaluation: ${sess ? sess.title : evalScope}` : 'Pipeline Regression Benchmark';
+      document.getElementById('evalSubtitle').textContent = projectMode
+        ? "Scores from this project's real chat turns, plus a golden set built from its own documents and run with its own settings."
+        : "Synthetic 8-query corpus used as the CI regression gate (make gate). It checks the pipeline code, not any project's documents. Pick a project in Scope to evaluate your data.";
+      if (projectMode) return loadProjectEvaluation(evalScope);
       try {
         const res = await fetch('/api/v1/eval/report');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -3516,6 +3579,106 @@
       } catch (err) {
         console.error('Failed to load evaluation report:', err);
       }
+    }
+
+    const fmtPct = v => (v === null || v === undefined) ? '–' : `${(v * 100).toFixed(0)}%`;
+    const escHtml = t => String(t).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+    function peTile(k, v, sub) {
+      return `<div class="pe-tile"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${sub || '&nbsp;'}</div></div>`;
+    }
+
+    async function loadProjectEvaluation(sessionId) {
+      try {
+        const [sumRes, runRes] = await Promise.all([
+          fetch(`/api/v1/sessions/${sessionId}/eval/summary`),
+          fetch(`/api/v1/sessions/${sessionId}/eval/run`),
+        ]);
+        if (sumRes.ok) renderProjectSummary(await sumRes.json());
+        renderProjectRun(runRes.ok ? await runRes.json() : null);
+      } catch (err) {
+        console.error('Failed to load project evaluation:', err);
+      }
+    }
+
+    function renderProjectSummary(sm) {
+      document.getElementById('pe-tiles').innerHTML = [
+        peTile('Grounded', fmtPct(sm.mean_groundedness), 'answer sentences supported'),
+        peTile('Context relevance', fmtPct(sm.mean_context_relevance), 'mean rerank score'),
+        peTile('Citation validity', fmtPct(sm.mean_citation_validity), 'doc + page + bbox'),
+        peTile('LLM judge', fmtPct(sm.mean_llm_judge), `${sm.judged_turns} sampled turns`),
+        peTile('Refusal rate', fmtPct(sm.refusal_rate), `${sm.answered} answered / ${sm.turns} turns`),
+      ].join('');
+      renderTrend(sm.trend || []);
+      const body = document.getElementById('pe-weakest-body');
+      body.innerHTML = (sm.weakest || []).length ? sm.weakest.map(pt => `
+        <tr class="border-t border-surface-container-high">
+          <td class="px-4 py-2 text-xs">${escHtml(pt.query_text)}</td>
+          <td class="px-4 py-2 text-right font-mono text-xs ${pt.eval.groundedness < 0.5 ? 'text-error' : ''}">${fmtPct(pt.eval.groundedness)}</td>
+          <td class="px-4 py-2 text-right font-mono text-xs">${fmtPct(pt.eval.context_relevance)}</td>
+          <td class="px-4 py-2 text-right font-mono text-xs">${fmtPct(pt.eval.citation_validity)}</td>
+          <td class="px-4 py-2 text-right font-mono text-xs">${fmtPct(pt.eval.llm_judge_groundedness)}</td>
+        </tr>`).join('')
+        : '<tr><td colspan="5" class="px-4 py-4 text-xs text-on-surface-variant font-mono">No answered turns scored yet.</td></tr>';
+    }
+
+    // Single-series line (no legend needed; the title names it). 2px line, recessive grid at
+    // 0/50/100%, hover tooltip on a hit target wider than the 8px marker.
+    function renderTrend(points) {
+      const svg = document.getElementById('pe-trend');
+      const tip = document.getElementById('pe-trend-tip');
+      const empty = document.getElementById('pe-trend-empty');
+      const scored = points.filter(p => p.eval.answer_sentences > 0);
+      document.getElementById('pe-trend-caption').textContent = scored.length ? `${scored.length} turns, oldest → newest` : '';
+      empty.hidden = scored.length > 0;
+      svg.style.display = scored.length ? 'block' : 'none';
+      if (!scored.length) return;
+      const W = svg.clientWidth || 800, H = 160, padL = 34, padR = 10, padT = 8, padB = 18;
+      const x = i => padL + (scored.length === 1 ? (W - padL - padR) / 2 : i * (W - padL - padR) / (scored.length - 1));
+      const y = v => padT + (1 - v) * (H - padT - padB);
+      svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+      const grid = [0, 0.5, 1].map(v => `<line x1="${padL}" x2="${W - padR}" y1="${y(v)}" y2="${y(v)}" stroke="#e4e4de" stroke-width="1"/>` +
+        `<text x="${padL - 6}" y="${y(v) + 3}" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="10" fill="#8a8d87">${v * 100}%</text>`).join('');
+      const path = scored.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.eval.groundedness).toFixed(1)}`).join(' ');
+      const dots = scored.map((p, i) => `<circle cx="${x(i)}" cy="${y(p.eval.groundedness)}" r="4" fill="#8b4f3b" stroke="#fbfbf8" stroke-width="2"/>` +
+        `<rect data-i="${i}" x="${x(i) - 10}" y="${padT}" width="20" height="${H - padT - padB}" fill="transparent"/>`).join('');
+      svg.innerHTML = grid + `<path d="${path}" fill="none" stroke="#8b4f3b" stroke-width="2" stroke-linejoin="round"/>` + dots;
+      svg.querySelectorAll('rect[data-i]').forEach(r => {
+        r.addEventListener('mouseenter', () => {
+          const i = +r.dataset.i;
+          const p = scored[i];
+          tip.innerHTML = `${escHtml(p.query_text).slice(0, 120)}<br>grounded ${fmtPct(p.eval.groundedness)} · relevance ${fmtPct(p.eval.context_relevance)}`;
+          tip.hidden = false;
+          tip.style.left = `${Math.max(0, Math.min(x(i) + 8, W - 290))}px`;
+          tip.style.top = `${Math.max(0, y(p.eval.groundedness) - 44)}px`;
+        });
+        r.addEventListener('mouseleave', () => { tip.hidden = true; });
+      });
+    }
+
+    function renderProjectRun(run) {
+      const empty = document.getElementById('pe-run-empty');
+      const tiles = document.getElementById('pe-run-tiles');
+      const wrap = document.getElementById('pe-run-table-wrap');
+      const meta = document.getElementById('pe-run-meta');
+      if (!run) { empty.hidden = false; tiles.innerHTML = ''; wrap.hidden = true; meta.textContent = ''; return; }
+      empty.hidden = true;
+      tiles.innerHTML = [
+        peTile('HitRate@1', fmtPct(run.hit_rate_at_1)),
+        peTile('HitRate@3', fmtPct(run.hit_rate_at_3)),
+        peTile('MRR', run.mrr.toFixed(3)),
+        peTile('nDCG@3', run.ndcg_at_3.toFixed(3)),
+        peTile('Refused', fmtPct(run.refusal_rate), 'below score threshold'),
+      ].join('');
+      const pr = run.parameters || {};
+      meta.textContent = `${run.num_questions} questions (${run.llm_generated} LLM-written) · ${new Date(run.started_at * 1000).toLocaleString()} · ${(run.duration_ms / 1000).toFixed(1)}s · top_k=${pr.top_k} rerank=${pr.top_rerank} threshold=${pr.min_score_threshold} ef=${pr.hnsw_ef_search}`;
+      document.getElementById('pe-run-body').innerHTML = run.results.map(r => `
+        <tr class="border-t border-surface-container-high">
+          <td class="px-4 py-2 text-xs">${escHtml(r.question)}</td>
+          <td class="px-4 py-2 font-mono text-[11px] text-on-surface-variant">${escHtml(r.target_chunk_id)}</td>
+          <td class="px-4 py-2 text-right font-mono text-xs ${r.rank ? '' : 'text-error'}">${r.rank ? '#' + r.rank : (r.refused ? 'refused' : 'miss')}</td>
+          <td class="px-4 py-2 text-right font-mono text-xs">${r.top_score.toFixed(3)}</td>
+        </tr>`).join('');
+      wrap.hidden = false;
     }
 
     function renderEvaluationData(data) {
@@ -3609,6 +3772,16 @@
       runBtn.innerHTML = '<span class="material-symbols-outlined text-[16px] animate-spin">refresh</span><span>Evaluating...</span>';
 
       try {
+        if (evalScope && evalScope !== 'all') {
+          const rebuild = document.getElementById('pe-rebuild').checked;
+          const res = await fetch(`/api/v1/sessions/${evalScope}/eval/run?rebuild=${rebuild}`, { method: 'POST' });
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            throw new Error(body.detail || `HTTP ${res.status}`);
+          }
+          renderProjectRun(await res.json());
+          return;
+        }
         const res = await fetch('/api/v1/eval/run', { method: 'POST' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
@@ -3625,6 +3798,10 @@
     const evalRunBtn = document.getElementById('eval-run-btn');
     if (evalRunBtn) {
       evalRunBtn.addEventListener('click', runEvaluation);
+    }
+    const evalScopeSelect = document.getElementById('evalScopeSelect');
+    if (evalScopeSelect) {
+      evalScopeSelect.addEventListener('change', (e) => { evalScope = e.target.value; loadEvaluation(); });
     }
 
     // ============================================================

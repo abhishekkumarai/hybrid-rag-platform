@@ -23,7 +23,13 @@ from contracts.compactor import CompactedContext, CompactorRequest
 from contracts.document import Block, IngestRequest, IngestResponse
 from contracts.feedback import FeedbackRecord, FeedbackRequest, RAGOpsSummary
 from contracts.graph import GraphExtractionResult, GraphRAGResponse, GraphSearchQuery
-from contracts.metrics import QueryTelemetry, RetrievalEvalScores, SystemMetrics
+from contracts.metrics import (
+    ProjectEvalRun,
+    ProjectEvalSummary,
+    QueryTelemetry,
+    RetrievalEvalScores,
+    SystemMetrics,
+)
 from contracts.retrieval import Candidate, Citation, RetrieveResponse, SearchQuery
 from contracts.session import (
     AttachFilesRequest,
@@ -36,6 +42,7 @@ from contracts.session import (
 )
 from services.common.config import load_config
 from services.common.logger import get_logger
+from services.evaluation import project as project_eval
 from services.evaluation.online import maybe_schedule_llm_judge, score_turn
 from services.feedback.store import RAGOpsStore
 from services.graph.extractor import EntityRelationshipExtractor
@@ -1546,6 +1553,56 @@ def compact_context(req: CompactorRequest) -> CompactedContext:
     )
 
 # --- Evaluation Endpoints (Popular RAG Metrics) ---
+
+
+def _require_project(session_id: str) -> ChatSession:
+    session, _ = session_manager.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail=f"Project '{session_id}' not found")
+    return session
+
+
+@app.get("/api/v1/sessions/{session_id}/eval/summary", response_model=ProjectEvalSummary)
+def project_eval_summary(session_id: str) -> ProjectEvalSummary:
+    """Aggregates this project's per-turn online evaluation scores (trend + weakest turns)."""
+    _require_project(session_id)
+    records, judge = project_eval.load_session_telemetry(
+        session_id,
+        telemetry_tracker.get_recent_telemetry(limit=10_000),
+        redis_host=settings.storage.redis_host,
+        redis_port=settings.storage.redis_port,
+    )
+    return project_eval.summarize_project(session_id, records, judge)
+
+
+@app.get("/api/v1/sessions/{session_id}/eval/run", response_model=ProjectEvalRun | None)
+def project_eval_last_run(session_id: str) -> ProjectEvalRun | None:
+    """Returns this project's most recent golden-set run, or null if it has never been run."""
+    _require_project(session_id)
+    return project_eval.load_last_run(session_id)
+
+
+@app.post("/api/v1/sessions/{session_id}/eval/run", response_model=ProjectEvalRun)
+def project_eval_run(session_id: str, rebuild: bool = False) -> ProjectEvalRun:
+    """Runs the project's golden set (generated from its own documents) with its own settings."""
+    session = _require_project(session_id)
+    if not session.files:
+        raise HTTPException(status_code=400, detail="Attach documents to this project before evaluating it")
+    _, indexing, retrieval = get_services()
+    golden = project_eval.load_or_build_golden_set(
+        session,
+        indexing.bm25.corpus_chunks,
+        size=settings.evaluation.golden_set_size,
+        ollama_url=settings.hardware.ollama_base_url,
+        rebuild=rebuild,
+    )
+    if not golden:
+        raise HTTPException(
+            status_code=400, detail="This project's documents have no indexed chunks to build questions from"
+        )
+    run = project_eval.run_golden_set(session, golden, retrieval)
+    project_eval.save_run(run)
+    return run
 
 
 @app.get("/api/v1/eval/report")

@@ -73,3 +73,63 @@ class SystemMetrics(BaseModel):
     dlq_task_count: int = 0
     services: dict[str, Any] = Field(default_factory=dict)
     recent_telemetry: list[QueryTelemetry] = Field(default_factory=list)
+
+
+class TurnEvalPoint(BaseModel):
+    """One answered turn in a project's evaluation trend."""
+
+    query_id: str
+    query_text: str
+    timestamp: float
+    eval: RetrievalEvalScores
+
+
+class ProjectEvalSummary(BaseModel):
+    """Aggregated online (per-turn) evaluation for one project (backend ChatSession)."""
+
+    session_id: str
+    turns: int = 0
+    answered: int = 0
+    refusal_rate: float = 0.0
+    mean_groundedness: float | None = None
+    mean_context_relevance: float | None = None
+    mean_citation_validity: float | None = None
+    mean_llm_judge: float | None = None
+    judged_turns: int = 0
+    trend: list[TurnEvalPoint] = Field(default_factory=list, description="Oldest first")
+    weakest: list[TurnEvalPoint] = Field(default_factory=list, description="Lowest groundedness first")
+
+
+class GoldenQuestion(BaseModel):
+    """A question generated from one of the project's own chunks; that chunk is the target."""
+
+    question: str
+    target_chunk_id: str
+    doc_id: str
+    page: int = 1
+    source: str = Field(default="llm", description="'llm' or 'heuristic' (fallback when Ollama is down)")
+
+
+class GoldenQueryResult(BaseModel):
+    question: str
+    target_chunk_id: str
+    rank: int | None = Field(default=None, description="1-based rank of the target, None if missed")
+    top_score: float = 0.0
+    refused: bool = False
+
+
+class ProjectEvalRun(BaseModel):
+    """Offline retrieval evaluation of a project's golden set against its own settings."""
+
+    session_id: str
+    started_at: float = Field(default_factory=time.time)
+    duration_ms: float = 0.0
+    num_questions: int = 0
+    llm_generated: int = 0
+    hit_rate_at_1: float = 0.0
+    hit_rate_at_3: float = 0.0
+    mrr: float = 0.0
+    ndcg_at_3: float = 0.0
+    refusal_rate: float = 0.0
+    parameters: dict[str, Any] = Field(default_factory=dict, description="Project settings used for the run")
+    results: list[GoldenQueryResult] = Field(default_factory=list)
