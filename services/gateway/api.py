@@ -692,6 +692,7 @@ async def sse_chat_generator(
             context_budget=compactor_budget,
             doc_ids=doc_ids,
             ef_search=ef_search,
+            min_rerank_score=min_score_threshold,
         )
         candidates, citations, agent_steps = agentic_res.candidates, agentic_res.citations, agentic_res.steps
         decomp_plan, crag_res, refused = agentic_res.plan, agentic_res.crag, agentic_res.refused
@@ -1092,6 +1093,7 @@ def chat(req: ChatRequest):
             context_budget=compactor_budget,
             doc_ids=doc_ids,
             ef_search=ef_search,
+            min_rerank_score=min_score_threshold,
         )
         candidates, citations, agent_steps = agentic_res.candidates, agentic_res.citations, agentic_res.steps
         decomp_plan, crag_res, refused = agentic_res.plan, agentic_res.crag, agentic_res.refused

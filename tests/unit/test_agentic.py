@@ -210,3 +210,24 @@ def test_run_plan_full_does_not_leak_previous_request_context():
     assert second.compacted_context is None
     assert second.graph_response is None
     assert not hasattr(coordinator, "last_compacted_context")
+
+
+def test_run_plan_full_applies_project_score_threshold():
+    """REC-66: the project's min_score_threshold reaches every hop and the final rerank."""
+    mock_retrieval = MagicMock()
+    mock_retrieval.retrieve.return_value = RetrieveResponse(
+        query="q", candidates=[], citations=[], top_score=0.0, duration_ms=1.0, refused=True
+    )
+    mock_reranker = MagicMock()
+    mock_reranker.rerank.return_value = ([], [], True)
+    mock_crag = MagicMock()
+    mock_crag.evaluate.return_value = CRAGAssessment(status="CONFIDENT", top_score=0.5)
+    coordinator = AgenticCoordinator(
+        retrieval_service=mock_retrieval, reranker=mock_reranker, crag_evaluator=mock_crag
+    )
+
+    coordinator.run_plan_full("What is the VRAM budget?", min_rerank_score=0.42)
+
+    for call in mock_retrieval.retrieve.call_args_list:
+        assert call.args[0].min_rerank_score == 0.42
+    assert mock_reranker.rerank.call_args.kwargs["min_score_cutoff"] == 0.42

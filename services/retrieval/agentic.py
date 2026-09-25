@@ -69,6 +69,7 @@ class AgenticCoordinator:
         context_budget: int = 3072,
         doc_ids: list[str] | None = None,
         ef_search: int | None = None,
+        min_rerank_score: float = 0.15,
     ) -> tuple[list[Candidate], list[Citation], list[AgentStep], DecompositionPlan, CRAGAssessment, bool]:
         """Tuple-returning wrapper over `run_plan_full()` for callers that don't need the graph
         response or compacted context.
@@ -86,6 +87,7 @@ class AgenticCoordinator:
             context_budget=context_budget,
             doc_ids=doc_ids,
             ef_search=ef_search,
+            min_rerank_score=min_rerank_score,
         )
         return res.candidates, res.citations, res.steps, res.plan, res.crag, res.refused
 
@@ -100,6 +102,7 @@ class AgenticCoordinator:
         context_budget: int = 3072,
         doc_ids: list[str] | None = None,
         ef_search: int | None = None,
+        min_rerank_score: float = 0.15,
     ) -> AgenticRunResult:
         """Executes full agentic loop: decompose -> sub-retrievals -> CRAG reflection -> cross-rerank."""
         start_time = time.perf_counter()
@@ -136,6 +139,7 @@ class AgenticCoordinator:
                     top_rerank=top_rerank,
                     doc_ids=doc_ids,
                     ef_search=ef_search,
+                    min_rerank_score=min_rerank_score,
                 )
             )
 
@@ -188,6 +192,7 @@ class AgenticCoordinator:
                     top_rerank=top_rerank,
                     doc_ids=doc_ids,
                     ef_search=ef_search,
+                    min_rerank_score=min_rerank_score,
                 )
             )
             for cand in corr_res.candidates:
@@ -265,6 +270,7 @@ class AgenticCoordinator:
             query=query,
             candidates=merged_candidates,
             top_n=top_rerank,
+            min_score_cutoff=min_rerank_score,
         )
 
         top_score = final_candidates[0].rerank_score if final_candidates else 0.0
