@@ -1062,9 +1062,12 @@
     <!-- ============ PAGE: MODELS & TUNING ============ -->
     <section id="page-models" class="page hidden h-full overflow-y-auto p-8">
       <h1 class="font-headline font-bold text-2xl text-on-surface mb-1">Models &amp; Tuning</h1>
-      <p class="text-sm text-on-surface-variant mb-6">Applies to the next message sent in any workspace.</p>
+      <p class="text-sm text-on-surface-variant mb-6" id="modelsScopeLabel">Settings are saved to the active workspace.</p>
 
-      <div class="max-w-xl space-y-6">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+      <!-- Left column: per-workspace generation + retrieval parameters -->
+      <div class="space-y-6 min-w-0">
+        <div class="font-mono text-[10px] text-on-surface-variant uppercase tracking-wider font-semibold border-b border-surface-container-high pb-2">Workspace parameters</div>
         <div>
           <label class="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-wide">Generation model</label>
           <select id="models-select" class="w-full mt-2 border border-surface-container-high rounded-lg px-3 py-2 text-sm font-mono bg-surface-container-lowest"></select>
@@ -1072,21 +1075,6 @@
             <input id="models-custom-input" type="text" placeholder="Custom model tag (e.g. qwen2.5:7b)" class="flex-1 border border-surface-container-high rounded-lg px-3 py-1.5 text-xs font-mono bg-surface-container-lowest" />
             <button id="models-custom-btn" class="text-xs font-label px-3 py-1.5 border border-surface-container-high rounded-lg hover:bg-surface-container-low">Set</button>
           </div>
-        </div>
-
-        <!-- VRAM Budget Meter (Target: RTX 3050 6GB) -->
-        <div class="border border-surface-container-high rounded-xl p-4 bg-surface-container-lowest">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <span class="material-symbols-outlined text-[16px] text-primary">memory</span>
-              <span class="font-label text-xs font-semibold text-on-surface">VRAM Budget (RTX 3050 6GB)</span>
-            </div>
-            <span id="models-vram-badge" class="font-mono text-xs font-semibold text-primary">2.2 / 6.0 GB (37%)</span>
-          </div>
-          <div class="w-full bg-surface-container-high rounded-full h-2 mt-2.5 overflow-hidden">
-            <div id="models-vram-bar" class="bg-primary h-2 rounded-full transition-all duration-300" style="width: 37%;"></div>
-          </div>
-          <p id="models-vram-desc" class="text-[11px] text-on-surface-variant mt-1.5 font-mono">Headroom: ~3.8 GB free for Qdrant HNSW and BM25 memory.</p>
         </div>
 
         <div>
@@ -1101,7 +1089,7 @@
 
         <div>
           <label class="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-wide">Document Ingestion & Extraction Route</label>
-          <div class="inline-flex mt-2 rounded-lg border border-surface-container-high overflow-hidden text-xs font-label" id="models-route-group">
+          <div class="flex flex-wrap mt-2 rounded-lg border border-surface-container-high overflow-hidden text-xs font-label w-fit max-w-full" id="models-route-group">
             <button data-route="auto" class="px-3 py-1.5 bg-primary text-on-primary font-medium transition">Auto Heuristic</button>
             <button data-route="fast_text" class="px-3 py-1.5 bg-surface-container-lowest text-on-surface hover:bg-surface-container transition">Fast Text (PyMuPDF)</button>
             <button data-route="layout" class="px-3 py-1.5 bg-surface-container-lowest text-on-surface hover:bg-surface-container transition">Layout (Docling)</button>
@@ -1129,6 +1117,26 @@
             <div class="text-xs text-on-surface-variant">Stream generation tokens incrementally.</div>
           </div>
           <input id="models-stream-toggle" type="checkbox" checked class="w-5 h-5 accent-primary" />
+        </div>
+
+      </div>
+
+      <!-- Right column: hardware + global index (not per-workspace) -->
+      <div class="space-y-6 min-w-0">
+        <div class="font-mono text-[10px] text-on-surface-variant uppercase tracking-wider font-semibold border-b border-surface-container-high pb-2">Hardware &amp; global index</div>
+        <!-- VRAM Budget Meter (Target: RTX 3050 6GB) -->
+        <div class="border border-surface-container-high rounded-xl p-4 bg-surface-container-lowest">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="material-symbols-outlined text-[16px] text-primary">memory</span>
+              <span class="font-label text-xs font-semibold text-on-surface">VRAM Budget (RTX 3050 6GB)</span>
+            </div>
+            <span id="models-vram-badge" class="font-mono text-xs font-semibold text-primary">2.2 / 6.0 GB (37%)</span>
+          </div>
+          <div class="w-full bg-surface-container-high rounded-full h-2 mt-2.5 overflow-hidden">
+            <div id="models-vram-bar" class="bg-primary h-2 rounded-full transition-all duration-300" style="width: 37%;"></div>
+          </div>
+          <p id="models-vram-desc" class="text-[11px] text-on-surface-variant mt-1.5 font-mono">Headroom: ~3.8 GB free for Qdrant HNSW and BM25 memory.</p>
         </div>
 
         <!-- Vector Index (HNSW) — global, not per-workspace: m/ef_construct are baked into the
@@ -1163,6 +1171,7 @@
           </button>
           <p id="hnsw-rebuild-msg" class="text-[11px] font-mono mt-2 hidden"></p>
         </div>
+      </div>
       </div>
     </section>
     <!-- ============ PAGE: SETTINGS ============ -->
@@ -1385,6 +1394,18 @@
     if (page === 'ragops') loadRagOps();
     if (page === 'eval') loadEvaluation();
     if (page === 'settings') loadSettings();
+    if (page === 'models') updateModelsScopeLabel();
+  }
+
+  // Everything on Models & Tuning except the HNSW panel is persisted to the active workspace
+  // (persistWorkspaceParameters -> PATCH /api/v1/sessions/{id}), so say which one.
+  function updateModelsScopeLabel() {
+    const label = document.getElementById('modelsScopeLabel');
+    if (!label) return;
+    const sess = allSessions.find(s => s.id === currentSessionId);
+    label.textContent = currentSessionId
+      ? `Settings for workspace "${sess ? sess.title : currentSessionId}". The vector index panel is global.`
+      : 'No workspace open. Open one from Workspaces to save these settings to it.';
   }
 
   document.querySelectorAll('.nav-item[data-page]').forEach(el => {
