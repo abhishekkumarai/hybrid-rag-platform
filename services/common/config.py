@@ -74,6 +74,15 @@ class RetrievalConfig(BaseModel):
     hnsw_ef_search: int = 128
 
 
+class EvaluationConfig(BaseModel):
+    # Fraction of answered turns also graded by an LLM judge (0 disables it). The judge shares the
+    # 6 GB GPU with generation, so it runs in a background thread on a sample, never inline.
+    llm_judge_sample_rate: float = Field(default=0.1, ge=0.0, le=1.0)
+    llm_judge_timeout_s: float = 60.0
+    # Golden-set size generated per project for offline evaluation runs.
+    golden_set_size: int = Field(default=20, ge=1, le=200)
+
+
 class LoggingConfig(BaseModel):
     level: str = "INFO"
     dir: str = "logs"
@@ -85,6 +94,7 @@ class AppConfig(BaseModel):
     ingestion: IngestionConfig = Field(default_factory=IngestionConfig)
     chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
+    evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
 

@@ -23,8 +23,8 @@ from contracts.compactor import CompactedContext, CompactorRequest
 from contracts.document import Block, IngestRequest, IngestResponse
 from contracts.feedback import FeedbackRecord, FeedbackRequest, RAGOpsSummary
 from contracts.graph import GraphExtractionResult, GraphRAGResponse, GraphSearchQuery
-from contracts.metrics import QueryTelemetry, SystemMetrics
-from contracts.retrieval import RetrieveResponse, SearchQuery
+from contracts.metrics import QueryTelemetry, RetrievalEvalScores, SystemMetrics
+from contracts.retrieval import Candidate, Citation, RetrieveResponse, SearchQuery
 from contracts.session import (
     AttachFilesRequest,
     ChatMessage,
@@ -36,6 +36,7 @@ from contracts.session import (
 )
 from services.common.config import load_config
 from services.common.logger import get_logger
+from services.evaluation.online import maybe_schedule_llm_judge, score_turn
 from services.feedback.store import RAGOpsStore
 from services.graph.extractor import EntityRelationshipExtractor
 from services.indexing.service import IndexingService
@@ -646,6 +647,34 @@ def get_metrics(session_id: str | None = None) -> SystemMetrics:
     )
 
 
+
+def _evaluate_turn(
+    telemetry: QueryTelemetry,
+    answer: str,
+    candidates: list[Candidate],
+    citations: list[Citation],
+    crag_status: str | None,
+    model_name: str,
+) -> RetrievalEvalScores:
+    """Scores an answered turn inline (heuristics) and maybe schedules the sampled LLM judge.
+
+    Must run before `telemetry_tracker.record_query` so the scores are persisted with the record;
+    the judge fills `llm_judge_groundedness` in later (in memory + Redis hash)."""
+    telemetry.eval = score_turn(answer, candidates, citations, crag_status=crag_status)
+    maybe_schedule_llm_judge(
+        telemetry,
+        answer,
+        candidates,
+        model=model_name,
+        ollama_url=settings.hardware.ollama_base_url,
+        sample_rate=settings.evaluation.llm_judge_sample_rate,
+        timeout_s=settings.evaluation.llm_judge_timeout_s,
+        redis_host=settings.storage.redis_host,
+        redis_port=settings.storage.redis_port,
+    )
+    return telemetry.eval
+
+
 def sse_chat_generator(
     query_text: str,
     top_k: int,
@@ -746,6 +775,7 @@ def sse_chat_generator(
             prompt = f"System Persona & Directives:\n{system_prompt}\n\n{prompt}"
         top_score = candidates[0].rerank_score if candidates else 0.0
         final_citations = citations
+        eval_candidates, eval_crag_status = candidates, crag_res.status
 
     elif mode == "graph":
         yield f"event: mode\ndata: {json.dumps({'mode': 'graph'})}\n\n"
@@ -841,6 +871,7 @@ def sse_chat_generator(
         )
         top_score = search_res.top_score
         final_citations = search_res.citations
+        eval_candidates, eval_crag_status = search_res.candidates, None
 
     else:
         # Standard Single-Hop Fast Path
@@ -909,6 +940,7 @@ def sse_chat_generator(
             )
         top_score = search_res.top_score
         final_citations = search_res.citations
+        eval_candidates, eval_crag_status = search_res.candidates, None
 
     # Calculate safe num_ctx tailored for the active hardware profile & model
     # On RTX 3050 6GB VRAM, clamp num_ctx for 7B/8B/14B models to 4096 to prevent "context size too large"
@@ -995,6 +1027,10 @@ def sse_chat_generator(
         top_score=top_score,
         citations_count=len(final_citations),
     )
+    full_answer = "".join(full_answer_parts)
+    turn_eval = _evaluate_turn(
+        telemetry, full_answer, eval_candidates, final_citations, eval_crag_status, model_name
+    )
     telemetry_tracker.record_query(
         telemetry,
         redis_host=settings.storage.redis_host,
@@ -1005,7 +1041,6 @@ def sse_chat_generator(
     # Apply the same citation-provenance formatting as the sync /api/v1/chat path so a session's
     # stored message content has one consistent shape regardless of whether that turn streamed —
     # previously only the sync path appended the "Verified Sources" section here.
-    full_answer = "".join(full_answer_parts)
     formatter = CitationFormatterComponent()
     full_output = formatter.format_response(full_answer, [c.model_dump() for c in final_citations])
     session_manager.append_message(
@@ -1015,11 +1050,13 @@ def sse_chat_generator(
             content=full_output,
             citations=final_citations,
             latency_ms=round(total_ms, 2),
+            metadata={"eval": turn_eval.model_dump(), "query_id": telemetry.query_id},
         ),
     )
 
-    # 5. Emit Live Telemetry, Citations, and Agentic Trace
+    # 5. Emit Live Telemetry, Online Eval Scores, Citations, and Agentic Trace
     citations_data = [c.model_dump() for c in final_citations]
+    yield f"event: eval\ndata: {turn_eval.model_dump_json()}\n\n"
     yield f"event: telemetry\ndata: {telemetry.model_dump_json()}\n\n"
     yield f"event: done\ndata: {json.dumps({'answer': full_output, 'raw_answer': full_answer, 'citations': citations_data, 'top_score': top_score, 'is_agentic': is_agentic, 'agent_steps': [s.model_dump() for s in agent_steps], 'sub_queries': sub_queries_list})}\n\n"
 
@@ -1146,6 +1183,7 @@ def chat(req: ChatRequest):
             prompt = f"System Persona & Directives:\n{system_prompt}\n\n{prompt}"
         top_score = candidates[0].rerank_score if candidates else 0.0
         final_citations = citations
+        eval_candidates, eval_crag_status = candidates, crag_res.status
 
     elif effective_mode == "graph":
         t_ret_start = time.perf_counter()
@@ -1242,6 +1280,7 @@ def chat(req: ChatRequest):
         )
         top_score = search_res.top_score
         final_citations = search_res.citations
+        eval_candidates, eval_crag_status = search_res.candidates, None
 
     else:
         # Standard Single-Hop Path
@@ -1309,6 +1348,7 @@ def chat(req: ChatRequest):
             )
         top_score = ret_res.top_score
         final_citations = ret_res.citations
+        eval_candidates, eval_crag_status = ret_res.candidates, None
 
     # Calculate safe num_ctx tailored for the active hardware profile & model
     # On RTX 3050 6GB VRAM, clamp num_ctx for 7B/8B/14B models to 4096 to prevent "context size too large"
@@ -1379,6 +1419,9 @@ def chat(req: ChatRequest):
         top_score=top_score,
         citations_count=len(final_citations),
     )
+    turn_eval = _evaluate_turn(
+        telemetry, llm_answer, eval_candidates, final_citations, eval_crag_status, effective_model
+    )
     telemetry_tracker.record_query(
         telemetry,
         redis_host=settings.storage.redis_host,
@@ -1392,6 +1435,7 @@ def chat(req: ChatRequest):
             content=final_output,
             citations=final_citations,
             latency_ms=round(total_ms, 2),
+            metadata={"eval": turn_eval.model_dump(), "query_id": telemetry.query_id},
         ),
     )
 
@@ -1403,6 +1447,7 @@ def chat(req: ChatRequest):
         "refused": False,
         "duration_ms": round(total_ms, 2),
         "telemetry": telemetry.model_dump(),
+        "eval": turn_eval.model_dump(),
         "is_agentic": is_agentic,
         "agent_steps": [s.model_dump() for s in agent_steps],
         "sub_queries": sub_queries_list,

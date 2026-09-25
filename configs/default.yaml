@@ -43,6 +43,14 @@ retrieval:
   hnsw_ef_construct: 256
   hnsw_ef_search: 128
 
+evaluation:
+  # Online per-turn scoring always runs (cheap heuristics). This fraction of answered turns is also
+  # graded by an LLM judge in a background thread; 0 disables it (it competes with generation for VRAM).
+  llm_judge_sample_rate: 0.1
+  llm_judge_timeout_s: 60
+  # Questions generated per project golden set for offline per-project evaluation runs.
+  golden_set_size: 20
+
 logging:
   level: "INFO"
   dir: "logs"

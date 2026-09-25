@@ -68,6 +68,9 @@
   .cite-tag { display: inline-flex; align-items: center; gap: 4px; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; padding: 3px 8px; border-radius: 6px; background: #f4f4ef; border: 1px solid #e1e3dd; color: #47664b; cursor: pointer; transition: background .1s; }
   .cite-tag:hover { background: #e8e9e3; }
 
+  .eval-strip { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 10px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; color: #5d605b; }
+  .eval-cell b { font-weight: 600; color: #30332f; }
+  .eval-cell.is-low b { color: #a8364b; }
   .feedback-bar { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding-top: 8px; border-top: 1px solid #eeeee9; }
   .fb-btn { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-family: 'Public Sans', sans-serif; padding: 3px 8px; border-radius: 6px; border: 1px solid #e1e3dd; background: #fff; color: #5d605b; cursor: pointer; }
   .fb-btn:hover { background: #f4f4ef; }
@@ -1586,7 +1589,7 @@
     return tag;
   }
 
-  function appendChatMessage(role, content, citations, refused = false) {
+  function appendChatMessage(role, content, citations, refused = false, evalScores = null) {
     if (refused) {
       const card = document.createElement('div');
       card.className = 'refusal-card';
@@ -1608,9 +1611,30 @@
       citations.forEach((c, idx) => box.appendChild(citeTag(c, citations, idx)));
       msg.appendChild(box);
     }
+    if (role === 'assistant' && evalScores) renderEvalStrip(msg, evalScores);
     if (role === 'assistant') renderFeedbackBar(msg, '', content, citations);
     messagesDiv.appendChild(msg);
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  }
+
+  // Online, reference-free scores for this answer (services/evaluation/online.py). Low values are
+  // flagged so a user can tell a well-grounded answer from a plausible-sounding one at a glance.
+  function renderEvalStrip(parentMsg, ev) {
+    const strip = document.createElement('div');
+    strip.className = 'eval-strip';
+    const pct = v => `${Math.round((v || 0) * 100)}%`;
+    const cell = (label, v, hint) => {
+      const low = v !== null && v !== undefined && v < 0.5;
+      return `<span class="eval-cell${low ? ' is-low' : ''}" title="${hint}">${label} <b>${v === null || v === undefined ? '–' : pct(v)}</b></span>`;
+    };
+    strip.innerHTML = [
+      cell('grounded', ev.answer_sentences ? ev.groundedness : null, `${ev.answer_sentences || 0} answer sentences checked against the retrieved passages`),
+      cell('relevance', ev.context_relevance, `Mean cross-encoder score of ${ev.passages_used || 0} passages`),
+      cell('citations', ev.citation_validity, 'Citations with a document, page and bounding box'),
+      ev.llm_judge_groundedness !== null && ev.llm_judge_groundedness !== undefined ? cell('judge', ev.llm_judge_groundedness, 'Sampled LLM-judge groundedness') : '',
+      ev.crag_status ? `<span class="eval-cell" title="Corrective-RAG confidence">crag <b>${ev.crag_status.toLowerCase()}</b></span>` : '',
+    ].join('');
+    parentMsg.appendChild(strip);
   }
 
   function renderFeedbackBar(parentMsg, queryText, answerText, citations) {
@@ -2112,7 +2136,7 @@
       const chatWsSel = document.getElementById('chatWorkspaceSelect');
       if (chatWsSel) chatWsSel.value = sessionId;
       messagesDiv.innerHTML = '';
-      data.messages.forEach(m => appendChatMessage(m.role, m.content, m.citations));
+      data.messages.forEach(m => appendChatMessage(m.role, m.content, m.citations, false, (m.metadata && m.metadata.eval) || null));
       renderSourcesPanel(data.session.files || []);
 
       // Resolve project parameters: backend session parameters are the primary authority
@@ -2263,7 +2287,7 @@
       });
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      let currentText = '', citations = [], currentEventType = null, refused = false;
+      let currentText = '', citations = [], currentEventType = null, refused = false, turnEval = null;
       textSpan.textContent = '';
 
       while (true) {
@@ -2276,6 +2300,7 @@
             try {
               const payload = JSON.parse(line.slice(6));
               if (currentEventType === 'session' && payload.session_id) { currentSessionId = payload.session_id; currentEventType = null; continue; }
+              if (currentEventType === 'eval') { turnEval = payload; currentEventType = null; continue; }
               currentEventType = null;
               if (payload.token) { currentText += payload.token; textSpan.innerHTML = renderMarkdown(currentText); }
               if (payload.citations) citations = payload.citations;
@@ -2297,6 +2322,7 @@
           citations.forEach((c, idx) => box.appendChild(citeTag(c, citations, idx)));
           assistantMsg.appendChild(box);
         }
+        if (turnEval) renderEvalStrip(assistantMsg, turnEval);
         renderFeedbackBar(assistantMsg, query, currentText, citations);
       }
       loadSessions();

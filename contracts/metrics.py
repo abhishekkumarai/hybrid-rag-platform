@@ -9,6 +9,30 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+class RetrievalEvalScores(BaseModel):
+    """Reference-free quality scores for one answered chat turn (online evaluation).
+
+    No ground truth exists for a live question, so these measure internal consistency: did
+    retrieval find relevant passages, is the answer supported by them, are citations usable."""
+
+    context_relevance: float = Field(
+        default=0.0, ge=0.0, le=1.0, description="Mean cross-encoder score of the passages used"
+    )
+    groundedness: float = Field(
+        default=0.0, ge=0.0, le=1.0,
+        description="Share of answer sentences whose content words are covered by the context",
+    )
+    citation_validity: float = Field(
+        default=0.0, ge=0.0, le=1.0, description="Share of citations with doc_id, page>=1 and a real bbox"
+    )
+    answer_sentences: int = Field(default=0, ge=0, description="Sentences considered for groundedness")
+    passages_used: int = Field(default=0, ge=0)
+    crag_status: str | None = Field(default=None, description="CONFIDENT/AMBIGUOUS/REFUSE when agentic")
+    llm_judge_groundedness: float | None = Field(
+        default=None, ge=0.0, le=1.0, description="Sampled LLM-judge groundedness, filled in asynchronously"
+    )
+
+
 class QueryTelemetry(BaseModel):
     """Detailed latency, throughput, and outcome telemetry for a single query."""
 
@@ -28,6 +52,9 @@ class QueryTelemetry(BaseModel):
     top_score: float = 0.0
     citations_count: int = 0
     timestamp: float = Field(default_factory=time.time)
+    eval: RetrievalEvalScores | None = Field(
+        default=None, description="Online per-turn evaluation (absent on refusals and older records)"
+    )
 
 
 class SystemMetrics(BaseModel):
