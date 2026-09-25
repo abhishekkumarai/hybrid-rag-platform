@@ -1,5 +1,7 @@
 """Unit test for RetrievalService, RRF, and FlashRank cross-encoder reranker."""
 
+from unittest.mock import MagicMock
+
 from contracts.chunk import Chunk
 from contracts.retrieval import Candidate, SearchQuery
 from services.indexing.bm25_store import BM25Store
@@ -114,3 +116,21 @@ def test_retrieval_service_end_to_end(tmp_path):
     assert len(response.citations) >= 1
     assert "Page 1" in response.citations[0].formatted_badge
     assert response.duration_ms > 0
+
+
+def test_retrieve_runs_dense_and_sparse_with_project_scope():
+    """REC-68: both searches run (concurrently) and both receive the resolved project scope."""
+    qdrant, bm25, reranker = MagicMock(), MagicMock(), MagicMock()
+    bm25.resolve_matching_doc_ids.return_value = ["alpha_12345678"]
+    qdrant.search.return_value = []
+    bm25.search.return_value = []
+    bm25.get_document_overview_chunks.return_value = []
+    reranker.rerank.return_value = ([], [], True)
+    reranker.last_call_degraded = False
+
+    svc = RetrievalService(qdrant_store=qdrant, bm25_store=bm25, reranker=reranker)
+    res = svc.retrieve(SearchQuery(query_text="What is alpha?", doc_ids=["alpha.pdf"]))
+
+    assert res.refused
+    assert qdrant.search.call_args.kwargs["doc_ids"] == ["alpha_12345678"]
+    assert bm25.search.call_args.kwargs["doc_ids"] == ["alpha_12345678"]

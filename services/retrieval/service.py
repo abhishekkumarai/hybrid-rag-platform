@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, TypeVar
 
 from contracts.compactor import CompactedContext
 from contracts.graph import GraphRAGResponse
@@ -17,7 +20,18 @@ from services.retrieval.compactor import ContextCompactor
 from services.retrieval.reranker import FlashRankReranker
 from services.retrieval.rrf import reciprocal_rank_fusion
 
+T = TypeVar("T")
+
 logger = get_logger("retrieval.service")
+
+# Shared across requests: each retrieval uses two workers (dense + sparse), so 8 serves 4 at once.
+_SEARCH_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="hybrid-search")
+
+
+def _timed(fn: Callable[..., T], *args: Any, **kwargs: Any) -> tuple[T, float]:
+    t0 = time.perf_counter()
+    result = fn(*args, **kwargs)
+    return result, (time.perf_counter() - t0) * 1000
 
 
 class RetrievalService:
@@ -43,6 +57,7 @@ class RetrievalService:
     def retrieve(self, request: SearchQuery) -> RetrieveResponse:
         start = time.perf_counter()
         query = request.query_text
+        is_exploratory_query = FlashRankReranker.is_exploratory_or_summary_query(query)
 
         # Scoped document pre-resolution
         resolved_doc_ids = (
@@ -50,19 +65,26 @@ class RetrievalService:
         )
         doc_id_set = set(resolved_doc_ids) if resolved_doc_ids else None
 
-        # 1. Parallel / Dual Search with Pre-Filtering
-        dense_results = self.qdrant.search(
+        # 1. Concurrent dual search with pre-filtering. Dense waits on an Ollama embedding
+        # round-trip while BM25 is pure CPU, so overlapping them hides most of the sparse cost.
+        dense_future = _SEARCH_POOL.submit(
+            _timed,
+            self.qdrant.search,
             query,
             top_k=request.top_k,
             ollama_url=self.ollama_url,
             doc_ids=resolved_doc_ids,
             ef_search=request.ef_search,
         )
-        sparse_results = self.bm25.search(
+        sparse_future = _SEARCH_POOL.submit(
+            _timed,
+            self.bm25.search,
             query,
             top_k=request.top_k,
             doc_ids=resolved_doc_ids,
         )
+        dense_results, dense_ms = dense_future.result()
+        sparse_results, sparse_ms = sparse_future.result()
 
         # Scoped document filtering safeguard
         if doc_id_set:
@@ -80,8 +102,7 @@ class RetrievalService:
             candidates = [c for c in candidates if matches_doc_scope(c.doc_id, doc_id_set)]
 
             # If candidates are empty or query is exploratory/summary, anchor with document overview chunks
-            is_exploratory = FlashRankReranker.is_exploratory_or_summary_query(query)
-            if not candidates or is_exploratory:
+            if not candidates or is_exploratory_query:
                 overview_chunks = self.bm25.get_document_overview_chunks(list(doc_id_set), max_chunks=3)
                 existing_cids = {c.id for c in candidates}
                 for ch in overview_chunks:
@@ -101,7 +122,6 @@ class RetrievalService:
                         )
 
         # 3. FlashRank Cross-Encoder Reranking
-        is_exploratory_query = FlashRankReranker.is_exploratory_or_summary_query(query)
         effective_cutoff = (
             min(request.min_rerank_score, 0.05)
             if (request.doc_ids and is_exploratory_query)
@@ -120,7 +140,8 @@ class RetrievalService:
 
         logger.info(
             f"RetrievalService: query='{query}' -> {len(dense_results)} dense, "
-            f"{len(sparse_results)} sparse -> {len(top_candidates)} reranked "
+            f"{len(sparse_results)} sparse (dense={dense_ms:.1f}ms, sparse={sparse_ms:.1f}ms) -> "
+            f"{len(top_candidates)} reranked "
             f"(top_score={top_score:.4f}, refused={refused}) in {duration_ms:.2f}ms"
         )
 
