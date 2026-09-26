@@ -449,3 +449,56 @@ def test_sse_chat_generator_does_not_run_on_event_loop():
 
     assert not inspect.isasyncgenfunction(sse_chat_generator)
     assert inspect.isgeneratorfunction(sse_chat_generator)
+
+
+def _stream_retrieval_mock():
+    mock_retrieval = MagicMock()
+    candidate = Candidate(
+        id="chunk_1", doc_id="arch_doc", page=1, bbox=(50.0, 50.0, 200.0, 100.0),
+        text="The system uses an RTX 3050 GPU with 6GB VRAM.", rerank_score=0.95,
+    )
+    citation = Citation(
+        doc_id="arch_doc", page=1, bbox=(50.0, 50.0, 200.0, 100.0),
+        snippet="The system uses an RTX 3050 GPU.", formatted_badge="[arch_doc: Page 1]",
+    )
+    mock_retrieval.retrieve.return_value = RetrieveResponse(
+        query="q", candidates=[candidate], citations=[citation], refused=False, top_score=0.95, duration_ms=1.0
+    )
+    mock_retrieval.compact_results.return_value = MagicMock(formatted_prompt_context="")
+    return mock_retrieval
+
+
+def _sse_events(body: str) -> list[str]:
+    return [line[7:] for line in body.splitlines() if line.startswith("event: ")]
+
+
+@patch("services.gateway.api.requests.post")
+@patch("services.gateway.api.get_services")
+def test_stream_chat_emits_eval_event_for_answered_turn(mock_get_services, mock_requests_post):
+    """REC-72: an answered streaming turn carries an `eval` event with its online scores."""
+    mock_get_services.return_value = (MagicMock(), MagicMock(), _stream_retrieval_mock())
+    resp = MagicMock(status_code=200)
+    resp.iter_lines.return_value = [
+        b'{"response": "The system uses an RTX 3050 GPU with 6GB VRAM.", "done": false}',
+        b'{"response": "", "done": true}',
+    ]
+    mock_requests_post.return_value = resp
+
+    r = client.post("/api/v1/chat", json={"query": "What GPU is used?", "stream": True, "mode": "direct"})
+    events = _sse_events(r.text)
+    assert "eval" in events
+    payload = next(line for line in r.text.splitlines() if line.startswith("data: ") and '"groundedness"' in line)
+    assert '"groundedness": 1.0' in payload or '"groundedness":1.0' in payload
+
+
+@patch("services.gateway.api.requests.post")
+@patch("services.gateway.api.get_services")
+def test_stream_chat_skips_eval_when_generation_fails(mock_get_services, mock_requests_post):
+    """A failed generation (Ollama down) is not an answered turn and must not be scored."""
+    mock_get_services.return_value = (MagicMock(), MagicMock(), _stream_retrieval_mock())
+    mock_requests_post.side_effect = ConnectionError("ollama unreachable")
+
+    r = client.post("/api/v1/chat", json={"query": "What GPU is used?", "stream": True, "mode": "direct"})
+    events = _sse_events(r.text)
+    assert "error" in events and "done" in events
+    assert "eval" not in events

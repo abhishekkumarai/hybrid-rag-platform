@@ -662,11 +662,15 @@ def _evaluate_turn(
     citations: list[Citation],
     crag_status: str | None,
     model_name: str,
-) -> RetrievalEvalScores:
+) -> RetrievalEvalScores | None:
     """Scores an answered turn inline (heuristics) and maybe schedules the sampled LLM judge.
 
     Must run before `telemetry_tracker.record_query` so the scores are persisted with the record;
-    the judge fills `llm_judge_groundedness` in later (in memory + Redis hash)."""
+    the judge fills `llm_judge_groundedness` in later (in memory + Redis hash). Returns None when
+    generation produced nothing (e.g. Ollama errored) — that turn was never answered, so scoring it
+    would count a failure as an answered turn in the project's evaluation."""
+    if not answer.strip():
+        return None
     telemetry.eval = score_turn(answer, candidates, citations, crag_status=crag_status)
     maybe_schedule_llm_judge(
         telemetry,
@@ -1057,13 +1061,14 @@ def sse_chat_generator(
             content=full_output,
             citations=final_citations,
             latency_ms=round(total_ms, 2),
-            metadata={"eval": turn_eval.model_dump(), "query_id": telemetry.query_id},
+            metadata={"eval": turn_eval.model_dump() if turn_eval else None, "query_id": telemetry.query_id},
         ),
     )
 
     # 5. Emit Live Telemetry, Online Eval Scores, Citations, and Agentic Trace
     citations_data = [c.model_dump() for c in final_citations]
-    yield f"event: eval\ndata: {turn_eval.model_dump_json()}\n\n"
+    if turn_eval:
+        yield f"event: eval\ndata: {turn_eval.model_dump_json()}\n\n"
     yield f"event: telemetry\ndata: {telemetry.model_dump_json()}\n\n"
     yield f"event: done\ndata: {json.dumps({'answer': full_output, 'raw_answer': full_answer, 'citations': citations_data, 'top_score': top_score, 'is_agentic': is_agentic, 'agent_steps': [s.model_dump() for s in agent_steps], 'sub_queries': sub_queries_list})}\n\n"
 
@@ -1442,7 +1447,7 @@ def chat(req: ChatRequest):
             content=final_output,
             citations=final_citations,
             latency_ms=round(total_ms, 2),
-            metadata={"eval": turn_eval.model_dump(), "query_id": telemetry.query_id},
+            metadata={"eval": turn_eval.model_dump() if turn_eval else None, "query_id": telemetry.query_id},
         ),
     )
 
@@ -1454,7 +1459,7 @@ def chat(req: ChatRequest):
         "refused": False,
         "duration_ms": round(total_ms, 2),
         "telemetry": telemetry.model_dump(),
-        "eval": turn_eval.model_dump(),
+        "eval": turn_eval.model_dump() if turn_eval else None,
         "is_agentic": is_agentic,
         "agent_steps": [s.model_dump() for s in agent_steps],
         "sub_queries": sub_queries_list,
