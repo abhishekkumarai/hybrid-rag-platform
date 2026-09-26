@@ -33,13 +33,11 @@ See the full audit for method/evidence: `C:\Users\abhi3\.claude\plans\check-the-
 - [x] **Update `DESIGN.md`'s mode selector docs.** Added the 4th mode (`Graph` / GraphRAG) to the header
   retrieval-mode-selector description, matching the shipped UI/backend.
 
-- [ ] **Type-enforce agentic contracts through the chat endpoint.** `contracts/agent.py`'s
-  `AgenticRetrieveResponse`, `DecompositionPlan`, `SubQuery`, `CRAGAssessment` are used internally by
-  `AgenticCoordinator.run_plan` but never returned as a typed FastAPI `response_model` —
-  `/api/v1/chat`'s SSE `agent_step`/`sub_queries` events are hand-flattened into dicts. Works today; no
-  schema guard against future drift. **Deferred**: this needs a deliberate `/api/v1/chat` SSE-payload
-  refactor (risk of behavior changes to a widely-used streaming endpoint) rather than a quick fix — left
-  for a dedicated follow-up.
+- [x] **Type-enforce agentic contracts through the chat endpoint.** Done in REC-74: every
+  `/api/v1/chat` turn now runs through `services/gateway/chat_pipeline.py::ChatPipeline`, which yields
+  typed `contracts/chat.py` events (`AgentStepEvent` carries a real `AgentStep`, `DoneEvent` carries
+  typed `citations`/`agent_steps`/`sub_queries`). SSE and the JSON response are both serialized from those
+  events, and `tests/unit/test_chat_pipeline_contract.py` pins the wire format per mode.
 
 ## Verified, not gaps (no action needed)
 - Session update method: `PATCH /api/v1/sessions/{id}` matches on both backend and all 4 frontend call sites.

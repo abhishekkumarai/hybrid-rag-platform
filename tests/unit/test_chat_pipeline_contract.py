@@ -139,3 +139,41 @@ def test_sync_response_keys(case):
     if not refused:
         assert ANSWER in data["answer"] and data["raw_answer"] == ANSWER
         assert data["eval"]["groundedness"] == 1.0
+
+
+# --- Drift fixed by the single pipeline (REC-74) -------------------------------------------------
+
+
+@pytest.mark.parametrize("mode", ["direct", "graph", "agentic"])
+def test_stream_and_sync_refusals_are_identical(mode):
+    case = f"{mode}-refused"
+    stream_done = _events(_run(case, stream=True).text)[-1][1]
+    sync = _run(case, stream=False).json()
+    assert stream_done["answer"] == sync["answer"]
+    assert stream_done["agent_steps"] == sync["agent_steps"]
+
+
+def test_sync_generation_failure_is_reported_not_scored():
+    """The old sync path stored and scored "Error generating answer: ..." as if it were an answer."""
+    with patch("services.gateway.api.get_services") as gs, \
+         patch("services.gateway.api.get_agentic_coordinator") as gc, \
+         patch("services.gateway.api.requests.post", side_effect=ConnectionError("ollama down")):
+        gs.return_value = (MagicMock(), MagicMock(), _retrieval(refused=False))
+        gc.return_value = _coordinator(refused=False)
+        data = client.post("/api/v1/chat", json={"query": "What GPU?", "stream": False, "mode": "direct"}).json()
+    assert data["error"] == "ollama down"
+    assert data["answer"].startswith("Error generating answer")
+    assert data["raw_answer"] == ""
+    assert data["eval"] is None
+
+
+def test_sync_token_count_uses_ollama_eval_count():
+    resp = _ollama()
+    resp.json.return_value = {"response": ANSWER, "eval_count": 42}
+    with patch("services.gateway.api.get_services") as gs, \
+         patch("services.gateway.api.get_agentic_coordinator") as gc, \
+         patch("services.gateway.api.requests.post", return_value=resp):
+        gs.return_value = (MagicMock(), MagicMock(), _retrieval(refused=False))
+        gc.return_value = _coordinator(refused=False)
+        data = client.post("/api/v1/chat", json={"query": "What GPU?", "stream": False, "mode": "direct"}).json()
+    assert data["telemetry"]["tokens_generated"] == 42

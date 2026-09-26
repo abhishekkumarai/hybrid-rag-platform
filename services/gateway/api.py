@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
-import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -16,8 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
-from components.citation_formatter import CitationFormatterComponent
-from contracts.agent import AgentStep
+from contracts.chat import ChatTurnRequest
 from contracts.chunk import IndexResponse
 from contracts.compactor import CompactedContext, CompactorRequest
 from contracts.document import Block, IngestRequest, IngestResponse
@@ -26,14 +24,11 @@ from contracts.graph import GraphExtractionResult, GraphRAGResponse, GraphSearch
 from contracts.metrics import (
     ProjectEvalRun,
     ProjectEvalSummary,
-    QueryTelemetry,
-    RetrievalEvalScores,
     SystemMetrics,
 )
-from contracts.retrieval import Candidate, Citation, RetrieveResponse, SearchQuery
+from contracts.retrieval import RetrieveResponse, SearchQuery
 from contracts.session import (
     AttachFilesRequest,
-    ChatMessage,
     ChatSession,
     CreateSessionRequest,
     SessionDetailResponse,
@@ -43,15 +38,14 @@ from contracts.session import (
 from services.common.config import load_config
 from services.common.logger import get_logger
 from services.evaluation import project as project_eval
-from services.evaluation.online import maybe_schedule_llm_judge, score_turn
 from services.feedback.store import RAGOpsStore
+from services.gateway.chat_pipeline import ChatPipeline, fold_to_response, to_sse
 from services.graph.extractor import EntityRelationshipExtractor
 from services.indexing.service import IndexingService
 from services.ingestion.service import IngestionService
 from services.ingestion.visualizer import render_page_with_bbox, resolve_document_path
 from services.retrieval.agentic import AgenticCoordinator
 from services.retrieval.compactor import ContextCompactor
-from services.retrieval.prompting import build_grounded_prompt
 from services.retrieval.service import RetrievalService
 from services.scheduler.dlq_manager import DLQManager
 from services.scheduler.queue import RedisTaskQueue
@@ -656,416 +650,32 @@ def get_metrics(session_id: str | None = None) -> SystemMetrics:
 
 
 
-def _evaluate_turn(
-    telemetry: QueryTelemetry,
-    answer: str,
-    candidates: list[Candidate],
-    citations: list[Citation],
-    crag_status: str | None,
-    model_name: str,
-) -> RetrievalEvalScores | None:
-    """Scores an answered turn inline (heuristics) and maybe schedules the sampled LLM judge.
-
-    Must run before `telemetry_tracker.record_query` so the scores are persisted with the record;
-    the judge fills `llm_judge_groundedness` in later (in memory + Redis hash). Returns None when
-    generation produced nothing (e.g. Ollama errored) — that turn was never answered, so scoring it
-    would count a failure as an answered turn in the project's evaluation."""
-    if not answer.strip():
-        return None
-    telemetry.eval = score_turn(answer, candidates, citations, crag_status=crag_status)
-    maybe_schedule_llm_judge(
-        telemetry,
-        answer,
-        candidates,
-        model=model_name,
-        ollama_url=settings.hardware.ollama_base_url,
-        sample_rate=settings.evaluation.llm_judge_sample_rate,
-        timeout_s=settings.evaluation.llm_judge_timeout_s,
-        redis_host=settings.storage.redis_host,
-        redis_port=settings.storage.redis_port,
+def _chat_pipeline() -> ChatPipeline:
+    _, _, retrieval = get_services()
+    return ChatPipeline(
+        retrieval=retrieval,
+        coordinator=get_agentic_coordinator(),
+        session_manager=session_manager,
+        telemetry=telemetry_tracker,
+        settings=settings,
     )
-    return telemetry.eval
 
 
-def sse_chat_generator(
-    query_text: str,
-    top_k: int,
-    top_rerank: int,
-    model_name: str,
-    session_id: str,
-    mode: str = "auto",
-    system_prompt: str | None = None,
-    temperature: float = 0.7,
-    doc_ids: list[str] | None = None,
-    compactor_budget: int = 3072,
-    min_score_threshold: float = 0.15,
-    ef_search: int | None = None,
-) -> Iterator[str]:
-    """Streams Ollama generation tokens via SSE with agentic multi-hop support and live telemetry.
+def sse_chat_generator(turn: ChatTurnRequest) -> Iterator[str]:
+    """Streams one chat turn as SSE frames (see `ChatPipeline.run` for the event contract).
 
     Deliberately a *sync* generator: every step (retrieval, rerank, the Ollama `requests` stream)
     blocks, and StreamingResponse runs sync iterators in its threadpool. As an `async def` it ran
-    on the event loop and stalled every other request for the whole answer."""
-    t_start = time.perf_counter()
-    _, _, retrieval = get_services()
-    coordinator = get_agentic_coordinator()
-
-    # Emit session identifier to client
-    yield f"event: session\ndata: {json.dumps({'session_id': session_id})}\n\n"
-
-    # 1. Session Memory & Context Window
-    retrieval_query = session_manager.reformulate_query(query_text, session_id)
-    history_context = session_manager.build_conversation_context(session_id, max_turns=3)
-    user_msg = ChatMessage(role="user", content=query_text)
-    session_manager.append_message(session_id, user_msg)
-
-    # 2. Determine Agentic vs Standard Execution
-    is_agentic = (mode == "agentic") or (
-        mode == "auto" and coordinator.decomposer.is_multi_hop_candidate(retrieval_query)
-    )
-
-    agent_steps: list[AgentStep] = []
-    sub_queries_list: list[str] = []
-
-    if is_agentic:
-        yield f"event: mode\ndata: {json.dumps({'mode': 'agentic'})}\n\n"
-        t_ret_start = time.perf_counter()
-        agentic_res = coordinator.run_plan_full(
-            query=retrieval_query,
-            top_k=top_k,
-            top_rerank=top_rerank,
-            force_multi_hop=(mode == "agentic"),
-            context_budget=compactor_budget,
-            doc_ids=doc_ids,
-            ef_search=ef_search,
-            min_rerank_score=min_score_threshold,
-        )
-        candidates, citations, agent_steps = agentic_res.candidates, agentic_res.citations, agentic_res.steps
-        decomp_plan, crag_res, refused = agentic_res.plan, agentic_res.crag, agentic_res.refused
-        retrieval_ms = (time.perf_counter() - t_ret_start) * 1000
-        sub_queries_list = [sq.query_text for sq in decomp_plan.sub_queries]
-
-        for step in agent_steps:
-            yield f"event: agent_step\ndata: {step.model_dump_json()}\n\n"
-
-        if refused:
-            total_ms = (time.perf_counter() - t_start) * 1000
-            refusal_msg = (
-                "I could not locate sufficiently relevant information in the indexed documents "
-                f"to answer your question with confidence (relevance cutoff threshold: {min_score_threshold:.2f})."
-            )
-            telemetry = QueryTelemetry(
-                session_id=session_id,
-                query_text=query_text,
-                rerank_ms=round(retrieval_ms, 2),
-                total_ms=round(total_ms, 2),
-                refused=True,
-                top_score=crag_res.top_score,
-                citations_count=0,
-            )
-            telemetry_tracker.record_query(telemetry)
-            session_manager.append_message(
-                session_id,
-                ChatMessage(role="assistant", content=refusal_msg, latency_ms=round(total_ms, 2)),
-            )
-            yield f"event: token\ndata: {json.dumps({'token': refusal_msg})}\n\n"
-            yield f"event: telemetry\ndata: {telemetry.model_dump_json()}\n\n"
-            yield f"event: done\ndata: {json.dumps({'citations': [], 'refused': True, 'top_score': crag_res.top_score, 'is_agentic': True, 'agent_steps': [s.model_dump() for s in agent_steps], 'sub_queries': sub_queries_list})}\n\n"
-            return
-
-        prompt = coordinator.build_agentic_prompt(
-            query=query_text,
-            candidates=candidates,
-            decomp_plan=decomp_plan,
-            history_context=history_context,
-            graph_context=(
-                agentic_res.graph_response.subgraph_text if agentic_res.graph_response else ""
-            ),
-            compacted_context=agentic_res.compacted_context,
-        )
-        if system_prompt:
-            prompt = f"System Persona & Directives:\n{system_prompt}\n\n{prompt}"
-        top_score = candidates[0].rerank_score if candidates else 0.0
-        final_citations = citations
-        eval_candidates, eval_crag_status = candidates, crag_res.status
-
-    elif mode == "graph":
-        yield f"event: mode\ndata: {json.dumps({'mode': 'graph'})}\n\n"
-        t_ret_start = time.perf_counter()
-        search_res, graph_res = retrieval.retrieve_with_graph(
-            SearchQuery(
-                query_text=retrieval_query,
-                top_k=top_k,
-                top_rerank=top_rerank,
-                min_rerank_score=min_score_threshold,
-                doc_ids=doc_ids,
-                ef_search=ef_search,
-            )
-        )
-        retrieval_ms = (time.perf_counter() - t_ret_start) * 1000
-
-        if graph_res and graph_res.relations:
-            g_step = AgentStep(
-                step_type="graph_traversal",
-                step_index=1,
-                title="GraphRAG Relational Traversal",
-                detail=(
-                    f"Discovered {len(graph_res.relations)} relational facts and "
-                    f"{len(graph_res.connected_chunk_ids)} connected chunks"
-                ),
-                data={
-                    "entities": [e.name for e in graph_res.matched_entities],
-                    "relations_count": len(graph_res.relations),
-                    "subgraph_text": graph_res.subgraph_text,
-                },
-            )
-            agent_steps.append(g_step)
-            yield f"event: agent_step\ndata: {g_step.model_dump_json()}\n\n"
-
-        if search_res.refused and not (graph_res and graph_res.relations):
-            total_ms = (time.perf_counter() - t_start) * 1000
-            refusal_msg = (
-                "I could not locate sufficiently relevant information in the indexed documents "
-                "or knowledge graph to answer your question with confidence."
-            )
-            telemetry = QueryTelemetry(
-                session_id=session_id,
-                query_text=query_text,
-                rerank_ms=round(retrieval_ms, 2),
-                total_ms=round(total_ms, 2),
-                refused=True,
-                top_score=search_res.top_score,
-                citations_count=0,
-            )
-            telemetry_tracker.record_query(telemetry)
-            session_manager.append_message(
-                session_id,
-                ChatMessage(role="assistant", content=refusal_msg, latency_ms=round(total_ms, 2)),
-            )
-            yield f"event: token\ndata: {json.dumps({'token': refusal_msg})}\n\n"
-            yield f"event: telemetry\ndata: {telemetry.model_dump_json()}\n\n"
-            yield f"event: done\ndata: {json.dumps({'citations': [], 'refused': True, 'top_score': search_res.top_score, 'is_agentic': False, 'mode': 'graph', 'agent_steps': [s.model_dump() for s in agent_steps]})}\n\n"
-            return
-
-        comp_context = retrieval.compact_results(
-            query=retrieval_query,
-            candidates=search_res.candidates,
-            budget_tokens=compactor_budget,
-        )
-        if comp_context.dropped_chunks_count > 0 or comp_context.deduplicated_sentences_count > 0:
-            c_step = AgentStep(
-                step_type="compaction",
-                step_index=len(agent_steps) + 1,
-                title="Contextual Token Budget Compaction",
-                detail=(
-                    f"Compacted {comp_context.total_original_tokens} -> {comp_context.total_compressed_tokens} "
-                    f"tokens (ratio {comp_context.overall_compression_ratio:.2f})"
-                ),
-                data={
-                    "original_tokens": comp_context.total_original_tokens,
-                    "compressed_tokens": comp_context.total_compressed_tokens,
-                },
-            )
-            agent_steps.append(c_step)
-            yield f"event: agent_step\ndata: {c_step.model_dump_json()}\n\n"
-
-        graph_md = graph_res.subgraph_text if graph_res else ""
-        context_body = comp_context.formatted_prompt_context or "\n\n".join(
-            [f"[{c.id}] {c.text}" for c in search_res.candidates]
-        )
-        evidence_block = f"{graph_md}\n\n{context_body}" if graph_md else context_body
-        prompt = build_grounded_prompt(
-            query_text,
-            evidence_block,
-            history=history_context,
-            system_prompt=system_prompt,
-            evidence_label="Relational & document context",
-            task_instructions="Synthesize an accurate answer using the verified graph relations and retrieved passages.",
-        )
-        top_score = search_res.top_score
-        final_citations = search_res.citations
-        eval_candidates, eval_crag_status = search_res.candidates, None
-
-    else:
-        # Standard Single-Hop Fast Path
-        t_ret_start = time.perf_counter()
-        search_res = retrieval.retrieve(
-            SearchQuery(
-                query_text=retrieval_query,
-                top_k=top_k,
-                top_rerank=top_rerank,
-                min_rerank_score=min_score_threshold,
-                doc_ids=doc_ids,
-                ef_search=ef_search,
-            )
-        )
-        retrieval_ms = (time.perf_counter() - t_ret_start) * 1000
-
-        if search_res.refused:
-            total_ms = (time.perf_counter() - t_start) * 1000
-            refusal_msg = (
-                "I could not locate sufficiently relevant information in the indexed documents "
-                f"to answer your question with confidence (relevance cutoff threshold: {min_score_threshold:.2f})."
-            )
-            telemetry = QueryTelemetry(
-                session_id=session_id,
-                query_text=query_text,
-                rerank_ms=round(retrieval_ms, 2),
-                total_ms=round(total_ms, 2),
-                refused=True,
-                top_score=search_res.top_score,
-                citations_count=0,
-            )
-            telemetry_tracker.record_query(telemetry)
-
-            session_manager.append_message(
-                session_id,
-                ChatMessage(role="assistant", content=refusal_msg, latency_ms=round(total_ms, 2)),
-            )
-
-            yield f"event: token\ndata: {json.dumps({'token': refusal_msg})}\n\n"
-            yield f"event: telemetry\ndata: {telemetry.model_dump_json()}\n\n"
-            yield f"event: done\ndata: {json.dumps({'citations': [], 'refused': True, 'top_score': search_res.top_score, 'is_agentic': False})}\n\n"
-            return
-
-        comp_context = retrieval.compact_results(
-            query=retrieval_query,
-            candidates=search_res.candidates,
-            budget_tokens=compactor_budget,
-        )
-        context = comp_context.formatted_prompt_context or "\n\n".join(
-            [f"[{c.id}] {c.text}" for c in search_res.candidates]
-        )
-        prompt = build_grounded_prompt(
-            query_text, context, history=history_context, system_prompt=system_prompt
-        )
-        top_score = search_res.top_score
-        final_citations = search_res.citations
-        eval_candidates, eval_crag_status = search_res.candidates, None
-
-    # Calculate safe num_ctx tailored for the active hardware profile & model
-    # On RTX 3050 6GB VRAM, clamp num_ctx for 7B/8B/14B models to 4096 to prevent "context size too large"
-    is_large_model = any(tag in model_name.lower() for tag in ("8b", "7b", "14b", "13b", "70b"))
-    max_hardware_ctx = 4096 if is_large_model else 8192
-    safe_num_ctx = min(max(compactor_budget + 512, 2048), max_hardware_ctx)
-
-    # Prompt length safety guard to guarantee prompt never overflows Ollama context
-    max_prompt_chars = int((safe_num_ctx - 350) * 3.5)
-    if len(prompt) > max_prompt_chars:
-        prompt = prompt[:max_prompt_chars] + "\n\n[Context truncated to fit model context window]\n"
-
-    # 3. Stream from Local Ollama & Measure TTFT
-    full_answer_parts: list[str] = []
-    t_llm_start = time.perf_counter()
-    ttft_ms = 0.0
-    token_count = 0
-
-    try:
-        resp = requests.post(
-            f"{settings.hardware.ollama_base_url}/api/generate",
-            json={
-                "model": model_name,
-                "prompt": prompt,
-                "stream": True,
-                "options": {
-                    "num_predict": 256,
-                    "temperature": temperature,
-                    "num_ctx": safe_num_ctx,
-                },
-            },
-            stream=True,
-            timeout=120,
-        )
-        if resp.status_code != 200:
-            logger.warning(
-                f"Ollama stream returned {resp.status_code}, retrying with safe num_ctx=2048: {resp.text}"
-            )
-            resp = requests.post(
-                f"{settings.hardware.ollama_base_url}/api/generate",
-                json={
-                    "model": model_name,
-                    "prompt": prompt[:4000],
-                    "stream": True,
-                    "options": {
-                        "num_predict": 256,
-                        "temperature": temperature,
-                        "num_ctx": 2048,
-                    },
-                },
-                stream=True,
-                timeout=120,
-            )
-
-        for line in resp.iter_lines():
-            if line:
-                chunk = json.loads(line)
-                tok = chunk.get("response", "")
-                if tok:
-                    if token_count == 0:
-                        ttft_ms = (time.perf_counter() - t_llm_start) * 1000
-                    token_count += 1
-                    full_answer_parts.append(tok)
-                    yield f"event: token\ndata: {json.dumps({'token': tok})}\n\n"
-                if chunk.get("done", False):
-                    break
-    except Exception as e:
-        yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
-
-    llm_gen_ms = (time.perf_counter() - t_llm_start) * 1000
-    total_ms = (time.perf_counter() - t_start) * 1000
-    tokens_per_sec = round(token_count / (llm_gen_ms / 1000), 1) if llm_gen_ms > 0 else 0.0
-
-    telemetry = QueryTelemetry(
-        session_id=session_id,
-        query_text=query_text,
-        rerank_ms=round(retrieval_ms, 2),
-        llm_ttft_ms=round(ttft_ms, 2),
-        llm_gen_ms=round(llm_gen_ms, 2),
-        total_ms=round(total_ms, 2),
-        tokens_generated=token_count,
-        tokens_per_sec=tokens_per_sec,
-        refused=False,
-        top_score=top_score,
-        citations_count=len(final_citations),
-    )
-    full_answer = "".join(full_answer_parts)
-    turn_eval = _evaluate_turn(
-        telemetry, full_answer, eval_candidates, final_citations, eval_crag_status, model_name
-    )
-    telemetry_tracker.record_query(
-        telemetry,
-        redis_host=settings.storage.redis_host,
-        redis_port=settings.storage.redis_port,
-    )
-
-    # 4. Save Assistant Turn to Session History
-    # Apply the same citation-provenance formatting as the sync /api/v1/chat path so a session's
-    # stored message content has one consistent shape regardless of whether that turn streamed —
-    # previously only the sync path appended the "Verified Sources" section here.
-    formatter = CitationFormatterComponent()
-    full_output = formatter.format_response(full_answer, [c.model_dump() for c in final_citations])
-    session_manager.append_message(
-        session_id,
-        ChatMessage(
-            role="assistant",
-            content=full_output,
-            citations=final_citations,
-            latency_ms=round(total_ms, 2),
-            metadata={"eval": turn_eval.model_dump() if turn_eval else None, "query_id": telemetry.query_id},
-        ),
-    )
-
-    # 5. Emit Live Telemetry, Online Eval Scores, Citations, and Agentic Trace
-    citations_data = [c.model_dump() for c in final_citations]
-    if turn_eval:
-        yield f"event: eval\ndata: {turn_eval.model_dump_json()}\n\n"
-    yield f"event: telemetry\ndata: {telemetry.model_dump_json()}\n\n"
-    yield f"event: done\ndata: {json.dumps({'answer': full_output, 'raw_answer': full_answer, 'citations': citations_data, 'top_score': top_score, 'is_agentic': is_agentic, 'agent_steps': [s.model_dump() for s in agent_steps], 'sub_queries': sub_queries_list})}\n\n"
+    on the event loop and stalled every other request for the whole answer (REC-67)."""
+    for event in _chat_pipeline().run(turn, stream_llm=True):
+        yield to_sse(event)
 
 
 @app.post("/api/v1/chat")
 def chat(req: ChatRequest):
-    """Conversational RAG endpoint supporting both SSE streaming tokens and synchronous response."""
+    """Conversational RAG endpoint: SSE token stream, or one JSON response when stream is false.
+
+    Both transports run the same `ChatPipeline` (REC-74); only the serialization differs."""
     # Ensure active session exists or auto-create one
     session: ChatSession | None = None
     active_session_id = req.session_id
@@ -1078,372 +688,25 @@ def chat(req: ChatRequest):
     # req.X is None means the client omitted the field — fall back to the session's stored
     # preference. A client that explicitly sends the literal default value (e.g. top_k=20) is
     # honored as an explicit request, not silently overridden by the session.
-    effective_model = req.model if req.model is not None else session.parameters.model
-    effective_mode = req.mode if req.mode is not None else session.parameters.retrieval_mode
-    effective_top_k = req.top_k if req.top_k is not None else session.parameters.top_k
-    effective_top_rerank = req.top_rerank if req.top_rerank is not None else session.parameters.top_rerank
-    effective_stream = req.stream if req.stream is not None else session.parameters.stream
-    temperature = session.parameters.temperature
-    compactor_budget = session.parameters.compactor_budget
-    min_score_threshold = session.parameters.min_score_threshold
-    ef_search = session.parameters.hnsw_ef_search
-    doc_ids = session.files if session.files else None
-    system_prompt = session.system_prompt
-
-    if effective_stream:
-        return StreamingResponse(
-            sse_chat_generator(
-                query_text=req.query,
-                top_k=effective_top_k,
-                top_rerank=effective_top_rerank,
-                model_name=effective_model,
-                session_id=active_session_id,
-                mode=effective_mode,
-                system_prompt=system_prompt,
-                temperature=temperature,
-                doc_ids=doc_ids,
-                compactor_budget=compactor_budget,
-                min_score_threshold=min_score_threshold,
-                ef_search=ef_search,
-            ),
-            media_type="text/event-stream",
-        )
-
-    t_start = time.perf_counter()
-    _, _, retrieval = get_services()
-    coordinator = get_agentic_coordinator()
-
-    # 1. Session Memory & Context Window
-    retrieval_query = session_manager.reformulate_query(req.query, active_session_id)
-    history_context = session_manager.build_conversation_context(active_session_id, max_turns=3)
-    user_msg = ChatMessage(role="user", content=req.query)
-    session_manager.append_message(active_session_id, user_msg)
-
-    # 2. Determine Agentic vs Standard Execution
-    is_agentic = (effective_mode == "agentic") or (
-        effective_mode == "auto" and coordinator.decomposer.is_multi_hop_candidate(retrieval_query)
-    )
-
-    agent_steps: list[AgentStep] = []
-    sub_queries_list: list[str] = []
-
-    if is_agentic:
-        t_ret_start = time.perf_counter()
-        agentic_res = coordinator.run_plan_full(
-            query=retrieval_query,
-            top_k=effective_top_k,
-            top_rerank=effective_top_rerank,
-            force_multi_hop=(effective_mode == "agentic"),
-            context_budget=compactor_budget,
-            doc_ids=doc_ids,
-            ef_search=ef_search,
-            min_rerank_score=min_score_threshold,
-        )
-        candidates, citations, agent_steps = agentic_res.candidates, agentic_res.citations, agentic_res.steps
-        decomp_plan, crag_res, refused = agentic_res.plan, agentic_res.crag, agentic_res.refused
-        retrieval_ms = (time.perf_counter() - t_ret_start) * 1000
-        sub_queries_list = [sq.query_text for sq in decomp_plan.sub_queries]
-
-        if refused:
-            total_ms = (time.perf_counter() - t_start) * 1000
-            refusal_msg = "I could not locate sufficiently relevant information in the indexed documents."
-            telemetry = QueryTelemetry(
-                session_id=active_session_id,
-                query_text=req.query,
-                rerank_ms=round(retrieval_ms, 2),
-                total_ms=round(total_ms, 2),
-                refused=True,
-                top_score=crag_res.top_score,
-                citations_count=0,
-            )
-            telemetry_tracker.record_query(telemetry)
-            session_manager.append_message(
-                active_session_id,
-                ChatMessage(role="assistant", content=refusal_msg, latency_ms=round(total_ms, 2)),
-            )
-            return {
-                "answer": refusal_msg,
-                "citations": [],
-                "refused": True,
-                "telemetry": telemetry.model_dump(),
-                "is_agentic": True,
-                "agent_steps": [s.model_dump() for s in agent_steps],
-                "session_id": active_session_id,
-            }
-
-        prompt = coordinator.build_agentic_prompt(
-            query=req.query,
-            candidates=candidates,
-            decomp_plan=decomp_plan,
-            history_context=history_context,
-            graph_context=(
-                agentic_res.graph_response.subgraph_text if agentic_res.graph_response else ""
-            ),
-            compacted_context=agentic_res.compacted_context,
-        )
-        if system_prompt:
-            prompt = f"System Persona & Directives:\n{system_prompt}\n\n{prompt}"
-        top_score = candidates[0].rerank_score if candidates else 0.0
-        final_citations = citations
-        eval_candidates, eval_crag_status = candidates, crag_res.status
-
-    elif effective_mode == "graph":
-        t_ret_start = time.perf_counter()
-        search_res, graph_res = retrieval.retrieve_with_graph(
-            SearchQuery(
-                query_text=retrieval_query,
-                top_k=effective_top_k,
-                top_rerank=effective_top_rerank,
-                min_rerank_score=min_score_threshold,
-                doc_ids=doc_ids,
-                ef_search=ef_search,
-            )
-        )
-        retrieval_ms = (time.perf_counter() - t_ret_start) * 1000
-
-        if graph_res and graph_res.relations:
-            agent_steps.append(
-                AgentStep(
-                    step_type="graph_traversal",
-                    step_index=1,
-                    title="GraphRAG Relational Traversal",
-                    detail=(
-                        f"Discovered {len(graph_res.relations)} relational facts and "
-                        f"{len(graph_res.connected_chunk_ids)} connected chunks"
-                    ),
-                    data={
-                        "entities": [e.name for e in graph_res.matched_entities],
-                        "relations_count": len(graph_res.relations),
-                        "subgraph_text": graph_res.subgraph_text,
-                    },
-                )
-            )
-
-        if search_res.refused and not (graph_res and graph_res.relations):
-            total_ms = (time.perf_counter() - t_start) * 1000
-            refusal_msg = "I could not locate sufficiently relevant information in the indexed documents or knowledge graph."
-            telemetry = QueryTelemetry(
-                session_id=active_session_id,
-                query_text=req.query,
-                rerank_ms=round(retrieval_ms, 2),
-                total_ms=round(total_ms, 2),
-                refused=True,
-                top_score=search_res.top_score,
-                citations_count=0,
-            )
-            telemetry_tracker.record_query(telemetry)
-            session_manager.append_message(
-                active_session_id,
-                ChatMessage(role="assistant", content=refusal_msg, latency_ms=round(total_ms, 2)),
-            )
-            return {
-                "answer": refusal_msg,
-                "citations": [],
-                "refused": True,
-                "telemetry": telemetry.model_dump(),
-                "is_agentic": False,
-                "mode": "graph",
-                "session_id": active_session_id,
-            }
-
-        comp_context = retrieval.compact_results(
-            query=retrieval_query,
-            candidates=search_res.candidates,
-            budget_tokens=compactor_budget,
-        )
-        if comp_context.dropped_chunks_count > 0 or comp_context.deduplicated_sentences_count > 0:
-            agent_steps.append(
-                AgentStep(
-                    step_type="compaction",
-                    step_index=len(agent_steps) + 1,
-                    title="Contextual Token Budget Compaction",
-                    detail=(
-                        f"Compacted {comp_context.total_original_tokens} -> {comp_context.total_compressed_tokens} "
-                        f"tokens (ratio {comp_context.overall_compression_ratio:.2f})"
-                    ),
-                    data={
-                        "original_tokens": comp_context.total_original_tokens,
-                        "compressed_tokens": comp_context.total_compressed_tokens,
-                    },
-                )
-            )
-
-        graph_md = graph_res.subgraph_text if graph_res else ""
-        context_body = comp_context.formatted_prompt_context or "\n\n".join(
-            [f"[{c.id}] {c.text}" for c in search_res.candidates]
-        )
-        evidence_block = f"{graph_md}\n\n{context_body}" if graph_md else context_body
-        prompt = build_grounded_prompt(
-            req.query,
-            evidence_block,
-            history=history_context,
-            system_prompt=system_prompt,
-            evidence_label="Relational & document context",
-            task_instructions="Synthesize an accurate answer using the verified graph relations and retrieved passages.",
-        )
-        top_score = search_res.top_score
-        final_citations = search_res.citations
-        eval_candidates, eval_crag_status = search_res.candidates, None
-
-    else:
-        # Standard Single-Hop Path
-        t_ret_start = time.perf_counter()
-        ret_res = retrieval.retrieve(
-            SearchQuery(
-                query_text=retrieval_query,
-                top_k=effective_top_k,
-                top_rerank=effective_top_rerank,
-                min_rerank_score=min_score_threshold,
-                doc_ids=doc_ids,
-                ef_search=ef_search,
-            )
-        )
-        retrieval_ms = (time.perf_counter() - t_ret_start) * 1000
-
-        if ret_res.refused:
-            total_ms = (time.perf_counter() - t_start) * 1000
-            refusal_msg = "I could not locate sufficiently relevant information in the indexed documents."
-            telemetry = QueryTelemetry(
-                session_id=active_session_id,
-                query_text=req.query,
-                rerank_ms=round(retrieval_ms, 2),
-                total_ms=round(total_ms, 2),
-                refused=True,
-                top_score=ret_res.top_score,
-                citations_count=0,
-            )
-            telemetry_tracker.record_query(telemetry)
-            session_manager.append_message(
-                active_session_id,
-                ChatMessage(role="assistant", content=refusal_msg, latency_ms=round(total_ms, 2)),
-            )
-            return {
-                "answer": refusal_msg,
-                "citations": [],
-                "refused": True,
-                "telemetry": telemetry.model_dump(),
-                "is_agentic": False,
-                "session_id": active_session_id,
-            }
-
-        comp_context = retrieval.compact_results(
-            query=retrieval_query,
-            candidates=ret_res.candidates,
-            budget_tokens=compactor_budget,
-        )
-        context = comp_context.formatted_prompt_context or "\n\n".join(
-            [f"[{c.id}] {c.text}" for c in ret_res.candidates]
-        )
-        prompt = build_grounded_prompt(
-            req.query, context, history=history_context, system_prompt=system_prompt
-        )
-        top_score = ret_res.top_score
-        final_citations = ret_res.citations
-        eval_candidates, eval_crag_status = ret_res.candidates, None
-
-    # Calculate safe num_ctx tailored for the active hardware profile & model
-    # On RTX 3050 6GB VRAM, clamp num_ctx for 7B/8B/14B models to 4096 to prevent "context size too large"
-    is_large_model = any(tag in effective_model.lower() for tag in ("8b", "7b", "14b", "13b", "70b"))
-    max_hardware_ctx = 4096 if is_large_model else 8192
-    safe_num_ctx = min(max(compactor_budget + 512, 2048), max_hardware_ctx)
-
-    # Prompt length safety guard to guarantee prompt never overflows Ollama context
-    max_prompt_chars = int((safe_num_ctx - 350) * 3.5)
-    if len(prompt) > max_prompt_chars:
-        prompt = prompt[:max_prompt_chars] + "\n\n[Context truncated to fit model context window]\n"
-
-    t_llm_start = time.perf_counter()
-    try:
-        resp = requests.post(
-            f"{settings.hardware.ollama_base_url}/api/generate",
-            json={
-                "model": effective_model,
-                "prompt": prompt,
-                "stream": False,
-                "options": {
-                    "num_predict": 256,
-                    "temperature": temperature,
-                    "num_ctx": safe_num_ctx,
-                },
-            },
-            timeout=120,
-        )
-        if resp.status_code != 200:
-            logger.warning(
-                f"Ollama generation returned {resp.status_code}, retrying with safe num_ctx=2048: {resp.text}"
-            )
-            resp = requests.post(
-                f"{settings.hardware.ollama_base_url}/api/generate",
-                json={
-                    "model": effective_model,
-                    "prompt": prompt[:4000],
-                    "stream": False,
-                    "options": {
-                        "num_predict": 256,
-                        "temperature": temperature,
-                        "num_ctx": 2048,
-                    },
-                },
-                timeout=120,
-            )
-        llm_answer = resp.json().get("response", "")
-    except Exception as e:
-        llm_answer = f"Error generating answer: {e}"
-
-    llm_gen_ms = (time.perf_counter() - t_llm_start) * 1000
-    total_ms = (time.perf_counter() - t_start) * 1000
-    token_count = len(llm_answer.split()) * 1.3
-    tokens_per_sec = round(token_count / (llm_gen_ms / 1000), 1) if llm_gen_ms > 0 else 0.0
-
-    formatter = CitationFormatterComponent()
-    final_output = formatter.format_response(llm_answer, [c.model_dump() for c in final_citations])
-
-    telemetry = QueryTelemetry(
+    params = session.parameters
+    turn = ChatTurnRequest(
+        query=req.query,
         session_id=active_session_id,
-        query_text=req.query,
-        rerank_ms=round(retrieval_ms, 2),
-        llm_gen_ms=round(llm_gen_ms, 2),
-        total_ms=round(total_ms, 2),
-        tokens_generated=int(token_count),
-        tokens_per_sec=tokens_per_sec,
-        refused=False,
-        top_score=top_score,
-        citations_count=len(final_citations),
+        model=req.model if req.model is not None else params.model,
+        mode=req.mode if req.mode is not None else params.retrieval_mode,
+        top_k=req.top_k if req.top_k is not None else params.top_k,
+        top_rerank=req.top_rerank if req.top_rerank is not None else params.top_rerank,
+        temperature=params.temperature,
+        compactor_budget=params.compactor_budget,
+        min_score_threshold=params.min_score_threshold,
+        ef_search=params.hnsw_ef_search,
+        doc_ids=session.files or None,
+        system_prompt=session.system_prompt,
     )
-    turn_eval = _evaluate_turn(
-        telemetry, llm_answer, eval_candidates, final_citations, eval_crag_status, effective_model
-    )
-    telemetry_tracker.record_query(
-        telemetry,
-        redis_host=settings.storage.redis_host,
-        redis_port=settings.storage.redis_port,
-    )
-
-    session_manager.append_message(
-        active_session_id,
-        ChatMessage(
-            role="assistant",
-            content=final_output,
-            citations=final_citations,
-            latency_ms=round(total_ms, 2),
-            metadata={"eval": turn_eval.model_dump() if turn_eval else None, "query_id": telemetry.query_id},
-        ),
-    )
-
-    return {
-        "answer": final_output,
-        "raw_answer": llm_answer,
-        "citations": [c.model_dump() for c in final_citations],
-        "top_score": top_score,
-        "refused": False,
-        "duration_ms": round(total_ms, 2),
-        "telemetry": telemetry.model_dump(),
-        "eval": turn_eval.model_dump() if turn_eval else None,
-        "is_agentic": is_agentic,
-        "agent_steps": [s.model_dump() for s in agent_steps],
-        "sub_queries": sub_queries_list,
-        "session_id": active_session_id,
-    }
+    stream = req.stream if req.stream is not None else params.stream
+    if stream:
+        return StreamingResponse(sse_chat_generator(turn), media_type="text/event-stream")
+    return fold_to_response(_chat_pipeline().run(turn, stream_llm=False))
 
 
 # --- RAGOps & Feedback Endpoints (Phase 15) ---
