@@ -78,3 +78,18 @@ def test_llm_judge_sampling_and_update():
         assert t is not None
         t.join(timeout=5)
     assert tel.eval.llm_judge_groundedness == 0.9
+
+
+def test_inline_citations_and_meta_words_do_not_sink_groundedness():
+    """REC-75 follow-up: a correctly cited answer must not score as ungrounded because of the
+    copied `[doc_id: Page n]` provenance tokens or words like 'excerpts'/'mentions'."""
+    ctx = ["Marcus Aurelius wrote that all things die. Not just people but kingdoms and ideas eventually."]
+    cited = (
+        "Marcus Aurelius mentions this in several excerpts. He notes that all things die "
+        "(Source [the_daily_stoic_5cfc645e: Page 12]). Not just people but kingdoms die eventually."
+    )
+    score, n = groundedness(cited, ctx)
+    # The pure meta sentence ("mentions this in several excerpts") has no checkable claim and is skipped.
+    assert n == 2 and score == 1.0
+    fabricated, _ = groundedness("Pinecone hosts serverless embeddings on Kubernetes [doc_x: Page 1].", ctx)
+    assert fabricated == 0.0

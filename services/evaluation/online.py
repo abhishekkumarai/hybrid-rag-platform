@@ -24,8 +24,13 @@ _STOPWORDS = frozenset(
     """a an and are as at be been but by can could did do does for from had has have he her his how
     i if in into is it its may might more most no not of on or our she should so such than that the
     their them then there these they this those to was we were what when where which while who why
-    will with would you your also based according provided context document documents answer""".split()
+    will with would you your also based according provided context document documents answer
+    excerpt excerpts passage passages source sources section sections text quote quotes quoted
+    mention mentions mentioned note notes noted state states stated say says said several""".split()
 )
+# Inline citations the model copies from the prompt ("[doc_id: Page 12]", "(Source [...])") are
+# provenance, not claims; their long id tokens never occur in passage text and would sink the score.
+_INLINE_CITATION = re.compile(r"\(\s*(?:source|sources|see)?[^()]*\[[^\]]*\][^()]*\)|\[[^\]]*\]", re.IGNORECASE)
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+|\n+")
 _TOKEN = re.compile(r"[a-z0-9][a-z0-9_.%-]*")
 # A sentence counts as supported when this share of its content words appears in the context.
@@ -34,7 +39,8 @@ MIN_CONTENT_WORDS = 3
 
 
 def _content_words(text: str) -> list[str]:
-    return [t.strip(".") for t in _TOKEN.findall(text.lower()) if len(t) > 2 and t not in _STOPWORDS]
+    tokens = (t.strip(".") for t in _TOKEN.findall(text.lower()))
+    return [t for t in tokens if len(t) > 2 and t not in _STOPWORDS]
 
 
 def groundedness(answer: str, context_texts: Sequence[str]) -> tuple[float, int]:
@@ -43,7 +49,7 @@ def groundedness(answer: str, context_texts: Sequence[str]) -> tuple[float, int]
     for text in context_texts:
         context_vocab.update(_content_words(text))
     scored = supported = 0
-    for sentence in _SENTENCE_SPLIT.split(answer or ""):
+    for sentence in _SENTENCE_SPLIT.split(_INLINE_CITATION.sub(" ", answer or "")):
         words = _content_words(sentence)
         if len(words) < MIN_CONTENT_WORDS:
             continue  # greetings, headings, "Sources:" lines carry no checkable claim
