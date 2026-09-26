@@ -51,6 +51,7 @@ from services.ingestion.service import IngestionService
 from services.ingestion.visualizer import render_page_with_bbox, resolve_document_path
 from services.retrieval.agentic import AgenticCoordinator
 from services.retrieval.compactor import ContextCompactor
+from services.retrieval.prompting import build_grounded_prompt
 from services.retrieval.service import RetrievalService
 from services.scheduler.dlq_manager import DLQManager
 from services.scheduler.queue import RedisTaskQueue
@@ -873,12 +874,13 @@ def sse_chat_generator(
             [f"[{c.id}] {c.text}" for c in search_res.candidates]
         )
         evidence_block = f"{graph_md}\n\n{context_body}" if graph_md else context_body
-        prompt = (
-            f"{f'System Persona & Directives:\n{system_prompt}\n\n' if system_prompt else ''}"
-            f"Relational & Document Context:\n{evidence_block}\n\n"
-            f"{f'Previous Conversation:\n{history_context}\n\n' if history_context else ''}"
-            f"Question: {query_text}\n"
-            f"Synthesize an accurate answer using the verified graph relations and retrieved passages:"
+        prompt = build_grounded_prompt(
+            query_text,
+            evidence_block,
+            history=history_context,
+            system_prompt=system_prompt,
+            evidence_label="Relational & document context",
+            task_instructions="Synthesize an accurate answer using the verified graph relations and retrieved passages.",
         )
         top_score = search_res.top_score
         final_citations = search_res.citations
@@ -934,21 +936,9 @@ def sse_chat_generator(
         context = comp_context.formatted_prompt_context or "\n\n".join(
             [f"[{c.id}] {c.text}" for c in search_res.candidates]
         )
-        if history_context:
-            prompt = (
-                f"{f'System Persona & Directives:\n{system_prompt}\n\n' if system_prompt else ''}"
-                f"Previous Conversation:\n{history_context}\n\n"
-                f"Retrieved Document Excerpts:\n{context}\n\n"
-                f"User Question: {query_text}\n"
-                f"Answer truthfully based on the retrieved documents and conversation context:"
-            )
-        else:
-            prompt = (
-                f"{f'System Persona & Directives:\n{system_prompt}\n\n' if system_prompt else ''}"
-                f"Context:\n{context}\n\n"
-                f"Question: {query_text}\n"
-                f"Answer truthfully based strictly on the provided context:"
-            )
+        prompt = build_grounded_prompt(
+            query_text, context, history=history_context, system_prompt=system_prompt
+        )
         top_score = search_res.top_score
         final_citations = search_res.citations
         eval_candidates, eval_crag_status = search_res.candidates, None
@@ -1283,12 +1273,13 @@ def chat(req: ChatRequest):
             [f"[{c.id}] {c.text}" for c in search_res.candidates]
         )
         evidence_block = f"{graph_md}\n\n{context_body}" if graph_md else context_body
-        prompt = (
-            f"{f'System Persona & Directives:\n{system_prompt}\n\n' if system_prompt else ''}"
-            f"Relational & Document Context:\n{evidence_block}\n\n"
-            f"{f'Previous Conversation:\n{history_context}\n\n' if history_context else ''}"
-            f"Question: {req.query}\n"
-            f"Synthesize an accurate answer using the verified graph relations and retrieved passages:"
+        prompt = build_grounded_prompt(
+            req.query,
+            evidence_block,
+            history=history_context,
+            system_prompt=system_prompt,
+            evidence_label="Relational & document context",
+            task_instructions="Synthesize an accurate answer using the verified graph relations and retrieved passages.",
         )
         top_score = search_res.top_score
         final_citations = search_res.citations
@@ -1343,21 +1334,9 @@ def chat(req: ChatRequest):
         context = comp_context.formatted_prompt_context or "\n\n".join(
             [f"[{c.id}] {c.text}" for c in ret_res.candidates]
         )
-        if history_context:
-            prompt = (
-                f"{f'System Persona & Directives:\n{system_prompt}\n\n' if system_prompt else ''}"
-                f"Previous Conversation:\n{history_context}\n\n"
-                f"Context:\n{context}\n\n"
-                f"Question: {req.query}\n"
-                f"Answer truthfully based on the retrieved documents and conversation context:"
-            )
-        else:
-            prompt = (
-                f"{f'System Persona & Directives:\n{system_prompt}\n\n' if system_prompt else ''}"
-                f"Context:\n{context}\n\n"
-                f"Question: {req.query}\n"
-                f"Answer truthfully based strictly on the provided context:"
-            )
+        prompt = build_grounded_prompt(
+            req.query, context, history=history_context, system_prompt=system_prompt
+        )
         top_score = ret_res.top_score
         final_citations = ret_res.citations
         eval_candidates, eval_crag_status = ret_res.candidates, None

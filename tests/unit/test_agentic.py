@@ -168,7 +168,8 @@ def test_agentic_coordinator_multi_hop_run():
 
     # Test prompt generation
     prompt = coordinator.build_agentic_prompt(query, cands, plan)
-    assert "Comparative Synthesis" in prompt
+    assert "decomposed into these sub-goals" in prompt
+    assert prompt.rstrip().endswith("Answer:")
     assert "Abhishek" in prompt or "Syngene" in prompt
 
 

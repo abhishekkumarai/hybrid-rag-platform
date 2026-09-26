@@ -257,18 +257,30 @@ class SessionManager:
             return None
         return session.files
 
-    def build_conversation_context(self, session_id: str, max_turns: int = 4) -> str:
-        """Formats the last N conversation turns into a prompt context prefix."""
+    def build_conversation_context(
+        self, session_id: str, max_turns: int = 4, max_answer_chars: int = 240
+    ) -> str:
+        """Formats the last N turns as a compact reference-resolution aid for the prompt.
+
+        Assistant turns are cut to their answer (the appended "Verified Sources" provenance block
+        is dropped) and truncated: history exists to resolve "he"/"that" in the next question, and a
+        long verbatim prior answer is what small models copy instead of answering the new
+        question (REC-75)."""
         _, messages = self.get_session(session_id)
         if not messages:
             return ""
 
-        # Take last max_turns user/assistant pairs
         relevant = messages[-(max_turns * 2) :]
         lines: list[str] = []
         for m in relevant:
-            role_label = "User" if m.role == "user" else "Assistant"
-            lines.append(f"{role_label}: {m.content}")
+            if m.role == "user":
+                lines.append(f"User: {m.content.strip()}")
+                continue
+            answer = m.content.split("\n---\n", 1)[0].strip()
+            answer = " ".join(answer.split())
+            if len(answer) > max_answer_chars:
+                answer = answer[:max_answer_chars].rsplit(" ", 1)[0] + " ..."
+            lines.append(f"Assistant: {answer}")
 
         return "\n".join(lines)
 

@@ -16,6 +16,7 @@ from services.graph.traversal import GraphTraverser
 from services.retrieval.compactor import ContextCompactor
 from services.retrieval.crag import CRAGEvaluator
 from services.retrieval.decomposer import QueryDecomposer
+from services.retrieval.prompting import build_grounded_prompt
 from services.retrieval.reranker import FlashRankReranker
 from services.retrieval.service import RetrievalService
 
@@ -340,31 +341,24 @@ class AgenticCoordinator:
         else:
             context_blocks = "\n\n".join([f"[{c.id}] {c.text}" for c in candidates])
 
-        evidence_section = ""
-        if graph_context:
-            evidence_section += f"{graph_context}\n\n"
-        evidence_section += f"Retrieved Document Evidence:\n{context_blocks}"
+        evidence = f"{graph_context}\n\n{context_blocks}" if graph_context else context_blocks
 
         if decomp_plan.is_multi_hop:
             sub_q_list = "\n".join([f"- {sq.query_text}" for sq in decomp_plan.sub_queries])
-            prompt = (
-                f"You are an expert analytical research assistant synthesizing information across multiple documents.\n\n"
-                f"The user's question was decomposed into these core sub-goals:\n{sub_q_list}\n\n"
-                f"{evidence_section}\n\n"
-                f"{f'Previous Conversation:\n{history_context}\n\n' if history_context else ''}"
-                f"User Question: {query}\n\n"
-                f"Instructions:\n"
-                f"1. Address each sub-question clearly using the retrieved evidence.\n"
-                f"2. Provide a structured comparative synthesis across the topics/documents.\n"
-                f"3. Strictly base your response on the provided excerpts.\n"
-                f"Comparative Synthesis:"
+            prompt = build_grounded_prompt(
+                query,
+                evidence,
+                history=history_context,
+                evidence_label="Retrieved document evidence",
+                task_instructions=(
+                    "You are an analytical research assistant synthesizing information across documents.\n"
+                    f"The current question was decomposed into these sub-goals:\n{sub_q_list}\n"
+                    "Address each sub-goal using the evidence, then give a structured comparative synthesis."
+                ),
             )
         else:
-            prompt = (
-                f"{evidence_section}\n\n"
-                f"{f'Previous Conversation:\n{history_context}\n\n' if history_context else ''}"
-                f"Question: {query}\n"
-                f"Answer truthfully based strictly on the provided context:"
+            prompt = build_grounded_prompt(
+                query, evidence, history=history_context, evidence_label="Retrieved document evidence"
             )
 
         return prompt
