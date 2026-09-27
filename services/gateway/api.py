@@ -5,14 +5,16 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
-from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, Response, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from contracts.chat import ChatTurnRequest
@@ -21,6 +23,7 @@ from contracts.compactor import CompactedContext, CompactorRequest
 from contracts.document import Block, IngestRequest, IngestResponse
 from contracts.feedback import FeedbackRecord, FeedbackRequest, RAGOpsSummary
 from contracts.graph import GraphExtractionResult, GraphRAGResponse, GraphSearchQuery
+from contracts.identity import LoginRequest, MeResponse, OwnedDocument, SignupRequest, User
 from contracts.metrics import (
     ProjectEvalRun,
     ProjectEvalSummary,
@@ -34,6 +37,12 @@ from contracts.session import (
     SessionDetailResponse,
     SessionListResponse,
     UpdateSessionRequest,
+)
+from contracts.share import (
+    CreateShareResponse,
+    ForkResponse,
+    ShareListResponse,
+    ShareSnapshot,
 )
 from contracts.web import (
     WebPageDocument,
@@ -50,6 +59,10 @@ from services.feedback.store import RAGOpsStore
 from services.gateway.chat_pipeline import ChatPipeline, fold_to_response, to_sse
 from services.gateway.model_catalog import ModelCatalog
 from services.graph.extractor import EntityRelationshipExtractor
+from services.identity.access import accessible_doc_ids, figure_doc_id, resolve_scope
+from services.identity.auth import AUTH_COOKIE, LoginRateLimiter, hash_token, new_token
+from services.identity.passwords import DUMMY_HASH, hash_password, verify_password
+from services.identity.store import DuplicateEmailError, IdentityStore, build_identity_store
 from services.indexing.service import IndexingService
 from services.indexing.web_indexer import WebRAGIndexer
 from services.ingestion.service import IngestionService
@@ -60,6 +73,7 @@ from services.retrieval.service import RetrievalService
 from services.scheduler.dlq_manager import DLQManager
 from services.scheduler.queue import RedisTaskQueue
 from services.session.manager import SessionManager
+from services.sharing.service import ShareService, summarize
 from services.telemetry.tracker import TelemetryTracker
 
 logger = get_logger("gateway.api")
@@ -76,19 +90,136 @@ ragops_store = RAGOpsStore(
     redis_port=settings.storage.redis_port,
 )
 
+login_limiter = LoginRateLimiter(settings.auth.login_max_attempts, settings.auth.login_window_s)
+
+# --- Identity & access (IRA-33, IRA-34) ---
+
+_identity_store: IdentityStore | None = None
+
+
+def get_identity_store() -> IdentityStore:
+    """Lazy so importing the gateway (tests, tooling) never blocks on Postgres."""
+    global _identity_store
+    if _identity_store is None:
+        _identity_store = build_identity_store(settings.auth_postgres_url)
+    return _identity_store
+
+
+def _share_service() -> ShareService:
+    return ShareService(get_identity_store(), session_manager)
+
+
+def optional_user(request: Request) -> User | None:
+    token = request.cookies.get(AUTH_COOKIE)
+    if not token:
+        return None
+    return get_identity_store().user_for_token(hash_token(token))
+
+
+def current_user(user: User | None = Depends(optional_user)) -> User:
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in required")
+    return user
+
+
+def require_admin(user: User = Depends(current_user)) -> User:
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin only")
+    return user
+
+
+_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
+def csrf_guard(request: Request) -> None:
+    """The auth cookie is SameSite=Lax, and state-changing requests must also prove they come from
+    this app: a custom header (which a cross-site page can't send without a CORS preflight we
+    refuse) or a same-origin Origin header."""
+    if request.method in _SAFE_METHODS or request.headers.get("x-ri-client") == "web":
+        return
+    origin = request.headers.get("origin")
+    if origin and urlparse(origin).netloc == request.url.netloc:
+        return
+    raise HTTPException(status_code=403, detail="Cross-site request refused (missing X-RI-Client header)")
+
+
+_PUBLIC_EXACT = {"/", "/api/v1/health"}
+_PUBLIC_PREFIXES = ("/api/v1/auth/", "/api/v1/public/", "/s/")
+
+
+def auth_gate(request: Request, _csrf: None = Depends(csrf_guard), user: User | None = Depends(optional_user)) -> None:
+    """Applied to every route: anything not explicitly public needs a signed-in user, so a newly
+    added endpoint is private by default. Handlers that need the user still declare `current_user`
+    (resolved once per request — FastAPI caches dependencies)."""
+    path = request.url.path
+    if path in _PUBLIC_EXACT or path.startswith(_PUBLIC_PREFIXES):
+        return
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in required")
+
+
+def owned_session(session_id: str, user: User = Depends(current_user)) -> ChatSession:
+    """Someone else's project is reported as missing, not forbidden, so ids can't be probed."""
+    session, _ = session_manager.get_owned(session_id, user.id)
+    if not session:
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+    return session
+
+
+def _public_doc_ids() -> set[str]:
+    """The wiki-index web corpus is shared reference material, readable by every user."""
+    try:
+        return {s.doc_id for s in get_web_indexer().list_sources()}
+    except Exception as exc:
+        logger.warning(f"Could not list public web sources: {exc}")
+        return set()
+
+
+def _accessible(user: User) -> set[str]:
+    return accessible_doc_ids(get_identity_store(), user.id, _public_doc_ids())
+
+
+def _validated_files(entries: list[str] | None, user: User) -> list[str] | None:
+    """Resolves requested project files to exact doc_ids the user may read; 404 on any that aren't."""
+    if entries is None:
+        return None
+    accessible = _accessible(user)
+    missing = [e for e in entries if not resolve_scope([e], accessible)]
+    if missing:
+        raise HTTPException(status_code=404, detail=f"Document(s) not found: {', '.join(missing)}")
+    return resolve_scope(entries, accessible)
+
+
+def _readable_path(doc_id: str, allowed: set[str], user_id: str | None = None) -> Path | None:
+    """The file behind `doc_id`, only if it is in `allowed`. Looked up by exact id in the ownership
+    table; the legacy fuzzy resolver is only a fallback for pre-accounts files and the web corpus,
+    and only runs after the exact ACL check has passed."""
+    if doc_id not in allowed:
+        return None
+    store = get_identity_store()
+    owned = (store.get_document(doc_id, user_id) if user_id else None) or store.get_document(doc_id)
+    if owned and owned.path and Path(owned.path).is_file():
+        return Path(owned.path)
+    return resolve_document_path(doc_id)
+
+
 app = FastAPI(
     title="Hybrid RAG Platform SOA Gateway",
     description="Unified REST and SSE Streaming Microservice Gateway for Local Hybrid RAG",
     version="1.0.0",
+    dependencies=[Depends(auth_gate)],
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# The bundled UI is same-origin and needs no CORS. `allow_origins=["*"]` with credentials (the old
+# setting) would let any site drive a signed-in user's session.
+if settings.auth.cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.auth.cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # Global services initialized lazily
 _ingestion_service: IngestionService | None = None
@@ -236,6 +367,68 @@ def health_check() -> dict[str, Any]:
         },
         "hardware_profile": settings.hardware.profile,
     }
+
+
+# --- Authentication (IRA-33) ---
+
+
+def _start_login(user: User) -> JSONResponse:
+    token = new_token()
+    ttl_s = settings.auth.session_ttl_days * 86400
+    get_identity_store().create_auth_session(user.id, hash_token(token), time.time() + ttl_s)
+    resp = JSONResponse(MeResponse(user=user).model_dump())
+    resp.set_cookie(
+        AUTH_COOKIE, token, max_age=ttl_s, httponly=True, samesite="lax",
+        secure=settings.auth.cookie_secure, path="/",
+    )
+    return resp
+
+
+@app.post("/api/v1/auth/signup", response_model=MeResponse)
+def signup(req: SignupRequest) -> JSONResponse:
+    """Creates a regular account and signs it in. Admins are created with the identity CLI."""
+    if not settings.auth.allow_signup:
+        raise HTTPException(status_code=403, detail="Sign-up is disabled on this server")
+    if "@" not in req.email:
+        raise HTTPException(status_code=422, detail="Enter a valid email address")
+    try:
+        user = get_identity_store().create_user(
+            req.email, hash_password(req.password), display_name=req.display_name.strip()
+        )
+    except DuplicateEmailError:
+        raise HTTPException(status_code=409, detail="An account with this email already exists")
+    logger.info(f"Signup: created user '{user.id}'")
+    return _start_login(user)
+
+
+@app.post("/api/v1/auth/login", response_model=MeResponse)
+def login(req: LoginRequest, request: Request) -> JSONResponse:
+    key = f"{req.email.strip().lower()}|{request.client.host if request.client else '-'}"
+    if login_limiter.blocked(key):
+        raise HTTPException(status_code=429, detail="Too many failed sign-in attempts. Try again in a few minutes.")
+    creds = get_identity_store().get_credentials(req.email)
+    # Verify against a dummy hash for unknown emails so timing doesn't reveal registered accounts.
+    ok = verify_password(req.password, creds[1] if creds else DUMMY_HASH) and creds is not None
+    if not ok:
+        login_limiter.record_failure(key)
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    login_limiter.reset(key)
+    return _start_login(creds[0])
+
+
+@app.post("/api/v1/auth/logout")
+def logout(request: Request) -> JSONResponse:
+    token = request.cookies.get(AUTH_COOKIE)
+    if token:
+        get_identity_store().delete_auth_session(hash_token(token))
+    resp = JSONResponse({"signed_out": True})
+    resp.delete_cookie(AUTH_COOKIE, path="/")
+    return resp
+
+
+@app.get("/api/v1/auth/me", response_model=MeResponse)
+def me(user: User = Depends(current_user)) -> MeResponse:
+    return MeResponse(user=user)
 
 
 class ModelInfo(BaseModel):
@@ -420,7 +613,7 @@ def get_hnsw_status() -> HnswStatusResponse:
 
 
 @app.post("/api/v1/admin/hnsw/rebuild", response_model=HnswStatusResponse)
-def rebuild_hnsw_index(req: HnswRebuildRequest) -> HnswStatusResponse:
+def rebuild_hnsw_index(req: HnswRebuildRequest, _admin: User = Depends(require_admin)) -> HnswStatusResponse:
     """Applies new HNSW m/ef_construct to the shared Qdrant collection and triggers a background
     re-index of every already-embedded chunk across every workspace. This affects all users/sessions
     and is not instant — poll GET /api/v1/admin/hnsw afterward to watch `status`/`indexed_vectors_count`
@@ -439,14 +632,14 @@ def queue_stats() -> dict[str, int]:
 
 
 @app.get("/api/v1/queue/dlq")
-def list_dlq(limit: int = Query(default=50, ge=1, le=1000)) -> list[dict[str, Any]]:
+def list_dlq(limit: int = Query(default=50, ge=1, le=1000), _admin: User = Depends(require_admin)) -> list[dict[str, Any]]:
     """Lists dead-letter queue items requiring operator inspection."""
     dlq_mgr = DLQManager()
     return dlq_mgr.list_dead_letters(limit=limit)
 
 
 @app.post("/api/v1/queue/dlq/replay")
-def replay_dlq(task_id: str | None = None) -> dict[str, Any]:
+def replay_dlq(task_id: str | None = None, _admin: User = Depends(require_admin)) -> dict[str, Any]:
     """Replays all dead-letter tasks or a specific task back to the pending queue."""
     dlq_mgr = DLQManager()
     if task_id:
@@ -457,53 +650,57 @@ def replay_dlq(task_id: str | None = None) -> dict[str, Any]:
 
 
 @app.get("/api/v1/documents")
-def list_documents() -> dict:
-    """Lists indexed and available documents in data/documents and data/web_documents with metadata."""
-    doc_dir = Path("data/documents")
-    docs = []
-    if doc_dir.exists():
-        for f in sorted(doc_dir.glob("*.pdf")):
-            page_count = 1
-            try:
-                import fitz
-                doc = fitz.open(str(f))
-                page_count = len(doc)
-                doc.close()
-            except Exception:
-                pass
-            docs.append({
-                "name": f.name,
-                "doc_id": f.name,
-                "pages": page_count,
-                "size_kb": round(f.stat().st_size / 1024, 1),
-                "is_web": False,
-            })
-
-    # Include indexed web sources from Web RAG store
+def list_documents(user: User = Depends(current_user)) -> dict:
+    """Lists the documents this user can read: their uploads, documents granted to them through a
+    forked share (`read_only`), and the public web corpus. `doc_id` is the exact indexed id."""
+    store = get_identity_store()
+    owned = store.owned_doc_ids(user.id)
+    web_sources = []
     try:
-        indexer = get_web_indexer()
-        for ws in indexer.list_sources():
-            docs.append({
-                "name": f"🌐 {ws.title}",
-                "doc_id": ws.doc_id,
-                "pages": 1,
-                "size_kb": round((ws.chunks_count * 512 * 4) / 1024, 1),
-                "is_web": True,
-                "url": ws.url,
-                "category": ws.category,
-                "resource_count": ws.resources_count,
-                "chunks_count": ws.chunks_count,
-            })
+        web_sources = get_web_indexer().list_sources()
     except Exception as e:
         logger.warning(f"Could not list web sources in list_documents: {e}")
+    web_ids = {ws.doc_id for ws in web_sources}
+
+    docs = []
+    for doc_id in sorted((owned | store.granted_doc_ids(user.id)) - web_ids):
+        record = store.get_document(doc_id, user.id) or store.get_document(doc_id)
+        path = _readable_path(doc_id, {doc_id}, user.id)
+        page_count = 1
+        if path and path.suffix.lower() == ".pdf":
+            try:
+                import fitz
+                with fitz.open(str(path)) as doc:
+                    page_count = len(doc)
+            except Exception:
+                pass
+        docs.append({
+            "name": record.filename if record else doc_id,
+            "doc_id": doc_id,
+            "pages": page_count,
+            "size_kb": round(path.stat().st_size / 1024, 1) if path else 0.0,
+            "is_web": False,
+            "read_only": doc_id not in owned,
+        })
+
+    for ws in web_sources:
+        docs.append({
+            "name": f"🌐 {ws.title}",
+            "doc_id": ws.doc_id,
+            "pages": 1,
+            "size_kb": round((ws.chunks_count * 512 * 4) / 1024, 1),
+            "is_web": True,
+            "url": ws.url,
+            "category": ws.category,
+            "resource_count": ws.resources_count,
+            "chunks_count": ws.chunks_count,
+        })
 
     return {"documents": docs}
 
 
-@app.get("/api/v1/documents/{doc_id}/raw")
-def get_raw_document(doc_id: str) -> Response:
-    """Serves the raw PDF binary or Web Markdown representation for browser preview or download."""
-    if doc_id.startswith("web_") or doc_id.startswith("wiki_index"):
+def _raw_document(doc_id: str, allowed: set[str], user_id: str | None) -> Response:
+    if doc_id in allowed and (doc_id.startswith("web_") or doc_id.startswith("wiki_index")):
         clean_name = Path(doc_id).stem
         web_md_path = Path("data/web_documents") / f"{clean_name}.md"
         if web_md_path.exists():
@@ -513,7 +710,7 @@ def get_raw_document(doc_id: str) -> Response:
                 headers={"Content-Disposition": f'inline; filename="{clean_name}.md"'},
             )
 
-    doc_path = resolve_document_path(doc_id)
+    doc_path = _readable_path(doc_id, allowed, user_id)
     if not doc_path:
         raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found")
     return Response(
@@ -523,19 +720,17 @@ def get_raw_document(doc_id: str) -> Response:
     )
 
 
-@app.get("/api/v1/preview")
-def preview_page(
-    doc_id: str,
-    page: int = 1,
-    x0: float | None = None,
-    y0: float | None = None,
-    x1: float | None = None,
-    y1: float | None = None,
-    bbox: str | None = None,
-    zoom: float = 1.5,
+@app.get("/api/v1/documents/{doc_id}/raw")
+def get_raw_document(doc_id: str, user: User = Depends(current_user)) -> Response:
+    """Serves the raw PDF binary or Web Markdown representation for browser preview or download."""
+    return _raw_document(doc_id, _accessible(user), user.id)
+
+
+def _render_preview(
+    doc_id: str, allowed: set[str], user_id: str | None, page: int,
+    x0: float | None, y0: float | None, x1: float | None, y1: float | None, bbox: str | None, zoom: float,
 ) -> Response:
-    """Renders a visual PNG snapshot of the document page with the provenance bounding box highlighted."""
-    doc_path = resolve_document_path(doc_id)
+    doc_path = _readable_path(doc_id, allowed, user_id)
     if not doc_path:
         raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found")
 
@@ -557,6 +752,22 @@ def preview_page(
         raise HTTPException(status_code=500, detail=f"Error rendering page preview: {e}")
 
 
+@app.get("/api/v1/preview")
+def preview_page(
+    doc_id: str,
+    page: int = 1,
+    x0: float | None = None,
+    y0: float | None = None,
+    x1: float | None = None,
+    y1: float | None = None,
+    bbox: str | None = None,
+    zoom: float = 1.5,
+    user: User = Depends(current_user),
+) -> Response:
+    """Renders a visual PNG snapshot of the document page with the provenance bounding box highlighted."""
+    return _render_preview(doc_id, _accessible(user), user.id, page, x0, y0, x1, y1, bbox, zoom)
+
+
 def _safe_join(base: Path, name: str) -> Path:
     """Joins `name` onto `base` and verifies the result stays inside `base`.
 
@@ -573,8 +784,14 @@ def _safe_join(base: Path, name: str) -> Path:
 
 @app.get("/api/v1/figures/{figure_name}")
 @app.get("/data/figures/{figure_name}")
-def get_figure_image(figure_name: str) -> Response:
-    """Serves an extracted figure or diagram PNG crop."""
+def get_figure_image(figure_name: str, user: User = Depends(current_user)) -> Response:
+    """Serves an extracted figure or diagram PNG crop, if its document is readable by the user."""
+    return _figure(figure_name, _accessible(user))
+
+
+def _figure(figure_name: str, allowed: set[str]) -> Response:
+    if figure_doc_id(figure_name) not in allowed:
+        raise HTTPException(status_code=404, detail=f"Figure '{figure_name}' not found")
     fig_path = _safe_join(Path("data/figures"), figure_name)
     if not fig_path.exists() or not fig_path.is_file():
         raise HTTPException(status_code=404, detail=f"Figure '{figure_name}' not found")
@@ -585,9 +802,14 @@ def get_figure_image(figure_name: str) -> Response:
 def ingest_file(
     file: UploadFile = File(...),
     route: str | None = Form(default=None),
+    user: User = Depends(current_user),
 ) -> IngestResponse:
-    """Accepts multipart PDF file upload, stores to data/documents/, probes layout, and extracts blocks."""
-    upload_dir = Path("data/documents")
+    """Accepts a multipart PDF upload, stores it under data/documents/<user_id>/, probes layout,
+    extracts blocks, and records the caller as an owner of the resulting doc_id.
+
+    The per-user directory keeps two users' same-named files apart; the reconciler only watches the
+    top level of data/documents/, so uploads here aren't indexed twice."""
+    upload_dir = Path("data/documents") / user.id
     upload_dir.mkdir(parents=True, exist_ok=True)
     safe_filename = Path(file.filename or "uploaded_document.pdf").name or "uploaded_document.pdf"
     file_path = _safe_join(upload_dir, safe_filename)
@@ -598,95 +820,124 @@ def ingest_file(
     ingestion, _, _ = get_services()
     profile_override = route if route in ("fast_text", "layout", "ocr", "paddleocr") else None
     res = ingestion.parse(IngestRequest(file_path=str(file_path), profile_override=profile_override))
+    if not res.error:
+        get_identity_store().add_document(
+            OwnedDocument(user_id=user.id, doc_id=res.doc_id, filename=safe_filename, path=str(file_path))
+        )
     logger.info(f"API Ingest: uploaded '{file.filename}' -> {len(res.blocks)} blocks ({res.profile.route})")
     return res
 
 
 @app.post("/api/v1/index", response_model=IndexResponse)
-def index_blocks(req: ChunkAndIndexRequest) -> IndexResponse:
-    """Chunks layout blocks with heading hierarchy & table windowing, then indexes into Qdrant & BM25s."""
+def index_blocks(req: ChunkAndIndexRequest, user: User = Depends(current_user)) -> IndexResponse:
+    """Chunks layout blocks with heading hierarchy & table windowing, then indexes into Qdrant & BM25s.
+
+    Only an owner of `doc_id` (recorded at ingest) may index it, and only its first uploader may
+    re-index it: the blocks come from the client, and doc_ids are shared by everyone who uploaded the
+    same content, so letting a later uploader re-index would let them rewrite another user's chunks.
+    Identical content is already indexed, so for them this is a no-op."""
+    store = get_identity_store()
+    if store.get_document(req.doc_id, user.id) is None:
+        raise HTTPException(status_code=404, detail=f"Document '{req.doc_id}' not found")
     _, indexing, _ = get_services()
-    res = indexing.chunk_and_index(doc_id=req.doc_id, blocks=req.blocks)
-    return res
+    if store.first_owner(req.doc_id) != user.id:
+        existing = sum(1 for c in indexing.bm25.corpus_chunks if c.get("doc_id") == req.doc_id)
+        if existing:
+            return IndexResponse(doc_id=req.doc_id, indexed_count=existing, duration_ms=0.0)
+    return indexing.chunk_and_index(doc_id=req.doc_id, blocks=req.blocks)
 
 
 @app.post("/api/v1/retrieve", response_model=RetrieveResponse)
-def retrieve(query: SearchQuery) -> RetrieveResponse:
-    """Executes parallel dense and sparse search, RRF fusion (k=60), and FlashRank cross-encoder reranking."""
+def retrieve(query: SearchQuery, user: User = Depends(current_user)) -> RetrieveResponse:
+    """Executes parallel dense and sparse search, RRF fusion (k=60), and FlashRank cross-encoder reranking.
+
+    Always scoped to documents the caller can read: requested `doc_ids` are intersected with them,
+    and no `doc_ids` means all of them — never the whole shared index."""
+    accessible = _accessible(user)
+    scope = resolve_scope(query.doc_ids, accessible) if query.doc_ids else sorted(accessible)
+    if not scope:
+        return RetrieveResponse(query=query.query_text, candidates=[], citations=[], refused=True, duration_ms=0.0)
     _, _, retrieval = get_services()
-    return retrieval.retrieve(query)
+    return retrieval.retrieve(query.model_copy(update={"doc_ids": scope}))
 
 
 # --- Conversational Session Management Endpoints ---
 
 
 @app.post("/api/v1/sessions", response_model=ChatSession)
-def create_session(req: CreateSessionRequest | None = None) -> ChatSession:
+def create_session(req: CreateSessionRequest | None = None, user: User = Depends(current_user)) -> ChatSession:
     """Creates a new conversational session with optional custom prompt, parameters, and scoped files."""
     if req:
         return session_manager.create_session(
             title=req.title,
             system_prompt=req.system_prompt,
             parameters=req.parameters,
-            files=req.files,
+            files=_validated_files(req.files, user),
+            owner_id=user.id,
         )
-    return session_manager.create_session()
+    return session_manager.create_session(owner_id=user.id)
 
 
 @app.get("/api/v1/sessions", response_model=SessionListResponse)
-def list_sessions() -> SessionListResponse:
-    """Lists all active conversational sessions sorted by recency."""
-    return SessionListResponse(sessions=session_manager.list_sessions())
+def list_sessions(user: User = Depends(current_user)) -> SessionListResponse:
+    """Lists the caller's conversational sessions sorted by recency."""
+    return SessionListResponse(sessions=session_manager.list_sessions(owner_id=user.id))
 
 
 @app.get("/api/v1/sessions/{session_id}", response_model=SessionDetailResponse)
-def get_session(session_id: str) -> SessionDetailResponse:
+def get_session(session: ChatSession = Depends(owned_session)) -> SessionDetailResponse:
     """Retrieves session metadata and historical message thread."""
-    sess, msgs = session_manager.get_session(session_id)
-    if not sess:
-        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
-    return SessionDetailResponse(session=sess, messages=msgs)
+    _, msgs = session_manager.get_session(session.id)
+    return SessionDetailResponse(session=session, messages=msgs)
 
 
 @app.patch("/api/v1/sessions/{session_id}", response_model=ChatSession)
-def update_session(session_id: str, req: UpdateSessionRequest) -> ChatSession:
+def update_session(
+    req: UpdateSessionRequest, session: ChatSession = Depends(owned_session), user: User = Depends(current_user)
+) -> ChatSession:
     """Partially updates session title, system prompt, parameters, or attached files."""
-    updated = session_manager.update_session(session_id, req)
+    if req.files is not None:
+        req = req.model_copy(update={"files": _validated_files(req.files, user)})
+    updated = session_manager.update_session(session.id, req)
     if not updated:
-        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+        raise HTTPException(status_code=404, detail=f"Session '{session.id}' not found")
     return updated
 
 
 @app.post("/api/v1/sessions/{session_id}/files", response_model=ChatSession)
-def attach_files_to_session(session_id: str, req: AttachFilesRequest) -> ChatSession:
-    """Attaches documents to a session workspace."""
-    updated = session_manager.attach_files(session_id, req.files)
+def attach_files_to_session(
+    req: AttachFilesRequest, session: ChatSession = Depends(owned_session), user: User = Depends(current_user)
+) -> ChatSession:
+    """Attaches documents the caller can read to a session workspace (stored as exact doc_ids)."""
+    updated = session_manager.attach_files(session.id, _validated_files(req.files, user) or [])
     if not updated:
-        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+        raise HTTPException(status_code=404, detail=f"Session '{session.id}' not found")
     return updated
 
 
 @app.delete("/api/v1/sessions/{session_id}/files/{doc_id}", response_model=ChatSession)
-def detach_file_from_session(session_id: str, doc_id: str) -> ChatSession:
+def detach_file_from_session(doc_id: str, session: ChatSession = Depends(owned_session)) -> ChatSession:
     """Detaches a specific document from a session workspace."""
-    updated = session_manager.detach_file(session_id, doc_id)
+    updated = session_manager.detach_file(session.id, doc_id)
     if not updated:
-        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+        raise HTTPException(status_code=404, detail=f"Session '{session.id}' not found")
     return updated
 
 
 @app.delete("/api/v1/sessions/{session_id}")
-def delete_session(session_id: str) -> dict[str, bool]:
+def delete_session(session_id: str, user: User = Depends(current_user)) -> dict[str, bool]:
     """Deletes a conversational session and its thread history."""
-    deleted = session_manager.delete_session(session_id)
-    return {"deleted": deleted}
+    session, _ = session_manager.get_owned(session_id, user.id)
+    if not session:
+        return {"deleted": False}
+    return {"deleted": session_manager.delete_session(session.id)}
 
 
 # --- Web RAG Store Endpoints (IRA-25, IRA-28) ---
 
 
 @app.post("/api/v1/web/sync", response_model=WebSyncResponse)
-def sync_web_store(req: WebSyncRequest | None = None) -> WebSyncResponse:
+def sync_web_store(req: WebSyncRequest | None = None, _admin: User = Depends(require_admin)) -> WebSyncResponse:
     """Crawls and synchronizes wiki-index.pages.dev categories into the RAG store."""
     indexer = get_web_indexer()
     categories = req.categories if req else None
@@ -719,13 +970,18 @@ def get_web_source_detail(doc_id: str) -> WebPageDocument:
 
 
 @app.post("/api/v1/web/preset-project", response_model=WebPresetProjectResponse)
-def create_or_sync_preset_web_project(req: WebPresetProjectRequest | None = None) -> WebPresetProjectResponse:
+def create_or_sync_preset_web_project(
+    req: WebPresetProjectRequest | None = None, user: User = Depends(current_user)
+) -> WebPresetProjectResponse:
     """Creates or updates a dedicated 'Wiki Index (Web RAG)' workspace session with web sources attached."""
     title = req.title if (req and req.title) else "Wiki Index (Web RAG)"
     indexer = get_web_indexer()
     sources = indexer.list_sources()
 
-    # If no sources exist yet, trigger initial sync of core categories
+    # If no sources exist yet, trigger initial sync of core categories. Crawling is a shared,
+    # expensive operation, so only an admin's request may start it.
+    if not sources and not user.is_admin:
+        raise HTTPException(status_code=409, detail="The web corpus hasn't been synced yet. Ask an admin to sync it.")
     if not sources:
         indexer.sync_categories(
             categories=["ai", "developer-tools", "internet-tools", "video", "audio", "gaming"],
@@ -750,7 +1006,7 @@ def create_or_sync_preset_web_project(req: WebPresetProjectRequest | None = None
     )
 
     # Check if a preset session already exists
-    existing_sessions = session_manager.list_sessions()
+    existing_sessions = session_manager.list_sessions(owner_id=user.id)
     target_session = next((s for s in existing_sessions if s.title == title), None)
 
     if target_session:
@@ -775,6 +1031,7 @@ def create_or_sync_preset_web_project(req: WebPresetProjectRequest | None = None
         title=title,
         system_prompt=system_persona,
         files=target_doc_ids,
+        owner_id=user.id,
     )
     return WebPresetProjectResponse(
         session_id=new_sess.id,
@@ -788,8 +1045,10 @@ def create_or_sync_preset_web_project(req: WebPresetProjectRequest | None = None
 
 
 @app.get("/api/v1/metrics", response_model=SystemMetrics)
-def get_metrics(session_id: str | None = None) -> SystemMetrics:
-    """Returns real-time pipeline telemetry, latency breakdown, and microservice status, optionally scoped to a session."""
+def get_metrics(session_id: str | None = None, user: User = Depends(current_user)) -> SystemMetrics:
+    """Returns real-time pipeline telemetry, latency breakdown, and microservice status for one of the
+    caller's projects; the all-projects view (no `session_id`) is admin-only."""
+    _require_scope(session_id, user)
     _, indexing, _ = get_services()
     return telemetry_tracker.get_system_metrics(
         qdrant_host=settings.storage.qdrant_host,
@@ -825,18 +1084,19 @@ def sse_chat_generator(turn: ChatTurnRequest) -> Iterator[str]:
 
 
 @app.post("/api/v1/chat")
-def chat(req: ChatRequest):
+def chat(req: ChatRequest, user: User = Depends(current_user)):
     """Conversational RAG endpoint: SSE token stream, or one JSON response when stream is false.
 
-    Both transports run the same `ChatPipeline` (IRA-16); only the serialization differs."""
-    # Ensure active session exists or auto-create one
-    session: ChatSession | None = None
-    active_session_id = req.session_id
-    if active_session_id:
-        session, _ = session_manager.get_session(active_session_id)
-    if not session:
-        session = session_manager.create_session()
-        active_session_id = session.id
+    Both transports run the same `ChatPipeline` (IRA-16); only the serialization differs.
+    Omitting `session_id` starts a new project for the caller; naming a project the caller doesn't
+    own is a 404 (it used to silently start a new one)."""
+    if req.session_id:
+        session, _ = session_manager.get_owned(req.session_id, user.id)
+        if not session:
+            raise HTTPException(status_code=404, detail=f"Session '{req.session_id}' not found")
+    else:
+        session = session_manager.create_session(owner_id=user.id)
+    active_session_id = session.id
 
     # req.X is None means the client omitted the field — fall back to the session's stored
     # preference. A client that explicitly sends the literal default value (e.g. top_k=20) is
@@ -853,7 +1113,8 @@ def chat(req: ChatRequest):
         compactor_budget=params.compactor_budget,
         min_score_threshold=params.min_score_threshold,
         ef_search=params.hnsw_ef_search,
-        doc_ids=session.files or None,
+        # Exact doc_ids the caller can read; [] (nothing attached or readable) refuses the turn.
+        doc_ids=resolve_scope(session.files, _accessible(user)),
         system_prompt=session.system_prompt,
     )
     stream = req.stream if req.stream is not None else params.stream
@@ -866,20 +1127,36 @@ def chat(req: ChatRequest):
 
 
 @app.post("/api/v1/feedback", response_model=FeedbackRecord)
-def submit_feedback(req: FeedbackRequest) -> FeedbackRecord:
-    """Submits user satisfaction feedback and automatically mines hard-negatives on thumbs down."""
+def submit_feedback(req: FeedbackRequest, user: User = Depends(current_user)) -> FeedbackRecord:
+    """Submits user satisfaction feedback and automatically mines hard-negatives on thumbs down.
+    Feedback must name one of the caller's projects, so it can't be attributed to someone else's."""
+    if not req.session_id:
+        raise HTTPException(status_code=422, detail="session_id is required")
+    _require_scope(req.session_id, user)
     return ragops_store.record_feedback(req)
 
 
+def _require_scope(session_id: str | None, user: User) -> None:
+    """Per-project views need a project the caller owns; the all-projects view needs an admin."""
+    if session_id:
+        if not session_manager.get_owned(session_id, user.id)[0]:
+            raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+    elif not user.is_admin:
+        raise HTTPException(status_code=403, detail="Choose a project: the all-projects view is admin-only")
+
+
 @app.get("/api/v1/feedback/summary", response_model=RAGOpsSummary)
-def get_feedback_summary(session_id: str | None = None) -> RAGOpsSummary:
-    """Returns aggregated continuous evaluation metrics and active learning counts, optionally scoped to a session."""
+def get_feedback_summary(session_id: str | None = None, user: User = Depends(current_user)) -> RAGOpsSummary:
+    """Returns aggregated continuous evaluation metrics and active learning counts for one project
+    (all projects: admin only)."""
+    _require_scope(session_id, user)
     return ragops_store.get_summary(session_id=session_id)
 
 
 @app.get("/api/v1/ragops/dataset")
-def export_ragops_dataset(session_id: str | None = None) -> list[dict[str, Any]]:
-    """Exports mined contrastive hard-negative triplets, optionally scoped to a session."""
+def export_ragops_dataset(session_id: str | None = None, user: User = Depends(current_user)) -> list[dict[str, Any]]:
+    """Exports mined contrastive hard-negative triplets for one project (all projects: admin only)."""
+    _require_scope(session_id, user)
     return ragops_store.export_training_dataset(session_id=session_id)
 
 
@@ -903,33 +1180,42 @@ def extract_graph_elements(req: GraphExtractRequest) -> GraphExtractionResult:
 
 
 @app.post("/api/v1/graph/query", response_model=GraphRAGResponse)
-def query_knowledge_graph(req: GraphSearchQuery) -> GraphRAGResponse:
-    """Executes multi-hop traversal, associative pathfinding, and community detection."""
+def query_knowledge_graph(req: GraphSearchQuery, user: User = Depends(current_user)) -> GraphRAGResponse:
+    """Executes multi-hop traversal, associative pathfinding, and community detection, scoped to
+    documents the caller can read."""
     _, _, retrieval = get_services()
     if not retrieval.traverser:
         raise HTTPException(status_code=503, detail="Graph traversal engine is not available")
+    accessible = _accessible(user)
+    scope = resolve_scope(req.doc_ids, accessible) if req.doc_ids else sorted(accessible)
+    if not scope:
+        return GraphRAGResponse(query=req.query_text, duration_ms=0.0)
     return retrieval.traverser.query_graph(
         query_text=req.query_text,
         max_hops=req.max_hops,
         max_entities=req.max_entities,
         min_edge_weight=req.min_edge_weight,
-        doc_ids=req.doc_ids,
+        doc_ids=scope,
     )
 
 
 @app.get("/api/v1/graph/stats")
-def get_graph_stats(session_id: str | None = None, doc_ids: str | None = None) -> dict[str, Any]:
-    """Returns knowledge graph topology metrics, node categories, and predicate distributions, optionally scoped to session or documents."""
+def get_graph_stats(
+    session_id: str | None = None, doc_ids: str | None = None, user: User = Depends(current_user)
+) -> dict[str, Any]:
+    """Returns knowledge graph topology metrics, node categories, and predicate distributions for a
+    project, some documents, or everything the caller can read."""
     _, indexing, _ = get_services()
-    filter_doc_ids: list[str] | None = None
+    accessible = _accessible(user)
     if session_id:
-        sess, _ = session_manager.get_session(session_id)
-        if sess and sess.files:
-            filter_doc_ids = sess.files
-        else:
-            filter_doc_ids = []
+        sess, _ = session_manager.get_owned(session_id, user.id)
+        if not sess:
+            raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+        filter_doc_ids = resolve_scope(sess.files, accessible)
     elif doc_ids:
-        filter_doc_ids = [d.strip() for d in doc_ids.split(",") if d.strip()]
+        filter_doc_ids = resolve_scope([d.strip() for d in doc_ids.split(",") if d.strip()], accessible)
+    else:
+        filter_doc_ids = sorted(accessible)
 
     return indexing.graph.get_stats(doc_ids=filter_doc_ids)
 
@@ -955,17 +1241,9 @@ def compact_context(req: CompactorRequest) -> CompactedContext:
 # --- Evaluation Endpoints (Popular RAG Metrics) ---
 
 
-def _require_project(session_id: str) -> ChatSession:
-    session, _ = session_manager.get_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail=f"Project '{session_id}' not found")
-    return session
-
-
 @app.get("/api/v1/sessions/{session_id}/eval/summary", response_model=ProjectEvalSummary)
-def project_eval_summary(session_id: str) -> ProjectEvalSummary:
+def project_eval_summary(session_id: str, _session: ChatSession = Depends(owned_session)) -> ProjectEvalSummary:
     """Aggregates this project's per-turn online evaluation scores (trend + weakest turns)."""
-    _require_project(session_id)
     records, judge = project_eval.load_session_telemetry(
         session_id,
         telemetry_tracker.get_recent_telemetry(limit=10_000),
@@ -976,16 +1254,18 @@ def project_eval_summary(session_id: str) -> ProjectEvalSummary:
 
 
 @app.get("/api/v1/sessions/{session_id}/eval/run", response_model=ProjectEvalRun | None)
-def project_eval_last_run(session_id: str) -> ProjectEvalRun | None:
+def project_eval_last_run(session_id: str, _session: ChatSession = Depends(owned_session)) -> ProjectEvalRun | None:
     """Returns this project's most recent golden-set run, or null if it has never been run."""
-    _require_project(session_id)
     return project_eval.load_last_run(session_id)
 
 
 @app.post("/api/v1/sessions/{session_id}/eval/run", response_model=ProjectEvalRun)
-def project_eval_run(session_id: str, rebuild: bool = False) -> ProjectEvalRun:
+def project_eval_run(
+    rebuild: bool = False, session: ChatSession = Depends(owned_session), user: User = Depends(current_user)
+) -> ProjectEvalRun:
     """Runs the project's golden set (generated from its own documents) with its own settings."""
-    session = _require_project(session_id)
+    # Evaluate against exactly the documents the caller can read, like a chat turn would.
+    session = session.model_copy(update={"files": resolve_scope(session.files, _accessible(user))})
     if not session.files:
         raise HTTPException(status_code=400, detail="Attach documents to this project before evaluating it")
     _, indexing, retrieval = get_services()
@@ -1006,7 +1286,7 @@ def project_eval_run(session_id: str, rebuild: bool = False) -> ProjectEvalRun:
 
 
 @app.get("/api/v1/eval/report")
-def get_evaluation_report() -> dict[str, Any]:
+def get_evaluation_report(_admin: User = Depends(require_admin)) -> dict[str, Any]:
     """Returns the latest RAG evaluation report with popular industry metrics (RAGAS, TruLens, TREC IR)."""
     report_file = Path("data/eval_report.json")
     if report_file.exists():
@@ -1021,11 +1301,93 @@ def get_evaluation_report() -> dict[str, Any]:
 
 
 @app.post("/api/v1/eval/run")
-def trigger_evaluation_run() -> dict[str, Any]:
+def trigger_evaluation_run(_admin: User = Depends(require_admin)) -> dict[str, Any]:
     """Triggers an on-demand evaluation run computing popular metrics across the benchmark corpus."""
     report_file = Path("data/eval_report.json")
     from tests.eval.eval_harness import run_evaluation
     return run_evaluation(output_report_path=report_file)
+
+# --- Public share links (IRA-35) ---
+
+
+@app.post("/api/v1/sessions/{session_id}/shares", response_model=CreateShareResponse)
+def create_share(
+    request: Request, session: ChatSession = Depends(owned_session), user: User = Depends(current_user)
+) -> CreateShareResponse:
+    """Publishes a snapshot of the project's chat at a public URL. The token is returned once."""
+    _, messages = session_manager.get_session(session.id)
+    shareable = get_identity_store().owned_doc_ids(user.id) | _public_doc_ids()
+    token, share = _share_service().create(session, messages, shareable)
+    url = f"{str(request.base_url).rstrip('/')}/s/{token}"
+    return CreateShareResponse(url=url, token=token, share=summarize(share))
+
+
+@app.get("/api/v1/sessions/{session_id}/shares", response_model=ShareListResponse)
+def list_shares(session: ChatSession = Depends(owned_session)) -> ShareListResponse:
+    return ShareListResponse(shares=_share_service().list_for_session(session.id))
+
+
+@app.delete("/api/v1/shares/{share_id}")
+def revoke_share(share_id: str, user: User = Depends(current_user)) -> dict[str, bool]:
+    """Kills the public URL and the document grants forks received through it."""
+    if not _share_service().revoke(share_id, user.id):
+        raise HTTPException(status_code=404, detail=f"Share '{share_id}' not found")
+    return {"revoked": True}
+
+
+def _public_share(token: str):
+    share = _share_service().get_public(token)
+    if not share:
+        raise HTTPException(status_code=404, detail="This shared chat doesn't exist or was revoked")
+    return share
+
+
+@app.get("/api/v1/public/shares/{token}", response_model=ShareSnapshot)
+def get_public_share(token: str) -> ShareSnapshot:
+    """The frozen chat behind a share URL. No sign-in needed."""
+    share = _public_share(token)
+    get_identity_store().record_share_view(share.id)
+    return share.snapshot
+
+
+@app.get("/api/v1/public/shares/{token}/preview")
+def preview_shared_page(
+    token: str,
+    doc_id: str,
+    page: int = 1,
+    x0: float | None = None,
+    y0: float | None = None,
+    x1: float | None = None,
+    y1: float | None = None,
+    bbox: str | None = None,
+    zoom: float = 1.5,
+) -> Response:
+    """Citation previews for a shared chat, limited to the documents in its snapshot."""
+    share = _public_share(token)
+    return _render_preview(doc_id, set(share.snapshot.doc_ids), None, page, x0, y0, x1, y1, bbox, zoom)
+
+
+@app.get("/api/v1/public/shares/{token}/figures/{figure_name}")
+def shared_figure(token: str, figure_name: str) -> Response:
+    share = _public_share(token)
+    return _figure(figure_name, set(share.snapshot.doc_ids))
+
+
+@app.post("/api/v1/public/shares/{token}/fork", response_model=ForkResponse)
+def fork_share(token: str, user: User = Depends(current_user)) -> ForkResponse:
+    """Continues a shared chat in a new project the caller owns: the history is copied (so the next
+    turn has it as context) and the shared documents become readable to the caller."""
+    forked = _share_service().fork(token, user.id)
+    if not forked:
+        raise HTTPException(status_code=404, detail="This shared chat doesn't exist or was revoked")
+    return ForkResponse(session_id=forked.id)
+
+
+@app.get("/s/{token}", response_class=HTMLResponse)
+def shared_chat_page(token: str) -> str:
+    """Share URLs open the same single-page client, which renders them read-only."""
+    return index_page()
+
 
 @app.get("/", response_class=HTMLResponse)
 def index_page() -> str:

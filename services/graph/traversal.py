@@ -124,6 +124,12 @@ class GraphTraverser:
             )
             discovered_relations = in_scope
             discovered_chunk_ids = scoped_chunk_ids
+            # Entities are matched against the whole shared graph, so without this an out-of-scope
+            # entity's name (and source doc/bbox) leaked into the response (IRA-34).
+            in_scope_names = {r.source for r in in_scope} | {r.target for r in in_scope}
+            matched_entities = [
+                e for e in matched_entities if matches_doc_scope(e.doc_id, scope) or e.name in in_scope_names
+            ]
         discovered_relations.sort(key=lambda r: r.weight, reverse=True)
         top_relations = discovered_relations[:max_entities]
 
@@ -131,7 +137,7 @@ class GraphTraverser:
         subgraph_text = self.format_subgraph_markdown(top_relations)
 
         # 6. Community Detection on active subgraph
-        relevant_nodes = set(focal_names)
+        relevant_nodes = {e.name for e in matched_entities}
         for r in top_relations:
             relevant_nodes.add(r.source)
             relevant_nodes.add(r.target)

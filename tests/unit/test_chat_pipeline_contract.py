@@ -17,6 +17,13 @@ from contracts.retrieval import Candidate, Citation, RetrieveResponse
 from services.gateway.api import app
 
 client = TestClient(app)
+_PROJECT: dict[str, str] = {}
+
+
+@pytest.fixture(autouse=True)
+def _project(make_project):
+    """Every turn runs in a project that can read `arch_doc`, the document the mocks cite (IRA-34)."""
+    _PROJECT["id"] = make_project("arch_doc").id
 
 ANSWER = "The system uses an RTX 3050 GPU with 6GB VRAM."
 CAND = Candidate(
@@ -114,7 +121,7 @@ def _run(case: str, stream: bool):
         gs.return_value = (MagicMock(), MagicMock(), _retrieval(refused, with_graph))
         gc.return_value = _coordinator(refused)
         post.return_value = _ollama()
-        r = client.post("/api/v1/chat", json={"query": "Compare X and Y", "stream": stream, "mode": mode})
+        r = client.post("/api/v1/chat", json={"session_id": _PROJECT["id"], "query": "Compare X and Y", "stream": stream, "mode": mode})
     assert r.status_code == 200
     return r
 
@@ -160,7 +167,7 @@ def test_sync_generation_failure_is_reported_not_scored():
          patch("services.gateway.api.requests.post", side_effect=ConnectionError("ollama down")):
         gs.return_value = (MagicMock(), MagicMock(), _retrieval(refused=False))
         gc.return_value = _coordinator(refused=False)
-        data = client.post("/api/v1/chat", json={"query": "What GPU?", "stream": False, "mode": "direct"}).json()
+        data = client.post("/api/v1/chat", json={"session_id": _PROJECT["id"], "query": "What GPU?", "stream": False, "mode": "direct"}).json()
     assert data["error"] == "ollama down"
     assert data["answer"].startswith("Error generating answer")
     assert data["raw_answer"] == ""
@@ -177,7 +184,7 @@ def test_history_stores_answer_without_provenance_block(stream):
          patch("services.gateway.api.session_manager.append_message") as append:
         gs.return_value = (MagicMock(), MagicMock(), _retrieval(refused=False))
         gc.return_value = _coordinator(refused=False)
-        client.post("/api/v1/chat", json={"query": "What GPU?", "stream": stream, "mode": "direct"})
+        client.post("/api/v1/chat", json={"session_id": _PROJECT["id"], "query": "What GPU?", "stream": stream, "mode": "direct"})
     stored = append.call_args_list[-1].args[1]
     assert stored.role == "assistant"
     assert stored.content == ANSWER
@@ -195,7 +202,7 @@ def test_non_chat_model_is_rejected_before_retrieval(stream):
          patch("services.gateway.api.session_manager.append_message") as append:
         gs.return_value = (MagicMock(), MagicMock(), retrieval)
         gc.return_value = _coordinator(refused=False)
-        r = client.post("/api/v1/chat", json={"query": "What GPU?", "stream": stream,
+        r = client.post("/api/v1/chat", json={"session_id": _PROJECT["id"], "query": "What GPU?", "stream": stream,
                                               "mode": "direct", "model": "bge-m3:latest"})
     post.assert_not_called()
     retrieval.retrieve.assert_not_called()
@@ -221,7 +228,7 @@ def test_ollama_error_body_is_reported_not_blank(stream):
          patch("services.gateway.api.model_catalog.rejects", return_value=False):
         gs.return_value = (MagicMock(), MagicMock(), _retrieval(refused=False))
         gc.return_value = _coordinator(refused=False)
-        r = client.post("/api/v1/chat", json={"query": "What GPU?", "stream": stream, "mode": "direct"})
+        r = client.post("/api/v1/chat", json={"session_id": _PROJECT["id"], "query": "What GPU?", "stream": stream, "mode": "direct"})
     if stream:
         errors = [p for n, p in _events(r.text) if n == "error"]
         assert errors and "does not support generate" in errors[0]["error"]
@@ -237,5 +244,5 @@ def test_sync_token_count_uses_ollama_eval_count():
          patch("services.gateway.api.requests.post", return_value=resp):
         gs.return_value = (MagicMock(), MagicMock(), _retrieval(refused=False))
         gc.return_value = _coordinator(refused=False)
-        data = client.post("/api/v1/chat", json={"query": "What GPU?", "stream": False, "mode": "direct"}).json()
+        data = client.post("/api/v1/chat", json={"session_id": _PROJECT["id"], "query": "What GPU?", "stream": False, "mode": "direct"}).json()
     assert data["telemetry"]["tokens_generated"] == 42

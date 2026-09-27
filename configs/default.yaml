@@ -66,6 +66,17 @@ evaluation:
   # Questions generated per project golden set for offline per-project evaluation runs.
   golden_set_size: 20
 
+auth:
+  # Accounts, login sessions, document ownership and shares (IRA-32). A named database rather than
+  # storage.postgres_db, which the ambient POSTGRES_DB env var on this host would redirect.
+  database: "rag_db"
+  allow_signup: true
+  session_ttl_days: 30
+  cookie_secure: false          # true behind HTTPS
+  cors_origins: []              # the bundled UI is same-origin; list extra origins explicitly
+  login_max_attempts: 10        # per email + client IP ...
+  login_window_s: 300           # ... per this many seconds
+
 logging:
   level: "INFO"
   dir: "logs"

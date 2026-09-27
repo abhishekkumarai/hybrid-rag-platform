@@ -203,6 +203,8 @@ def test_gateway_web_rag_endpoints(mock_html_fetch, tmp_path, monkeypatch):
     # Patch global indexer in api.py
     import services.gateway.api as api_mod
     monkeypatch.setattr(api_mod, "_web_indexer", test_indexer)
+    # The web corpus is public to every user (IRA-34); conftest stubs it out by default.
+    monkeypatch.setattr(api_mod, "_public_doc_ids", lambda: {s.doc_id for s in test_indexer.list_sources()})
 
     client = TestClient(app)
 

@@ -2,13 +2,33 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from contracts.retrieval import Candidate, Citation, RetrieveResponse
 from contracts.session import SessionParameters
 from services.gateway.api import app, session_manager
+from tests.unit.conftest import TEST_USER, own_documents
 
 client = TestClient(app)
+
+_DOCS = (
+    "10k_nvda_2024.pdf", "10q_nvda_q3.pdf", "cashflow_statement.pdf",
+    "alpha_report.pdf", "beta_report.pdf", "test_doc_alpha.pdf",
+)
+
+
+@pytest.fixture(autouse=True)
+def _owned_docs(identity):
+    """These tests name documents by id; the test user must own them to attach or search them (IRA-34)."""
+    own_documents(identity, *_DOCS)
+
+
+def _create_owned(**kwargs):
+    """A project owned by the signed-in test user. Without documents a project refuses every turn,
+    so it defaults to one the chat mocks can answer from."""
+    kwargs.setdefault("files", ["alpha_report.pdf"])
+    return session_manager.create_session(owner_id=TEST_USER.id, **kwargs)
 
 
 def test_session_scoped_crud_and_patch():
@@ -166,14 +186,14 @@ def test_session_scoped_document_isolation(mock_get_services, mock_ollama_post):
     mock_ollama_post.return_value = mock_ollama_resp
 
     # Create Session A (scoped to alpha_report.pdf)
-    sess_a = session_manager.create_session(
+    sess_a = _create_owned(
         title="Session Alpha",
         files=["alpha_report.pdf"],
         parameters=SessionParameters(retrieval_mode="direct"),
     )
 
     # Create Session B (scoped to beta_report.pdf)
-    sess_b = session_manager.create_session(
+    sess_b = _create_owned(
         title="Session Beta",
         files=["beta_report.pdf"],
         parameters=SessionParameters(retrieval_mode="direct"),
@@ -246,7 +266,7 @@ def test_session_custom_system_persona_and_parameters(mock_get_services, mock_ol
     mock_ollama_post.return_value = mock_ollama_resp
 
     # Create Session with custom persona & parameters
-    sess = session_manager.create_session(
+    sess = _create_owned(
         title="Custom Persona Workspace",
         system_prompt="You are a strict SEC compliance examiner.",
         parameters=SessionParameters(
@@ -292,7 +312,7 @@ def test_session_model_override_and_patch_persistence(mock_get_services, mock_ol
     mock_ollama_post.return_value = mock_ollama_resp
 
     # 1. Create session with custom temperature and initial model
-    sess = session_manager.create_session(
+    sess = _create_owned(
         title="Model Testing Workspace",
         parameters=SessionParameters(
             model="llama3.2:3b",
@@ -330,7 +350,7 @@ def test_session_model_override_and_patch_persistence(mock_get_services, mock_ol
 def test_scoped_graph_metrics_ragops():
     """Validates that graph stats, observability metrics, and ragops support session_id scoping."""
     # 1. Create a session with specific files
-    sess = session_manager.create_session(
+    sess = _create_owned(
         title="Scoped Test Workspace",
         files=["test_doc_alpha.pdf"],
     )

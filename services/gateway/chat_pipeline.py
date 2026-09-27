@@ -44,6 +44,7 @@ _LARGE_MODEL_TAGS = ("8b", "7b", "14b", "13b", "70b")
 NUM_PREDICT = 256
 _CHARS_PER_TOKEN = 3.5
 _TRUNCATION_NOTE = "\n\n[Context truncated to fit model context window]\n\n"
+NO_DOCUMENTS_REFUSAL = "This project has no documents I can search. Attach documents to the project and ask again."
 
 
 def fit_prompt(prompt: str, max_chars: int) -> str:
@@ -100,6 +101,15 @@ class ChatPipeline:
         retrieval_query = self.sessions.reformulate_query(req.query, req.session_id)
         history = self.sessions.build_conversation_context(req.session_id, max_turns=3)
         self.sessions.append_message(req.session_id, ChatMessage(role="user", content=req.query))
+
+        # An empty scope means "this project can read no documents", never "search everything": the
+        # indexes are shared by every user, so an unscoped search would answer from other users'
+        # files (IRA-34). `None` stays unscoped for internal callers that pass no project.
+        if req.doc_ids is not None and not req.doc_ids:
+            yield from self._refuse(
+                req, t_start, 0.0, 0.0, NO_DOCUMENTS_REFUSAL, is_agentic=False, steps=[], sub_queries=[]
+            )
+            return
 
         is_agentic = req.mode == "agentic" or (
             req.mode == "auto" and self.coordinator.decomposer.is_multi_hop_candidate(retrieval_query)

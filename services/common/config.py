@@ -88,6 +88,22 @@ class EvaluationConfig(BaseModel):
     golden_set_size: int = Field(default=20, ge=1, le=200)
 
 
+class AuthConfig(BaseModel):
+    # Identity tables live in their own named database on the storage Postgres host. Deliberately not
+    # `storage.postgres_db`: that one honors the POSTGRES_DB env var, which this machine exports
+    # system-wide for an unrelated project. Override with RAG_AUTH_DB.
+    database: str = "rag_db"
+    allow_signup: bool = True
+    session_ttl_days: int = Field(default=30, ge=1, le=365)
+    # Set true behind HTTPS so the auth cookie is never sent over plain HTTP.
+    cookie_secure: bool = False
+    # Origins allowed to make credentialed cross-origin calls. The bundled UI is same-origin and
+    # needs none; never "*" (browsers reject "*" with credentials, and it would defeat the cookie).
+    cors_origins: list[str] = Field(default_factory=list)
+    login_max_attempts: int = Field(default=10, ge=1)
+    login_window_s: int = Field(default=300, ge=10)
+
+
 class LoggingConfig(BaseModel):
     level: str = "INFO"
     dir: str = "logs"
@@ -101,7 +117,14 @@ class AppConfig(BaseModel):
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
     generation: GenerationConfig = Field(default_factory=GenerationConfig)
     evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
+    auth: AuthConfig = Field(default_factory=AuthConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+
+    @property
+    def auth_postgres_url(self) -> str:
+        s = self.storage
+        pwd = f":{s.postgres_password}" if s.postgres_password else ""
+        return f"postgresql://{s.postgres_user}{pwd}@{s.postgres_host}:{s.postgres_port}/{self.auth.database}"
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -160,6 +183,9 @@ def load_config(profile: str | None = None) -> AppConfig:
         storage_data["neo4j_password"] = os.environ["NEO4J_PASSWORD"]
     if "NEO4J_DATABASE" in os.environ:
         storage_data["neo4j_database"] = os.environ["NEO4J_DATABASE"]
+
+    if "RAG_AUTH_DB" in os.environ:
+        data.setdefault("auth", {})["database"] = os.environ["RAG_AUTH_DB"]
 
     hardware_data = data.setdefault("hardware", {})
     if "OLLAMA_BASE_URL" in os.environ:

@@ -48,6 +48,8 @@ class SessionManager:
         system_prompt: str | None = None,
         parameters: SessionParameters | None = None,
         files: list[str] | None = None,
+        owner_id: str | None = None,
+        forked_from: str | None = None,
     ) -> ChatSession:
         """Creates a new conversational chat session with scoped parameters, prompt, and files."""
         session = ChatSession(
@@ -55,6 +57,8 @@ class SessionManager:
             system_prompt=system_prompt,
             parameters=parameters or SessionParameters(),
             files=list(dict.fromkeys(files or [])),
+            owner_id=owner_id,
+            forked_from=forked_from,
         )
         if self.redis_client:
             try:
@@ -71,8 +75,11 @@ class SessionManager:
         )
         return session
 
-    def list_sessions(self) -> list[ChatSession]:
-        """Lists all registered chat sessions sorted by updated_at descending."""
+    def list_sessions(self, owner_id: str | None = None) -> list[ChatSession]:
+        """Lists chat sessions sorted by updated_at descending; only `owner_id`'s when given.
+
+        Filtering the one meta hash (rather than keeping a per-user index set) means ownership has a
+        single source of truth that can't drift out of sync with the session records."""
         sessions: list[ChatSession] = []
         if self.redis_client:
             try:
@@ -85,8 +92,36 @@ class SessionManager:
         else:
             sessions = list(self._in_memory_sessions.values())
 
+        if owner_id is not None:
+            sessions = [s for s in sessions if s.owner_id == owner_id]
         sessions.sort(key=lambda s: s.updated_at, reverse=True)
         return sessions
+
+    def get_owned(self, session_id: str, owner_id: str) -> tuple[ChatSession | None, list[ChatMessage]]:
+        """Like `get_session`, but a session owned by someone else is reported as missing (IRA-34)."""
+        session, messages = self.get_session(session_id)
+        if not session or session.owner_id != owner_id:
+            return None, []
+        return session, messages
+
+    def adopt_unowned(self, owner_id: str) -> int:
+        """Assigns every session that predates accounts to `owner_id`. Returns how many changed."""
+        adopted = 0
+        for session in self.list_sessions():
+            if session.owner_id is None:
+                session.owner_id = owner_id
+                self._save(session)
+                adopted += 1
+        return adopted
+
+    def _save(self, session: ChatSession) -> None:
+        if self.redis_client:
+            try:
+                self.redis_client.hset("rag:sessions:meta", session.id, session.model_dump_json())
+                return
+            except Exception as e:
+                logger.error(f"Error persisting session to Redis: {e}")
+        self._in_memory_sessions[session.id] = session
 
     def get_session(self, session_id: str) -> tuple[ChatSession | None, list[ChatMessage]]:
         """Retrieves session metadata and chronological message history."""

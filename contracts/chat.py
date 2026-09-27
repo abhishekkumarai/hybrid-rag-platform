@@ -34,6 +34,8 @@ class ChatTurnRequest(BaseModel):
     compactor_budget: int = 3072
     min_score_threshold: float = 0.15
     ef_search: int | None = None
+    # Exact doc_ids the project may read. [] refuses the turn without retrieving (a project with no
+    # readable documents); None is unscoped and reserved for internal callers with no project.
     doc_ids: list[str] | None = None
     system_prompt: str | None = None
 

@@ -75,21 +75,32 @@ def test_multimodal_extractor_with_fixture():
     assert Path(figure_blocks[0].image_path).exists()
 
 
-def test_gateway_figure_serving():
-    # Verify figure endpoint
+def test_gateway_figure_serving(identity):
+    # Figures are served only when their document (the `{doc_id}_p{n}_fig_{i}` prefix) is readable (IRA-34)
+    from tests.unit.conftest import own_documents
+
+    own_documents(identity, "unit_test_doc")
     figures_dir = Path("data/figures")
     figures_dir.mkdir(parents=True, exist_ok=True)
-    dummy_fig = figures_dir / "unit_test_dummy_fig.png"
+    dummy_fig = figures_dir / "unit_test_doc_p1_fig_0.png"
     dummy_fig.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4")
 
     try:
-        resp = client.get("/api/v1/figures/unit_test_dummy_fig.png")
+        resp = client.get("/api/v1/figures/unit_test_doc_p1_fig_0.png")
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "image/png"
 
         # Nonexistent figure returns 404
         resp_404 = client.get("/api/v1/figures/nonexistent_fig.png")
         assert resp_404.status_code == 404
+
+        # Someone else's document's figure is reported as missing too
+        foreign = figures_dir / "someone_elses_doc_p1_fig_0.png"
+        foreign.write_bytes(dummy_fig.read_bytes())
+        try:
+            assert client.get("/api/v1/figures/someone_elses_doc_p1_fig_0.png").status_code == 404
+        finally:
+            foreign.unlink()
     finally:
         if dummy_fig.exists():
             dummy_fig.unlink()
