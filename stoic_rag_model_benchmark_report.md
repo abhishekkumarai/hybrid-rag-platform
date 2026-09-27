@@ -1,6 +1,6 @@
-# Benchmark & Model Selection Report: Optimal Ollama LLM for Hybrid RAG Chat Completion (REC-62)
+# Benchmark & Model Selection Report: Optimal Ollama LLM for Hybrid RAG Chat Completion (IRA-4)
 
-**Task Reference**: [`REC-62`](https://emailabhishek2.atlassian.net/browse/REC-62)  
+**Task Reference**: [`IRA-4`](https://emailabhishek2.atlassian.net/browse/IRA-4)  
 **Target Document**: `The Daily Stoic: 366 Meditations on Wisdom, Perseverance, and the Art of Living ( PDFDrive ).pdf` (810 indexed chunks, 406 pages)  
 **Target Session**: `sess_1be92cb06000` via `http://localhost:8010/#chat/sess_1be92cb06000`  
 **Host Hardware**: NVIDIA GeForce RTX 3050 Laptop GPU (6,144 MiB VRAM) + 16 GB System RAM  
@@ -153,7 +153,7 @@ To use the recommended configuration for the Stoic workspace (or any general kno
 
 ## 7. Jira Task Lifecycle Status
 
-*   **Jira Key**: `REC-62`
+*   **Jira Key**: `IRA-4`
 *   **Summary**: Benchmark and select optimal Ollama chat completion model across all retrievers (4000 evaluations)
 *   **Status**: **Resolved / Done**
 *   **Test Artifacts**:

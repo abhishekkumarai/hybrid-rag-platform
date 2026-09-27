@@ -119,7 +119,7 @@ def test_retrieval_service_end_to_end(tmp_path):
 
 
 def test_retrieve_runs_dense_and_sparse_with_project_scope():
-    """REC-68: both searches run (concurrently) and both receive the resolved project scope."""
+    """IRA-10: both searches run (concurrently) and both receive the resolved project scope."""
     qdrant, bm25, reranker = MagicMock(), MagicMock(), MagicMock()
     bm25.resolve_matching_doc_ids.return_value = ["alpha_12345678"]
     qdrant.search.return_value = []

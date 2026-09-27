@@ -1,4 +1,4 @@
-"""Unit tests for per-project evaluation (REC-73)."""
+"""Unit tests for per-project evaluation (IRA-15)."""
 
 from unittest.mock import MagicMock
 

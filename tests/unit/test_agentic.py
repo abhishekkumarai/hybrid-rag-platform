@@ -214,7 +214,7 @@ def test_run_plan_full_does_not_leak_previous_request_context():
 
 
 def test_run_plan_full_applies_project_score_threshold():
-    """REC-66: the project's min_score_threshold reaches every hop and the final rerank."""
+    """IRA-8: the project's min_score_threshold reaches every hop and the final rerank."""
     mock_retrieval = MagicMock()
     mock_retrieval.retrieve.return_value = RetrieveResponse(
         query="q", candidates=[], citations=[], top_score=0.0, duration_ms=1.0, refused=True

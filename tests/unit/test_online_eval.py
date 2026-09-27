@@ -1,4 +1,4 @@
-"""Unit tests for online per-turn evaluation (REC-72)."""
+"""Unit tests for online per-turn evaluation (IRA-14)."""
 
 import random
 from unittest.mock import MagicMock, patch
@@ -81,7 +81,7 @@ def test_llm_judge_sampling_and_update():
 
 
 def test_inline_citations_and_meta_words_do_not_sink_groundedness():
-    """REC-75 follow-up: a correctly cited answer must not score as ungrounded because of the
+    """IRA-17 follow-up: a correctly cited answer must not score as ungrounded because of the
     copied `[doc_id: Page n]` provenance tokens or words like 'excerpts'/'mentions'."""
     ctx = ["Marcus Aurelius wrote that all things die. Not just people but kingdoms and ideas eventually."]
     cited = (

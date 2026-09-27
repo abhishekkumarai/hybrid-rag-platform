@@ -1,4 +1,4 @@
-"""Typed contracts for the /api/v1/chat pipeline (REC-74).
+"""Typed contracts for the /api/v1/chat pipeline (IRA-16).
 
 One pipeline (`services.gateway.chat_pipeline.ChatPipeline`) yields these events; the streaming
 endpoint serializes each one as an SSE frame and the non-streaming endpoint folds them into a single

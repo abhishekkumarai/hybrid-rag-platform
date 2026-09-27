@@ -233,7 +233,7 @@ class ModelListResponse(BaseModel):
 
 @app.get("/api/v1/prompts/default")
 def default_system_prompt() -> dict[str, str]:
-    """The grounding persona applied to projects that have no custom system prompt (REC-76)."""
+    """The grounding persona applied to projects that have no custom system prompt (IRA-18)."""
     return {"system_prompt": settings.generation.default_system_prompt}
 
 
@@ -672,7 +672,7 @@ def sse_chat_generator(turn: ChatTurnRequest) -> Iterator[str]:
 
     Deliberately a *sync* generator: every step (retrieval, rerank, the Ollama `requests` stream)
     blocks, and StreamingResponse runs sync iterators in its threadpool. As an `async def` it ran
-    on the event loop and stalled every other request for the whole answer (REC-67)."""
+    on the event loop and stalled every other request for the whole answer (IRA-9)."""
     for event in _chat_pipeline().run(turn, stream_llm=True):
         yield to_sse(event)
 
@@ -681,7 +681,7 @@ def sse_chat_generator(turn: ChatTurnRequest) -> Iterator[str]:
 def chat(req: ChatRequest):
     """Conversational RAG endpoint: SSE token stream, or one JSON response when stream is false.
 
-    Both transports run the same `ChatPipeline` (REC-74); only the serialization differs."""
+    Both transports run the same `ChatPipeline` (IRA-16); only the serialization differs."""
     # Ensure active session exists or auto-create one
     session: ChatSession | None = None
     active_session_id = req.session_id

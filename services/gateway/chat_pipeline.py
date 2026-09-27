@@ -1,4 +1,4 @@
-"""Single implementation of a /api/v1/chat turn (REC-74).
+"""Single implementation of a /api/v1/chat turn (IRA-16).
 
 Before this module the gateway carried two ~350-line copies of the same pipeline (streaming and
 non-streaming) that had drifted: different refusal texts and payloads, and the non-streaming copy
@@ -51,7 +51,7 @@ def fit_prompt(prompt: str, max_chars: int) -> str:
 
     The head holds the persona and the tail holds the current question and the answer instruction
     (`build_grounded_prompt` puts them last). Cutting the tail, as the old code did, sent the model
-    evidence with no question at all (REC-76)."""
+    evidence with no question at all (IRA-18)."""
     if len(prompt) <= max_chars:
         return prompt
     q = prompt.rfind("Current question:")
@@ -102,7 +102,7 @@ class ChatPipeline:
         steps: list[AgentStep] = []
         sub_queries: list[str] = []
         mode_label: str | None = None
-        # A project without its own persona gets the configured grounding persona (REC-76).
+        # A project without its own persona gets the configured grounding persona (IRA-18).
         persona = req.system_prompt or self.settings.generation.default_system_prompt or None
         t_ret = time.perf_counter()
 
@@ -255,7 +255,7 @@ class ChatPipeline:
         # On the RTX 3050 6 GB target, 7B+ models get a 4K window to stay VRAM-resident.
         max_ctx = 4096 if any(tag in req.model.lower() for tag in _LARGE_MODEL_TAGS) else 8192
         # Size for the actual prompt (persona + history + evidence + question) plus the answer, not
-        # just the passage budget -- the default persona alone is ~250 tokens (REC-76).
+        # just the passage budget -- the default persona alone is ~250 tokens (IRA-18).
         needed = max(req.compactor_budget + 512, int(len(prompt) / _CHARS_PER_TOKEN) + NUM_PREDICT + 64)
         return min(max(needed, 2048), max_ctx)
 
@@ -339,10 +339,12 @@ class ChatPipeline:
         formatted = CitationFormatterComponent().format_response(
             raw_answer, [c.model_dump() for c in prep.citations]
         )
+        # History stores the answer as streamed; the provenance lives in `citations`, which the UI
+        # renders as chips. Persisting `formatted` made reloaded answers show every source twice.
         self.sessions.append_message(
             req.session_id,
             ChatMessage(
-                role="assistant", content=formatted, citations=prep.citations, latency_ms=round(total_ms, 2),
+                role="assistant", content=raw_answer, citations=prep.citations, latency_ms=round(total_ms, 2),
                 metadata={"eval": turn_eval.model_dump() if turn_eval else None, "query_id": telemetry.query_id},
             ),
         )
@@ -357,7 +359,7 @@ class ChatPipeline:
 
     def _evaluate(self, telemetry: QueryTelemetry, answer: str, prep: _Prepared,
                   model: str) -> RetrievalEvalScores | None:
-        """Online per-turn scores (REC-72). Runs before telemetry is recorded so the scores persist
+        """Online per-turn scores (IRA-14). Runs before telemetry is recorded so the scores persist
         with it. A failed/empty generation was never answered and is not scored."""
         if not answer.strip():
             return None
@@ -376,7 +378,7 @@ class ChatPipeline:
 
 
 def to_sse(event: ChatEvent) -> str:
-    """One SSE frame, byte-compatible with the pre-REC-74 wire format."""
+    """One SSE frame, byte-compatible with the pre-IRA-16 wire format."""
     if isinstance(event, AgentStepEvent):
         data = event.step.model_dump_json()
     elif isinstance(event, EvalEvent):

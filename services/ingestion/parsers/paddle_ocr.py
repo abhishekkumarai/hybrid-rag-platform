@@ -1,4 +1,4 @@
-"""PaddleOCR parser for high-accuracy document text and layout extraction (REC-61).
+"""PaddleOCR parser for high-accuracy document text and layout extraction (IRA-3).
 
 Integrates PaddleOCR (https://github.com/PADDLEPADDLE/PADDLEOCR) as a document
 ingestion route with PyMuPDF rasterization, bounding box normalization to 72dpi PDF points,

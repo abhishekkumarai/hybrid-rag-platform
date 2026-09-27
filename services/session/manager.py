@@ -265,7 +265,7 @@ class SessionManager:
         Assistant turns are cut to their answer (the appended "Verified Sources" provenance block
         is dropped) and truncated: history exists to resolve "he"/"that" in the next question, and a
         long verbatim prior answer is what small models copy instead of answering the new
-        question (REC-75)."""
+        question (IRA-17)."""
         _, messages = self.get_session(session_id)
         if not messages:
             return ""

@@ -126,7 +126,7 @@ def test_graph_traverser_associative_path():
 
 
 def test_graph_traverser_respects_project_doc_scope():
-    """REC-65: a project scoped to doc1 must not receive relations evidenced only by doc2."""
+    """IRA-7: a project scoped to doc1 must not receive relations evidenced only by doc2."""
     store = GraphStore(auto_load=False)
     store.add_relation(Relation(source="Abhishek", predicate="worked_at", target="Syngene", doc_id="doc1_aaaaaaaa", chunk_id="c1"))
     store.add_relation(Relation(source="Syngene", predicate="partnered_with", target="Bristol Myers Squibb", doc_id="doc2_bbbbbbbb", chunk_id="c2"))

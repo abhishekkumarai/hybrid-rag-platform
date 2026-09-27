@@ -2,6 +2,24 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Issue tracking (Jira)
+
+All work on this repo is tracked in Jira project **IRA** on `emailabhishek2.atlassian.net`
+(cloudId `3452e1b8-4aa4-4627-bd49-cc769a985cef`, board
+`https://emailabhishek2.atlassian.net/jira/software/projects/IRA/boards/134`). File every new bug, task
+and feature there and reference its key (`IRA-NN`) in commit messages, docstrings and test names.
+**Never file RAG work in project REC** — REC ("Stock Recommendations Engine") belongs to an unrelated
+stock-app project.
+
+- Issue types: Bug, Task, Story, Epic, Subtask. There is no Feature type — file features as a Story
+  with the `feature` label.
+- Labels in use: `rag`, `ui`, `gateway`, `project-scope`, `evaluation`, `prompting`, `answer-quality`,
+  `performance`, `tech-debt`, `bug`.
+- New issues are not auto-assigned; set the assignee explicitly. Done transition id is `31`.
+- History: the RAG tickets were first filed in REC and moved on 2026-09-27 — REC-59…82 are now
+  IRA-1…24 (`IRA-n` = `REC-(n+58)`). References in the code were rewritten, but commit messages up to
+  that date still say `REC-NN`; use the mapping when reading `git log`.
+
 ## Commands
 
 This is a Windows-primary repo. `Makefile` and `run.ps1` expose the same targets; use `run.ps1` when GNU

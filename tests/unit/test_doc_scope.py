@@ -1,4 +1,4 @@
-"""Unit tests for the shared project document-scope matcher (REC-64)."""
+"""Unit tests for the shared project document-scope matcher (IRA-6)."""
 
 from services.common.doc_scope import matches_doc_scope, normalize_doc_id
 

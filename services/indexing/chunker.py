@@ -1,4 +1,4 @@
-"""Content-aware chunker with table windowing, heading hierarchy, sliding window overlap, and 512-token cap (REC-59)."""
+"""Content-aware chunker with table windowing, heading hierarchy, sliding window overlap, and 512-token cap (IRA-1)."""
 
 from __future__ import annotations
 
@@ -246,7 +246,7 @@ def chunk_blocks(
     max_tokens: int = 512,
     overlap_tokens: int = 64,
 ) -> list[Chunk]:
-    """Processes extracted blocks into hierarchical, token-capped chunks with contiguous block packing (REC-59)."""
+    """Processes extracted blocks into hierarchical, token-capped chunks with contiguous block packing (IRA-1)."""
     chunks: list[Chunk] = []
     heading_stack: list[str] = []
     chunk_index = 0

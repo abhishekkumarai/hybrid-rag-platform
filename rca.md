@@ -3,7 +3,7 @@
 **Document Version:** 1.0  
 **Date:** September 18, 2026  
 **Status:** Resolved & Verified  
-**Related Jira Issues:** [REC-59](https://emailabhishek2.atlassian.net/browse/REC-59), [REC-60](https://emailabhishek2.atlassian.net/browse/REC-60)  
+**Related Jira Issues:** [IRA-1](https://emailabhishek2.atlassian.net/browse/IRA-1), [IRA-2](https://emailabhishek2.atlassian.net/browse/IRA-2)  
 **Target Systems:** Ingestion Pipeline, Multimodal Bounding Box Parser, Indexing Service, Hybrid Retrieval & FlashRank Reranker
 
 ---
@@ -93,14 +93,14 @@ Enhanced [`FlashRankReranker.rerank()`](services/retrieval/reranker.py) with dua
 1. Deduplication by unique chunk ID.
 2. Deduplication by leading 35-word text signature to eliminate adjacent chunk seam duplicates.
 
-### 3.5 Content-Aware Chunking Hardening (REC-59)
+### 3.5 Content-Aware Chunking Hardening (IRA-1)
 Hardened [`services/indexing/chunker.py`](services/indexing/chunker.py):
 - **True Sliding Window Overlap**: Applied token-bounded word/sentence overlap across split boundaries in `split_text_recursive`.
 - **Sub-Sentence Fallback**: Recursive decomposition through semicolons, commas, and word windows for single sentences exceeding `max_tokens`.
 - **Table Breadcrumb Token Budgeting**: Reserved header tokens in `split_large_table` and added 1-row overlap continuity across split tables.
 - **Config Wiring**: Connected `overlap_tokens` from `configs/default.yaml` in `IndexingService`.
 
-### 3.6 PaddleOCR Ingestion Route (REC-61)
+### 3.6 PaddleOCR Ingestion Route (IRA-3)
 Integrated [PaddleOCR](https://github.com/PADDLEPADDLE/PADDLEOCR) as a dedicated parsing route alongside `fast_text`, `layout`, and `ocr`:
 - Implemented [`PaddleOCRParser`](services/ingestion/parsers/paddle_ocr.py) with 150-DPI PyMuPDF rasterization, textline orientation correction, and 72-DPI coordinate scaling.
 - Added multimodal table/figure bounding box masking on the current page to prevent text duplication.
@@ -109,7 +109,7 @@ Integrated [PaddleOCR](https://github.com/PADDLEPADDLE/PADDLEOCR) as a dedicated
 
 ---
 
-## 4. Comprehensive 4,000-Query Retrieval Benchmark (REC-60)
+## 4. Comprehensive 4,000-Query Retrieval Benchmark (IRA-2)
 
 ### 4.1 Evaluation Methodology
 To establish an empirical baseline and determine which retrieval paradigm works best across all user interactions, we built a 4,000-query benchmark suite ([`tests/eval/benchmark_4000.py`](tests/eval/benchmark_4000.py)) evaluating **1,000 complex queries per archetype** against the 1,280-chunk production corpus.
@@ -132,7 +132,7 @@ To establish an empirical baseline and determine which retrieval paradigm works 
 
 ```
 ====================================================================================================
-4,000-QUERY COMPREHENSIVE RETRIEVAL BENCHMARK REPORT (REC-60)
+4,000-QUERY COMPREHENSIVE RETRIEVAL BENCHMARK REPORT (IRA-2)
 ====================================================================================================
 Retrieval Paradigm             | HR@1 (%)  | HR@5 (%)  | HR@10 (%)  | MRR     | NDCG@5  | Avg (ms)  | p95 (ms) 
 ----------------------------------------------------------------------------------------------------

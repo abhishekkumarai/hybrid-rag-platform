@@ -1,4 +1,4 @@
-"""Unit tests for grounded prompt assembly and compact conversation history (REC-75)."""
+"""Unit tests for grounded prompt assembly and compact conversation history (IRA-17)."""
 
 from contracts.session import ChatMessage
 from services.retrieval.prompting import build_grounded_prompt

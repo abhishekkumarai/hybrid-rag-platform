@@ -442,7 +442,7 @@ def test_gateway_chat_auto_session(mock_get_services, mock_requests_post):
 
 
 def test_sse_chat_generator_does_not_run_on_event_loop():
-    """REC-67: blocking retrieval/Ollama I/O must run in StreamingResponse's threadpool."""
+    """IRA-9: blocking retrieval/Ollama I/O must run in StreamingResponse's threadpool."""
     import inspect
 
     from services.gateway.api import sse_chat_generator
@@ -475,7 +475,7 @@ def _sse_events(body: str) -> list[str]:
 @patch("services.gateway.api.requests.post")
 @patch("services.gateway.api.get_services")
 def test_stream_chat_emits_eval_event_for_answered_turn(mock_get_services, mock_requests_post):
-    """REC-72: an answered streaming turn carries an `eval` event with its online scores."""
+    """IRA-14: an answered streaming turn carries an `eval` event with its online scores."""
     mock_get_services.return_value = (MagicMock(), MagicMock(), _stream_retrieval_mock())
     resp = MagicMock(status_code=200)
     resp.iter_lines.return_value = [

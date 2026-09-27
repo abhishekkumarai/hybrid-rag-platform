@@ -99,7 +99,7 @@ class FlashRankReranker:
             for c in candidates:
                 c.rerank_score = c.rrf_score
 
-        # Deduplicate candidates with identical or near-identical text (REC-59)
+        # Deduplicate candidates with identical or near-identical text (IRA-1)
         deduped_candidates: list[Candidate] = []
         seen_texts: set[str] = set()
         seen_ids: set[str] = set()

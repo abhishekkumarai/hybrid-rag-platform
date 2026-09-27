@@ -1,4 +1,4 @@
-"""4,000-Query Retrieval & Multi-Model Chat Completion Benchmark on the Stoic Corpus (REC-62).
+"""4,000-Query Retrieval & Multi-Model Chat Completion Benchmark on the Stoic Corpus (IRA-4).
 
 Evaluates:
 1. 4,000 queries on the Stoic document across 4 retrieval modalities:
@@ -245,7 +245,7 @@ def evaluate_retrievers(
     """Runs the 4,000-query benchmark across all 4 retriever modalities."""
     total_queries = len(queries)
     print("================================================================================")
-    print("[START] EVALUATING 4,000 QUERIES ACROSS 4 RETRIEVER MODALITIES (REC-62)")
+    print("[START] EVALUATING 4,000 QUERIES ACROSS 4 RETRIEVER MODALITIES (IRA-4)")
     print(f"Corpus size: {len(bm25.corpus_chunks)} chunks | Query count: {total_queries} queries")
     print(f"Target document: {STOIC_DOC_PREFIX}")
     print(f"Concurrency: {concurrency} worker threads")
@@ -495,7 +495,7 @@ def main():
     # 3. Export to JSON
     report_data = {
         "timestamp": time.time(),
-        "task_id": "REC-62",
+        "task_id": "IRA-4",
         "target_document": "The Daily Stoic_ 366 Meditations on Wisdom, Perseverance, and the Art of Living ( PDFDrive ).pdf",
         "session_id": "sess_1be92cb06000",
         "retrieval_benchmarks": retrieval_metrics,

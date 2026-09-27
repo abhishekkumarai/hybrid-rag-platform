@@ -1,4 +1,4 @@
-"""Unit tests for PaddleOCR document ingestion parser (REC-61)."""
+"""Unit tests for PaddleOCR document ingestion parser (IRA-3)."""
 
 from pathlib import Path
 

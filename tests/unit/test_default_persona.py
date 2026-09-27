@@ -1,4 +1,4 @@
-"""Default grounding persona and prompt fitting (REC-76)."""
+"""Default grounding persona and prompt fitting (IRA-18)."""
 
 from unittest.mock import MagicMock, patch
 

@@ -456,7 +456,7 @@ Settings (18.9) remain placeholders, and the polish/cleanup items under 18.10.
 
 ---
 
-## Phase 19: REC-62 Ollama Model Benchmark for Stoic Document RAG (4,000 Evaluations)
+## Phase 19: IRA-4 Ollama Model Benchmark for Stoic Document RAG (4,000 Evaluations)
 *Target: Identify the optimal Ollama LLM for conversational RAG chat completion on consumer hardware by executing a 4,000-query benchmark against the Stoic corpus across all retriever types, with direct API invocation against session `sess_1be92cb06000`.*
 
 - [x] **Task 19.1: Stoic Evaluation Corpus & Query Generator (`tests/eval/benchmark_stoic_4000.py`)**

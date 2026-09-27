@@ -33,7 +33,7 @@ See the full audit for method/evidence: `C:\Users\abhi3\.claude\plans\check-the-
 - [x] **Update `DESIGN.md`'s mode selector docs.** Added the 4th mode (`Graph` / GraphRAG) to the header
   retrieval-mode-selector description, matching the shipped UI/backend.
 
-- [x] **Type-enforce agentic contracts through the chat endpoint.** Done in REC-74: every
+- [x] **Type-enforce agentic contracts through the chat endpoint.** Done in IRA-16: every
   `/api/v1/chat` turn now runs through `services/gateway/chat_pipeline.py::ChatPipeline`, which yields
   typed `contracts/chat.py` events (`AgentStepEvent` carries a real `AgentStep`, `DoneEvent` carries
   typed `citations`/`agent_steps`/`sub_queries`). SSE and the JSON response are both serialized from those

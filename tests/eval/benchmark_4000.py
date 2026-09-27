@@ -1,4 +1,4 @@
-"""4,000-Query Retrieval Benchmark Suite across Dense, Sparse, Hybrid RRF, and Reranking (REC-60).
+"""4,000-Query Retrieval Benchmark Suite across Dense, Sparse, Hybrid RRF, and Reranking (IRA-2).
 
 Evaluates 4,000 complex queries across 4 real-world archetypes:
 1. Multi-hop & cross-document comparative queries (1,000 queries)
@@ -491,7 +491,7 @@ def evaluate_retrieval_run(
     selected_queries = queries[:sample_size]
     total_queries = len(selected_queries)
     print("================================================================================")
-    print("[START] INITIATING 4,000-QUERY RETRIEVAL BENCHMARK ACROSS 4 PARADIGMS (REC-60)")
+    print("[START] INITIATING 4,000-QUERY RETRIEVAL BENCHMARK ACROSS 4 PARADIGMS (IRA-2)")
     print(f"Corpus size: {len(bm25.corpus_chunks)} chunks | Query count: {total_queries} queries")
     print("Archetypes: Multi-Hop (1000), Lexical (1000), Semantic (1000), Conversational (1000)")
     print(f"Concurrency: {concurrency} workers")
@@ -635,7 +635,7 @@ def evaluate_retrieval_run(
 def print_ascii_report(summary: dict[str, Any]) -> None:
     """Prints a polished ASCII benchmark summary table."""
     print("=" * 100)
-    print("4,000-QUERY COMPREHENSIVE RETRIEVAL BENCHMARK REPORT (REC-60)")
+    print("4,000-QUERY COMPREHENSIVE RETRIEVAL BENCHMARK REPORT (IRA-2)")
     print("=" * 100)
     print(f"{'Retrieval Paradigm':<30} | {'HR@1 (%)':<9} | {'HR@5 (%)':<9} | {'HR@10 (%)':<10} | {'MRR':<7} | {'NDCG@5':<7} | {'Avg (ms)':<9} | {'p95 (ms)':<9}")
     print("-" * 100)

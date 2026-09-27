@@ -55,7 +55,7 @@ class IndexingService:
         """Chunks document blocks and indexes them into dense, sparse, and graph stores."""
         start = time.perf_counter()
 
-        # 1. Content-Aware Chunking (REC-59)
+        # 1. Content-Aware Chunking (IRA-1)
         chunks = chunk_blocks(
             blocks,
             doc_id=doc_id,

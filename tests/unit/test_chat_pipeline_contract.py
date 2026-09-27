@@ -1,4 +1,4 @@
-"""Characterization tests for /api/v1/chat (REC-74).
+"""Characterization tests for /api/v1/chat (IRA-16).
 
 Pins the observable contract of every chat path -- SSE event order and payload keys when streaming,
 JSON keys when not -- across direct / graph / agentic modes, answered and refused. Written against
@@ -141,7 +141,7 @@ def test_sync_response_keys(case):
         assert data["eval"]["groundedness"] == 1.0
 
 
-# --- Drift fixed by the single pipeline (REC-74) -------------------------------------------------
+# --- Drift fixed by the single pipeline (IRA-16) -------------------------------------------------
 
 
 @pytest.mark.parametrize("mode", ["direct", "graph", "agentic"])
@@ -165,6 +165,23 @@ def test_sync_generation_failure_is_reported_not_scored():
     assert data["answer"].startswith("Error generating answer")
     assert data["raw_answer"] == ""
     assert data["eval"] is None
+
+
+@pytest.mark.parametrize("stream", [True, False])
+def test_history_stores_answer_without_provenance_block(stream):
+    """Reloaded chats render stored content plus citation chips; a stored provenance block showed
+    every source twice and tripled the page height."""
+    with patch("services.gateway.api.get_services") as gs, \
+         patch("services.gateway.api.get_agentic_coordinator") as gc, \
+         patch("services.gateway.api.requests.post", return_value=_ollama()), \
+         patch("services.gateway.api.session_manager.append_message") as append:
+        gs.return_value = (MagicMock(), MagicMock(), _retrieval(refused=False))
+        gc.return_value = _coordinator(refused=False)
+        client.post("/api/v1/chat", json={"query": "What GPU?", "stream": stream, "mode": "direct"})
+    stored = append.call_args_list[-1].args[1]
+    assert stored.role == "assistant"
+    assert stored.content == ANSWER
+    assert stored.citations == [CIT]
 
 
 def test_sync_token_count_uses_ollama_eval_count():

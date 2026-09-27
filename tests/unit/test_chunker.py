@@ -1,4 +1,4 @@
-"""Unit tests for content-aware chunker with sliding window overlap and token caps (REC-59)."""
+"""Unit tests for content-aware chunker with sliding window overlap and token caps (IRA-1)."""
 
 from contracts.document import Block, BlockType
 from services.indexing.chunker import (

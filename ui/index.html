@@ -67,6 +67,8 @@
   .citations-title { width: 100%; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #5d605b; margin-bottom: 2px; }
   .cite-tag { display: inline-flex; align-items: center; gap: 4px; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; padding: 3px 8px; border-radius: 6px; background: #f4f4ef; border: 1px solid #e1e3dd; color: #47664b; cursor: pointer; transition: background .1s; }
   .cite-tag:hover { background: #e8e9e3; }
+  .cite-tag { max-width: 100%; }
+  .cite-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
   .eval-tip { position: absolute; pointer-events: none; background: #30332f; color: #faf9f5; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; padding: 6px 8px; border-radius: 4px; max-width: 280px; white-space: normal; z-index: 5; }
   .pe-tile { padding: 12px; border: 1px solid #e4e4de; border-radius: 8px; background: #fbfbf8; }
@@ -166,7 +168,7 @@
 <body class="h-screen w-screen flex overflow-hidden bg-background text-on-surface font-body antialiased">
 
 <!-- ============ LEFT NAV RAIL ============ -->
-<aside id="navRail" class="flex flex-col justify-between h-screen w-60 py-4 px-3 shrink-0 bg-surface-container-low border-r border-surface-container-high z-30 transition-all duration-200">
+<aside id="navRail" class="flex flex-col justify-between h-screen w-60 py-4 px-3 shrink-0 overflow-y-auto overflow-x-hidden bg-surface-container-low border-r border-surface-container-high z-30 transition-all duration-200">
   <div>
     <div id="brandHomeBtn" class="flex items-center gap-3 px-3 py-2 mb-6 border-b border-surface-container-high pb-4 cursor-pointer hover:opacity-80 transition" title="Go to Projects Home">
       <div class="w-7 h-7 rounded bg-primary flex items-center justify-center text-on-primary font-mono text-xs font-bold shrink-0">IRA</div>
@@ -289,9 +291,6 @@
           <button id="wsUploadBtn" class="w-full flex items-center justify-center gap-2 bg-primary text-on-primary rounded-lg py-2 text-xs font-label hover:opacity-90 transition font-medium shadow-sm">
             <span class="material-symbols-outlined text-[16px]">upload_file</span> Upload PDF to Project
           </button>
-          <button id="addSourceBtn" class="w-full flex items-center justify-center gap-2 border border-surface-container-high bg-surface-container-lowest rounded-lg py-1.5 text-xs font-label text-on-surface-variant hover:border-primary hover:text-primary transition">
-            <span class="material-symbols-outlined text-[15px]">library_add</span> Attach from Library
-          </button>
         </div>
         <div id="wsUploadStatus" class="px-3 pt-2 pb-1 text-[11px] font-mono text-primary flex items-center gap-2 hidden">
           <span class="inline-block w-2 h-2 rounded-full bg-primary animate-ping"></span>
@@ -310,16 +309,16 @@
       <!-- Thread column -->
       <div class="flex-1 flex flex-col min-w-0">
         <div class="flex items-center justify-between px-5 py-3 border-b border-surface-container-high bg-surface shrink-0">
-          <div class="flex items-center gap-2 min-w-0">
+          <div class="flex items-center gap-2 min-w-0 overflow-hidden">
             <button id="backToGalleryBtn" class="flex items-center gap-1 text-xs font-label text-on-surface-variant hover:text-primary px-2 py-1 rounded-md hover:bg-surface-container-low transition shrink-0" title="Return to Projects Gallery">
               <span class="material-symbols-outlined text-[15px]">arrow_back</span>
               <span class="font-medium">Projects</span>
             </button>
             <span class="text-surface-container-highest shrink-0">/</span>
-            <select id="chatWorkspaceSelect" class="border border-surface-container-high rounded-lg px-2.5 py-1 text-xs font-headline font-semibold bg-surface-container-lowest text-on-surface focus:outline-none focus:border-primary transition cursor-pointer max-w-[180px] md:max-w-[240px] truncate shrink-0" title="Switch project">
+            <select id="chatWorkspaceSelect" class="border border-surface-container-high rounded-lg px-2.5 py-1 text-xs font-headline font-semibold bg-surface-container-lowest text-on-surface focus:outline-none focus:border-primary transition cursor-pointer min-w-[7rem] max-w-[180px] md:max-w-[240px] truncate" title="Switch project">
               <option value="">Switch project…</option>
             </select>
-            <span id="currentChatTitle" class="font-headline font-semibold text-sm text-on-surface truncate cursor-text hover:bg-surface-container-low px-1.5 py-0.5 rounded transition" contenteditable="true" title="Click to rename project">Select or create a project</span>
+            <span id="currentChatTitle" class="font-headline font-semibold text-sm text-on-surface truncate min-w-[5rem] cursor-text hover:bg-surface-container-low px-1.5 py-0.5 rounded transition" contenteditable="true" title="Click to rename project">Select or create a project</span>
             <span class="material-symbols-outlined text-[14px] text-on-surface-variant opacity-60 shrink-0">edit</span>
           </div>
           <div class="flex items-center gap-2 shrink-0">
@@ -1520,6 +1519,15 @@
     item.classList.toggle('is-empty', !currentSessionId);
     name.textContent = currentSessionId ? (sess ? (sess.title || 'Untitled') : currentSessionId) : 'None open';
     item.title = currentSessionId ? `Open chat for "${name.textContent}"` : 'Open a project from Projects';
+    // The backend auto-titles a project on its first question; mirror that everywhere the name is
+    // shown, except in a field the user is typing in.
+    if (!sess) return;
+    const chatTitle = document.getElementById('currentChatTitle');
+    if (chatTitle && document.activeElement !== chatTitle) chatTitle.textContent = sess.title;
+    const drawerWsName = document.getElementById('drawerWorkspaceName');
+    if (drawerWsName && document.activeElement !== drawerWsName) drawerWsName.value = sess.title;
+    const crumb = document.getElementById('breadcrumb');
+    if (crumb && !document.getElementById('page-chat').classList.contains('hidden')) crumb.textContent = `Projects / ${sess.title}`;
   }
 
   const breadcrumbBtn = document.getElementById('breadcrumb');
@@ -1642,8 +1650,11 @@
     const tag = document.createElement('span');
     tag.className = 'cite-tag';
     const icon = c.is_figure ? 'image' : c.is_table ? 'table_chart' : 'description';
-    tag.innerHTML = `<span class="material-symbols-outlined text-[13px]">${icon}</span> ${c.formatted_badge}`;
-    tag.title = 'Click to inspect provenance';
+    // The full badge carries the bbox, which wrapped every chip onto two lines; keep it in the tooltip.
+    const label = c.doc_id ? `${c.doc_id} · p.${c.page}` : c.formatted_badge;
+    tag.innerHTML = `<span class="material-symbols-outlined text-[13px]">${icon}</span><span class="cite-label"></span>`;
+    tag.querySelector('.cite-label').textContent = label;
+    tag.title = `${c.formatted_badge}\nClick to inspect provenance`;
     tag.addEventListener('click', () => openVisualPreview(c, citations, idx));
     return tag;
   }
@@ -1660,7 +1671,10 @@
     const msg = document.createElement('div');
     msg.className = `message ${role}`;
     const contentSpan = document.createElement('div');
-    contentSpan.innerHTML = renderMarkdown(content);
+    // Answers saved before the pipeline stopped persisting it carry a markdown provenance block;
+    // the citation chips below already show that, so drop it to match the live-streamed view.
+    const body = role === 'assistant' ? (content || '').replace(/\n+---\n#+[^\n]*Verified Sources[\s\S]*$/, '') : content;
+    contentSpan.innerHTML = renderMarkdown(body);
     msg.appendChild(contentSpan);
 
     if (citations && citations.length > 0) {
@@ -1671,7 +1685,7 @@
       msg.appendChild(box);
     }
     if (role === 'assistant' && evalScores) renderEvalStrip(msg, evalScores);
-    if (role === 'assistant') renderFeedbackBar(msg, '', content, citations);
+    if (role === 'assistant') renderFeedbackBar(msg, '', body, citations);
     messagesDiv.appendChild(msg);
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
   }
@@ -2190,9 +2204,8 @@
       if (drawerWsName) drawerWsName.value = data.session.title;
       const breadcrumb = document.getElementById('breadcrumb');
       if (breadcrumb) breadcrumb.textContent = `Projects / ${data.session.title}`;
-      if (!allSessions.some(s => s.id === sessionId)) {
-        await loadSessions();
-      }
+      // Always refresh: the switcher's "(N docs)" label goes stale after attaching or uploading.
+      await loadSessions();
       const chatWsSel = document.getElementById('chatWorkspaceSelect');
       if (chatWsSel) chatWsSel.value = sessionId;
       messagesDiv.innerHTML = '';
@@ -2302,6 +2315,7 @@
   }
 
   queryInput.addEventListener('input', autoResizeQueryInput);
+  let sendQueued = false;
 
   queryInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
@@ -2312,6 +2326,12 @@
       }
       if (!e.isComposing) {
         e.preventDefault();
+        // Enter while an answer is still streaming used to be silently dropped; send it once it ends.
+        if (sendBtn.disabled && queryInput.value.trim()) {
+          sendQueued = true;
+          sendBtn.title = 'Will send when the current answer finishes';
+          return;
+        }
         if (!sendBtn.disabled && queryInput.value.trim()) {
           if (typeof chatForm.requestSubmit === 'function') {
             chatForm.requestSubmit();
@@ -2354,12 +2374,17 @@
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let currentText = '', citations = [], currentEventType = null, refused = false, turnEval = null;
+      let pending = '';
       textSpan.textContent = '';
 
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-        const lines = decoder.decode(value).split('\n');
+        // A network chunk can end mid-line; keep the partial tail for the next read, otherwise the
+        // half-line fails JSON.parse and its tokens vanish from the live view (but not from history).
+        pending += decoder.decode(value, { stream: true });
+        const lines = pending.split('\n');
+        pending = lines.pop();
         for (const line of lines) {
           if (line.startsWith('event: ')) { currentEventType = line.slice(7).trim(); continue; }
           if (line.startsWith('data: ')) {
@@ -2397,6 +2422,11 @@
     } finally {
       sendBtn.disabled = false;
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      if (sendQueued) {
+        sendQueued = false;
+        sendBtn.title = 'Send message (Enter)';
+        if (queryInput.value.trim()) chatForm.requestSubmit();
+      }
     }
   });
 
@@ -2431,20 +2461,6 @@
       list.appendChild(row);
     });
   }
-
-  document.getElementById('addSourceBtn').addEventListener('click', async () => {
-    if (!currentSessionId) return;
-    if (knownDocuments.length === 0) { navigate('library'); return; }
-    const names = knownDocuments.map((d, i) => `${i + 1}. ${d.name}`).join('\n');
-    const pick = prompt(`Attach which document? Enter its number:\n${names}`);
-    const idx = parseInt(pick, 10) - 1;
-    if (isNaN(idx) || !knownDocuments[idx]) return;
-    await fetch(`/api/v1/sessions/${currentSessionId}/files`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ files: [knownDocuments[idx].doc_id] })
-    });
-    openWorkspace(currentSessionId);
-  });
 
   async function uploadWorkspaceFile(file) {
     if (!file) return;

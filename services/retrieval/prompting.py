@@ -4,7 +4,7 @@ Order matters for small local models (the 3B/8B targets of this project): they w
 recent text most heavily. So the conversation history goes *first* (only to resolve references like
 "he" or "that"), the retrieved evidence next, and the current question last together with the
 instruction to answer only it. When history sat between the evidence and the question, llama3.2:3b
-re-answered the previous turn instead of the current one (REC-75).
+re-answered the previous turn instead of the current one (IRA-17).
 """
 
 from __future__ import annotations
