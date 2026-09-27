@@ -185,6 +185,16 @@ Before finishing, check:
 
 When something can be simpler, make it simpler.
 
+## Accounts and shared chats
+
+* Every page assumes a signed-in user; the sign-in overlay (`#authGate`) and the header user chip are the only
+  account UI. Reuse the overlay's card and input styles for any future account forms.
+* A `/s/<token>` shared chat reuses the chat page, read-only: hide composing, settings and project controls
+  rather than building a separate page, and keep the "Continue this chat" banner as the single call to action.
+* Content in a shared chat was written by someone else. Escape it (`escapeHtmlText`, `htmlSafeCitation`) before
+  templating into `innerHTML`, and attach behavior with listeners or `data-*` attributes, not inline handlers.
+* Controls for admin-only operations (web sync, all-projects views) are hidden or disabled for regular users.
+
 ## Important
 
 Do not redesign the entire product when implementing a feature.

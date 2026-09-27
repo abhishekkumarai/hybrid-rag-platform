@@ -78,6 +78,8 @@
   .eval-strip { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 10px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; color: #5d605b; }
   .eval-cell b { font-weight: 600; color: #30332f; }
   .eval-cell.is-low b { color: #a8364b; }
+  /* A shared chat is read-only: no feedback on someone else's answers (IRA-36). */
+  body.shared-view .feedback-bar { display: none; }
   .feedback-bar { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding-top: 8px; border-top: 1px solid #eeeee9; }
   .fb-btn { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-family: 'Public Sans', sans-serif; padding: 3px 8px; border-radius: 6px; border: 1px solid #e1e3dd; background: #fff; color: #5d605b; cursor: pointer; }
   .fb-btn:hover { background: #f4f4ef; }
@@ -235,6 +237,14 @@
         <span class="w-1.5 h-1.5 rounded-full bg-outline-variant" id="healthDot"></span>
         <span id="healthText">Checking systems…</span>
       </div>
+
+      <!-- Signed-in account (IRA-36) -->
+      <div id="userChip" class="hidden items-center gap-2 pl-3 border-l border-surface-container-high min-w-0">
+        <span class="material-symbols-outlined text-[16px] text-on-surface-variant">account_circle</span>
+        <span id="userChipEmail" class="font-mono text-[11px] text-on-surface truncate max-w-[180px]"></span>
+        <span id="userChipAdmin" class="hidden font-mono text-[10px] px-1.5 py-0.5 rounded border border-surface-container-high text-on-surface-variant">admin</span>
+        <button id="signOutBtn" class="text-xs font-label text-on-surface-variant hover:text-primary px-2 py-1 rounded-md hover:bg-surface-container-low transition">Sign out</button>
+      </div>
     </div>
   </header>
 
@@ -319,19 +329,33 @@
               <span class="material-symbols-outlined text-[15px]">arrow_back</span>
               <span class="font-medium">Projects</span>
             </button>
-            <span class="text-surface-container-highest shrink-0">/</span>
+            <span id="chatCrumbSep" class="text-surface-container-highest shrink-0">/</span>
             <select id="chatWorkspaceSelect" class="border border-surface-container-high rounded-lg px-2.5 py-1 text-xs font-headline font-semibold bg-surface-container-lowest text-on-surface focus:outline-none focus:border-primary transition cursor-pointer min-w-[7rem] max-w-[180px] md:max-w-[240px] truncate" title="Switch project">
               <option value="">Switch project…</option>
             </select>
             <span id="currentChatTitle" class="font-headline font-semibold text-sm text-on-surface truncate min-w-[5rem] cursor-text hover:bg-surface-container-low px-1.5 py-0.5 rounded transition" contenteditable="true" title="Click to rename project">Select or create a project</span>
-            <span class="material-symbols-outlined text-[14px] text-on-surface-variant opacity-60 shrink-0">edit</span>
+            <span id="chatTitleEditIcon" class="material-symbols-outlined text-[14px] text-on-surface-variant opacity-60 shrink-0">edit</span>
+            <span id="forkedChip" hidden class="font-mono text-[10px] px-1.5 py-0.5 rounded border border-surface-container-high text-on-surface-variant shrink-0" title="Continued from a shared chat">forked from shared link</span>
           </div>
           <div class="flex items-center gap-2 shrink-0">
+            <button id="shareChatBtn" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-surface-container-high bg-surface-container-lowest hover:bg-surface-container-low text-on-surface text-xs font-label font-medium transition" title="Share this chat through a public link">
+              <span class="material-symbols-outlined text-[16px] text-primary">ios_share</span>
+              <span>Share</span>
+            </button>
             <button id="toggleWsSettingsBtn" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-surface-container-high bg-surface-container-lowest hover:bg-surface-container-low text-on-surface text-xs font-label font-medium transition" title="Toggle Project Settings & Tuning">
               <span class="material-symbols-outlined text-[16px] text-primary">tune</span>
               <span>Project Settings</span>
             </button>
           </div>
+        </div>
+        <div id="sharedBanner" hidden class="flex items-center justify-between gap-4 px-5 py-2.5 border-b border-surface-container-high bg-surface-container-low shrink-0">
+          <p class="text-xs text-on-surface-variant leading-relaxed">
+            <span class="font-mono text-[10px] uppercase tracking-wider text-primary mr-1.5">Shared chat</span>
+            A read-only snapshot. Continue it to ask follow-up questions in a project of your own, grounded in the same documents.
+          </p>
+          <button id="continueSharedBtn" class="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-on-primary text-xs font-label font-medium hover:opacity-90 transition">
+            <span class="material-symbols-outlined text-[16px]">forum</span> Continue this chat
+          </button>
         </div>
         <div class="relative flex-1 overflow-hidden min-h-0 flex flex-col">
           <div id="messages" class="flex-1 overflow-y-auto px-6 py-6"></div>
@@ -1451,6 +1475,62 @@
 </div>
 
 <!-- ============ RIGHT INSPECTOR (hidden by default) ============ -->
+<!-- ============ SIGN-IN (IRA-36) ============ -->
+<div id="authGate" hidden class="fixed inset-0 z-50 flex items-center justify-center bg-background p-4">
+  <form id="authForm" class="w-full max-w-sm bg-surface-container-lowest border border-surface-container-high rounded-xl p-6 space-y-4" novalidate>
+    <div class="flex items-center gap-3 pb-4 border-b border-surface-container-high">
+      <div class="w-7 h-7 rounded bg-primary flex items-center justify-center text-on-primary font-mono text-xs font-bold shrink-0">IRA</div>
+      <div class="min-w-0">
+        <div id="authTitle" class="font-headline font-semibold text-on-surface text-sm">Sign in</div>
+        <div class="font-mono text-[10px] text-on-surface-variant">Projects and documents are private to your account.</div>
+      </div>
+    </div>
+    <label id="authNameRow" hidden class="block text-xs font-label text-on-surface-variant">Name
+      <input id="authName" type="text" autocomplete="name" maxlength="80" class="mt-1 w-full border border-surface-container-high rounded-lg px-3 py-2 text-sm bg-surface-container-lowest focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
+    </label>
+    <label class="block text-xs font-label text-on-surface-variant">Email
+      <input id="authEmail" type="email" autocomplete="email" required class="mt-1 w-full border border-surface-container-high rounded-lg px-3 py-2 text-sm bg-surface-container-lowest focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
+    </label>
+    <label class="block text-xs font-label text-on-surface-variant">Password
+      <input id="authPassword" type="password" autocomplete="current-password" required class="mt-1 w-full border border-surface-container-high rounded-lg px-3 py-2 text-sm bg-surface-container-lowest focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
+      <span id="authPasswordHint" hidden class="block mt-1 font-mono text-[10px]">At least 8 characters.</span>
+    </label>
+    <div id="authError" hidden role="alert" class="text-xs text-error"></div>
+    <button type="submit" id="authSubmit" class="w-full bg-primary text-on-primary rounded-lg py-2 text-xs font-label font-medium hover:opacity-90 transition disabled:opacity-60">Sign in</button>
+    <button type="button" id="authToggle" class="w-full text-xs font-label text-primary hover:underline">No account? Create one</button>
+  </form>
+</div>
+
+<!-- ============ SHARE DIALOG (IRA-36) ============ -->
+<div id="shareDialog" hidden class="fixed inset-0 z-50 flex items-center justify-center bg-inverse-surface/30 p-4" role="dialog" aria-modal="true" aria-labelledby="shareDialogTitle">
+  <div class="w-full max-w-lg bg-surface-container-lowest border border-surface-container-high rounded-xl">
+    <div class="flex items-center justify-between px-5 py-3 border-b border-surface-container-high">
+      <span id="shareDialogTitle" class="font-headline font-semibold text-sm text-on-surface">Share this chat</span>
+      <button id="shareDialogClose" class="text-on-surface-variant hover:text-on-surface" title="Close"><span class="material-symbols-outlined text-[18px]">close</span></button>
+    </div>
+    <div class="p-5 space-y-4">
+      <p class="text-xs text-on-surface-variant leading-relaxed">
+        Anyone with the link can read this conversation as it is now, including quoted excerpts and page previews of the documents it cites.
+        Messages you add later are not included. Signed-in people can continue it in their own project, with read access to those documents until you revoke the link.
+      </p>
+      <button id="createShareBtn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-on-primary text-xs font-label font-medium hover:opacity-90 transition disabled:opacity-60">
+        <span class="material-symbols-outlined text-[16px]">add_link</span> Create public link
+      </button>
+      <div id="shareNewLink" hidden class="space-y-1.5">
+        <div class="font-mono text-[10px] uppercase tracking-wider text-on-surface-variant">New link. Copy it now: it is not shown again.</div>
+        <div class="flex gap-2">
+          <input id="shareNewLinkInput" readonly class="flex-1 min-w-0 font-mono text-[11px] border border-surface-container-high rounded-lg px-2.5 py-1.5 bg-surface-container-low text-on-surface focus:outline-none focus:border-primary" />
+          <button id="copyShareLinkBtn" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-surface-container-high bg-surface-container-lowest hover:bg-surface-container-low text-on-surface text-xs font-label font-medium transition"><span class="material-symbols-outlined text-[15px]">content_copy</span><span id="copyShareLinkLabel">Copy</span></button>
+        </div>
+      </div>
+      <div>
+        <div class="font-mono text-[10px] uppercase tracking-wider text-on-surface-variant mb-1.5">Links for this project</div>
+        <div id="shareList" class="border border-surface-container-high rounded-lg divide-y divide-surface-container-high"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <aside id="inspector" class="w-[400px] shrink-0 h-screen border-l border-surface-container-high bg-surface flex flex-col z-40" hidden>
   <div class="flex items-center justify-between px-4 py-3 border-b border-surface-container-high">
     <span class="font-headline font-semibold text-sm">Inspector</span>
@@ -1460,6 +1540,25 @@
 </aside>
 
 <script>
+  // ============================================================
+  // Identity (IRA-36): every same-origin call carries the auth cookie and the X-RI-Client header
+  // the gateway's CSRF check requires; a 401 means the session ended, so ask to sign in again.
+  // A /s/<token> URL is a public shared chat, rendered read-only without signing in.
+  // ============================================================
+  const SHARE_TOKEN = (window.location.pathname.match(/^\/s\/([A-Za-z0-9_-]+)\/?$/) || [])[1] || null;
+  let currentUser = null;
+  const isAdmin = () => !!(currentUser && currentUser.is_admin);
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = async (input, init = {}) => {
+    const url = typeof input === 'string' ? input : input.url;
+    if (!(url.startsWith('/') || url.startsWith(window.location.origin))) return nativeFetch(input, init);
+    const headers = new Headers(init.headers || {});
+    headers.set('X-RI-Client', 'web');
+    const res = await nativeFetch(input, { ...init, headers, credentials: 'same-origin' });
+    if (res.status === 401 && !SHARE_TOKEN && !url.includes('/api/v1/auth/')) showAuthGate('login');
+    return res;
+  };
+
   // ============================================================
   // Router: shows/hides <section class="page"> blocks by data-page
   // ============================================================
@@ -1604,13 +1703,37 @@
   // ============================================================
   // Markdown / message rendering (ported from previous UI)
   // ============================================================
+  // Escapes text for use in element content *and* quoted attribute values.
+  function escapeHtmlText(value) {
+    return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  // http(s) or same-origin URLs only; anything else (javascript:, data:) becomes inert.
+  function safeUrl(value) {
+    const v = String(value ?? '').trim();
+    return /^(https?:\/\/|\/)/i.test(v) ? v : '#';
+  }
+  // A citation with every string field HTML-escaped, for templating into innerHTML. Snippets and
+  // titles are document text, which in a shared chat comes from someone else's upload.
+  function htmlSafeCitation(c) {
+    const out = {};
+    for (const [k, v] of Object.entries(c || {})) out[k] = typeof v === 'string' ? escapeHtmlText(v) : v;
+    out.resource_url = c && c.resource_url ? escapeHtmlText(safeUrl(c.resource_url)) : c && c.resource_url;
+    out.web_url = c && c.web_url ? escapeHtmlText(safeUrl(c.web_url)) : c && c.web_url;
+    return out;
+  }
+  document.addEventListener('click', (e) => {
+    const img = e.target.closest && e.target.closest('img[data-fig-src]');
+    if (img) openFigureInInspector(img.dataset.figSrc, encodeURIComponent(img.dataset.figAlt || ''));
+  });
+
   function renderMarkdown(text) {
     if (!text) return '';
-    let escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    let escaped = escapeHtmlText(text);
     escaped = escaped.replace(/!\[(.*?)\]\((.*?)\)/g, (m, alt, src) => {
-      const cleanSrc = src.startsWith('/') || src.startsWith('http') ? src : '/' + src;
+      const cleanSrc = src.startsWith('/') || /^https?:/i.test(src) ? src : '/' + src;
       return `<div class="fig-card rounded-lg border border-surface-container-high bg-surface-container-lowest p-2 my-2 shadow-sm">
-        <img src="${cleanSrc}" alt="${alt}" style="max-height:260px;margin:0.25rem 0;cursor:pointer;" class="rounded w-full object-contain hover:opacity-95 transition" onclick="openFigureInInspector('${cleanSrc}', '${encodeURIComponent(alt)}')" onerror="this.onerror=null;this.parentElement.innerHTML='<div class=\\'p-3 text-xs text-on-surface-variant bg-surface-container-low rounded border border-surface-container-high flex items-center gap-2\\'><span class=\\'material-symbols-outlined text-[16px] text-error\\'>broken_image</span> Figure image unavailable</div>'" />
+        <img src="${cleanSrc}" alt="${alt}" style="max-height:260px;margin:0.25rem 0;cursor:pointer;" class="rounded w-full object-contain hover:opacity-95 transition" data-fig-src="${cleanSrc}" data-fig-alt="${alt}" onerror="this.onerror=null;this.parentElement.innerHTML='<div class=\\'p-3 text-xs text-on-surface-variant bg-surface-container-low rounded border border-surface-container-high flex items-center gap-2\\'><span class=\\'material-symbols-outlined text-[16px] text-error\\'>broken_image</span> Figure image unavailable</div>'" />
         <div class="fig-caption text-[11px] font-mono text-on-surface-variant mt-1">${alt}</div>
       </div>`;
     });
@@ -1634,8 +1757,9 @@
     return escaped.replace(/\n/g, '<br>');
   }
 
-  window.openFigureInInspector = function(src, encodedAlt) {
-    const alt = decodeURIComponent(encodedAlt || '');
+  window.openFigureInInspector = function(rawSrc, encodedAlt) {
+    const src = escapeHtmlText(safeUrl(rawSrc));
+    const alt = escapeHtmlText(decodeURIComponent(encodedAlt || ''));
     const inspector = document.getElementById('inspector');
     const body = document.getElementById('inspectorBody');
     inspector.hidden = false;
@@ -1782,8 +1906,9 @@
       }
     }
 
-    const c = (activeCitationList && activeCitationList[activeCitationIndex]) || citation;
-    if (!c) return;
+    const rawC = (activeCitationList && activeCitationList[activeCitationIndex]) || citation;
+    if (!rawC) return;
+    const c = htmlSafeCitation(rawC);
 
     const inspector = document.getElementById('inspector');
     const body = document.getElementById('inspectorBody');
@@ -1791,14 +1916,19 @@
 
     const isWeb = !!(c.is_web || (c.doc_id && c.doc_id.startsWith('web_')));
     const isFig = !isWeb && !!(c.is_figure && c.image_path);
-    const figUrl = isFig ? (c.image_path.startsWith('/') ? c.image_path : '/' + c.image_path) : null;
+    const figName = isFig ? rawC.image_path.split('/').pop() : null;
+    const figUrl = !isFig ? null
+      : SHARE_TOKEN ? `/api/v1/public/shares/${SHARE_TOKEN}/figures/${encodeURIComponent(figName)}`
+      : `/data/figures/${encodeURIComponent(figName)}`;
     const page = c.page || 1;
     const bboxArr = Array.isArray(c.bbox) ? c.bbox : [];
     const bboxParam = bboxArr.length === 4 ? `&bbox=${bboxArr.map(n => Math.round(n * 10) / 10).join(',')}` : '';
-    const previewUrl = `/api/v1/preview?doc_id=${encodeURIComponent(c.doc_id)}&page=${page}${bboxParam}&zoom=1.5`;
-    const rawPdfUrl = `/api/v1/documents/${encodeURIComponent(c.doc_id)}/raw`;
-    const rawDocLabel = isWeb ? 'Raw Markdown' : 'Raw PDF';
-    const rawDocIcon = isWeb ? 'description' : 'picture_as_pdf';
+    const previewBase = SHARE_TOKEN ? `/api/v1/public/shares/${SHARE_TOKEN}/preview` : '/api/v1/preview';
+    const previewUrl = `${previewBase}?doc_id=${encodeURIComponent(rawC.doc_id)}&page=${page}${bboxParam}&zoom=1.5`;
+    // A shared chat exposes cited pages, not whole source files.
+    const rawPdfUrl = SHARE_TOKEN ? previewUrl : `/api/v1/documents/${encodeURIComponent(rawC.doc_id)}/raw`;
+    const rawDocLabel = SHARE_TOKEN ? 'Page image' : isWeb ? 'Raw Markdown' : 'Raw PDF';
+    const rawDocIcon = SHARE_TOKEN ? 'image' : isWeb ? 'description' : 'picture_as_pdf';
 
     const totalCites = activeCitationList ? activeCitationList.length : 1;
     const currentCiteNum = activeCitationIndex + 1;
@@ -1958,9 +2088,9 @@
       { el: document.getElementById('chatWorkspaceSelect'), isChat: true },
       { el: document.getElementById('libraryScopeSelect'), current: libraryScope, label: 'All documents (Global)' },
       { el: document.getElementById('kgScopeSelect'), current: currentKgScope, label: 'All documents (Global)' },
-      { el: document.getElementById('obsScopeSelect'), current: obsScope, label: 'Global platform (All)' },
-      { el: document.getElementById('ragScopeSelect'), current: ragScope, label: 'Global platform (All)' },
-      { el: document.getElementById('evalScopeSelect'), current: evalScope, label: 'Pipeline benchmark (All)' },
+      { el: document.getElementById('obsScopeSelect'), current: obsScope, label: 'Global platform (All)', adminOnly: true },
+      { el: document.getElementById('ragScopeSelect'), current: ragScope, label: 'Global platform (All)', adminOnly: true },
+      { el: document.getElementById('evalScopeSelect'), current: evalScope, label: 'Pipeline benchmark (All)', adminOnly: true },
     ];
 
     selects.forEach(cfg => {
@@ -1978,6 +2108,11 @@
         const allOpt = document.createElement('option');
         allOpt.value = 'all';
         allOpt.textContent = cfg.label;
+        // The server refuses cross-project views to non-admins (IRA-34).
+        if (cfg.adminOnly && !isAdmin()) {
+          allOpt.disabled = true;
+          allOpt.textContent += ' · admin only';
+        }
         sel.appendChild(allOpt);
       }
 
@@ -2248,6 +2383,7 @@
       if (!res.ok) return;
       const data = await res.json();
       currentChatTitle.textContent = data.session.title;
+      document.getElementById('forkedChip').hidden = !data.session.forked_from;
       const drawerWsName = document.getElementById('drawerWorkspaceName');
       if (drawerWsName) drawerWsName.value = data.session.title;
       const breadcrumb = document.getElementById('breadcrumb');
@@ -2542,6 +2678,7 @@
         <div class="flex items-center gap-2 min-w-0">
           <span class="material-symbols-outlined text-[16px] text-on-surface-variant shrink-0">description</span>
           <span class="text-xs text-on-surface truncate">${doc ? doc.name : docId}</span>
+          ${doc && doc.read_only ? '<span class="font-mono text-[10px] px-1 rounded border border-surface-container-high text-on-surface-variant shrink-0" title="Shared with you read-only through a shared chat">shared</span>' : ''}
         </div>
         <button class="text-on-surface-variant hover:text-error shrink-0" title="Remove from project">
           <span class="material-symbols-outlined text-[15px]">close</span>
@@ -2732,6 +2869,7 @@
         : `<span class="font-mono text-[10px] px-2 py-0.5 rounded bg-surface-container-low border border-surface-container-high">${doc.route || 'fast_text'}</span>`;
       const pagesLabel = isWebDoc ? `${doc.resource_count || 0} links` : (doc.pages ?? '—');
 
+      const tr = document.createElement('tr');
       tr.innerHTML = `
         <td class="px-4 py-2">${docTitleHtml}</td>
         <td class="px-4 py-2 font-mono text-xs text-on-surface-variant">${doc.doc_id}</td>
@@ -4523,23 +4661,255 @@
   // ============================================================
   // Boot
   // ============================================================
-  updateModeButtons(currentRetrievalMode);
-  updateRouteButtons(currentEmbeddingRoute);
-  const initialHash = window.location.hash.replace('#', '').split('/');
-  // Restore the active project so project-scoped pages keep their scope across reloads.
-  let rememberedProject = null;
-  try { rememberedProject = localStorage.getItem('ri_active_project'); } catch (e) {}
-  loadSessions().then(() => {
-    if (!currentSessionId && rememberedProject && allSessions.some(x => x.id === rememberedProject)) {
-      currentSessionId = rememberedProject;
-      const page = (window.location.hash.replace('#', '').split('/')[0]) || 'gallery';
-      if (page !== 'chat') navigate(page);
+  function bootApp() {
+    updateModeButtons(currentRetrievalMode);
+    updateRouteButtons(currentEmbeddingRoute);
+    const initialHash = window.location.hash.replace('#', '').split('/');
+    // Restore the active project so project-scoped pages keep their scope across reloads.
+    let rememberedProject = null;
+    try { rememberedProject = localStorage.getItem('ri_active_project'); } catch (e) {}
+    loadSessions().then(() => {
+      if (!currentSessionId && rememberedProject && allSessions.some(x => x.id === rememberedProject)) {
+        currentSessionId = rememberedProject;
+        const page = (window.location.hash.replace('#', '').split('/')[0]) || 'gallery';
+        if (page !== 'chat') navigate(page);
+      }
+    });
+    loadDocuments();
+    loadAvailableModels();
+    navigate(initialHash[0] || 'gallery', { sessionId: initialHash[1] });
+    if (initialHash[0] === 'chat' && initialHash[1]) openWorkspace(initialHash[1]);
+  }
+
+  // ------------------------------------------------------------
+  // Sign-in (IRA-36)
+  // ------------------------------------------------------------
+  const PENDING_FORK_KEY = 'ri_pending_fork';
+  let authMode = 'login';
+
+  function setAuthMode(mode) {
+    authMode = mode;
+    const signup = mode === 'signup';
+    document.getElementById('authTitle').textContent = signup ? 'Create an account' : 'Sign in';
+    document.getElementById('authSubmit').textContent = signup ? 'Create account' : 'Sign in';
+    document.getElementById('authToggle').textContent = signup ? 'Have an account? Sign in' : 'No account? Create one';
+    document.getElementById('authNameRow').hidden = !signup;
+    document.getElementById('authPasswordHint').hidden = !signup;
+    document.getElementById('authPassword').autocomplete = signup ? 'new-password' : 'current-password';
+    document.getElementById('authError').hidden = true;
+  }
+
+  function showAuthGate(mode = 'login') {
+    const gate = document.getElementById('authGate');
+    if (!gate.hidden) return;
+    setAuthMode(mode);
+    gate.hidden = false;
+    document.getElementById('authEmail').focus();
+  }
+
+  document.getElementById('authToggle').addEventListener('click', () => setAuthMode(authMode === 'login' ? 'signup' : 'login'));
+
+  document.getElementById('authForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('authError');
+    const submit = document.getElementById('authSubmit');
+    const email = document.getElementById('authEmail').value.trim();
+    const password = document.getElementById('authPassword').value;
+    errEl.hidden = true;
+    if (!email || !password) { errEl.textContent = 'Enter your email and password.'; errEl.hidden = false; return; }
+    if (authMode === 'signup' && password.length < 8) { errEl.textContent = 'Use a password of at least 8 characters.'; errEl.hidden = false; return; }
+    const body = authMode === 'signup'
+      ? { email, password, display_name: document.getElementById('authName').value.trim() }
+      : { email, password };
+    submit.disabled = true;
+    try {
+      const res = await fetch(`/api/v1/auth/${authMode}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const detail = (await res.json().catch(() => ({}))).detail;
+        errEl.textContent = typeof detail === 'string' ? detail : 'That didn’t work. Check the details and try again.';
+        errEl.hidden = false;
+        return;
+      }
+      await afterSignIn();
+    } catch (err) {
+      errEl.textContent = 'Could not reach the server.';
+      errEl.hidden = false;
+    } finally {
+      submit.disabled = false;
     }
   });
-  loadDocuments();
-  loadAvailableModels();
-  navigate(initialHash[0] || 'gallery', { sessionId: initialHash[1] });
-  if (initialHash[0] === 'chat' && initialHash[1]) openWorkspace(initialHash[1]);
+
+  async function afterSignIn() {
+    let pending = null;
+    try { pending = sessionStorage.getItem(PENDING_FORK_KEY); } catch (e) {}
+    if (pending) { await forkSharedChat(pending); return; }
+    window.location.reload();
+  }
+
+  function setCurrentUser(user) {
+    currentUser = user;
+    const chip = document.getElementById('userChip');
+    chip.classList.remove('hidden');
+    chip.classList.add('flex');
+    const emailEl = document.getElementById('userChipEmail');
+    emailEl.textContent = user.display_name || user.email;
+    emailEl.title = user.email;
+    document.getElementById('userChipAdmin').classList.toggle('hidden', !user.is_admin);
+    // Crawling the shared web corpus is an admin operation (the server enforces it too).
+    const syncBtn = document.getElementById('syncWebStoreBtn');
+    if (syncBtn) syncBtn.hidden = !user.is_admin;
+  }
+
+  document.getElementById('signOutBtn').addEventListener('click', async () => {
+    await fetch('/api/v1/auth/logout', { method: 'POST' });
+    try { localStorage.removeItem('ri_active_project'); } catch (e) {}
+    window.location.href = '/';
+  });
+
+  // ------------------------------------------------------------
+  // Sharing (IRA-36)
+  // ------------------------------------------------------------
+  const shareDialog = document.getElementById('shareDialog');
+
+  function closeShareDialog() {
+    shareDialog.hidden = true;
+    document.getElementById('shareNewLink').hidden = true;
+    document.getElementById('shareNewLinkInput').value = '';
+  }
+
+  async function openShareDialog() {
+    if (!currentSessionId) return;
+    closeShareDialog();
+    shareDialog.hidden = false;
+    await loadShareList();
+  }
+
+  async function loadShareList() {
+    const list = document.getElementById('shareList');
+    list.innerHTML = '<div class="px-3 py-2.5 text-xs text-on-surface-variant">Loading…</div>';
+    const res = await fetch(`/api/v1/sessions/${currentSessionId}/shares`);
+    const shares = res.ok ? (await res.json()).shares : [];
+    list.innerHTML = '';
+    if (!shares.length) {
+      list.innerHTML = '<div class="px-3 py-2.5 text-xs text-on-surface-variant">No links yet.</div>';
+      return;
+    }
+    shares.forEach(sh => {
+      const row = document.createElement('div');
+      row.className = 'flex items-center justify-between gap-3 px-3 py-2';
+      const when = new Date(sh.created_at * 1000).toLocaleString();
+      row.innerHTML = `
+        <div class="min-w-0">
+          <div class="font-mono text-[11px] text-on-surface">${when}</div>
+          <div class="font-mono text-[10px] text-on-surface-variant">${sh.message_count} messages · ${sh.revoked ? 'revoked' : 'live'}</div>
+        </div>`;
+      if (!sh.revoked) {
+        const btn = document.createElement('button');
+        btn.className = 'text-xs font-label text-error hover:underline shrink-0';
+        btn.textContent = 'Revoke';
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          await fetch(`/api/v1/shares/${sh.id}`, { method: 'DELETE' });
+          await loadShareList();
+        });
+        row.appendChild(btn);
+      }
+      list.appendChild(row);
+    });
+  }
+
+  document.getElementById('shareChatBtn').addEventListener('click', openShareDialog);
+  document.getElementById('shareDialogClose').addEventListener('click', closeShareDialog);
+  shareDialog.addEventListener('click', (e) => { if (e.target === shareDialog) closeShareDialog(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !shareDialog.hidden) closeShareDialog(); });
+
+  document.getElementById('createShareBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('createShareBtn');
+    btn.disabled = true;
+    try {
+      const res = await fetch(`/api/v1/sessions/${currentSessionId}/shares`, { method: 'POST' });
+      if (!res.ok) return;
+      const data = await res.json();
+      const input = document.getElementById('shareNewLinkInput');
+      input.value = data.url;
+      document.getElementById('shareNewLink').hidden = false;
+      input.select();
+      await loadShareList();
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById('copyShareLinkBtn').addEventListener('click', async () => {
+    const input = document.getElementById('shareNewLinkInput');
+    const label = document.getElementById('copyShareLinkLabel');
+    try { await navigator.clipboard.writeText(input.value); } catch (e) { input.select(); document.execCommand('copy'); }
+    label.textContent = 'Copied';
+    setTimeout(() => { label.textContent = 'Copy'; }, 1500);
+  });
+
+  // Continue a shared chat: fork it into a project of one's own, signing in first if needed.
+  async function forkSharedChat(token) {
+    const res = await fetch(`/api/v1/public/shares/${token}/fork`, { method: 'POST' });
+    if (res.status === 401) {
+      try { sessionStorage.setItem(PENDING_FORK_KEY, token); } catch (e) {}
+      showAuthGate('signup');
+      return;
+    }
+    try { sessionStorage.removeItem(PENDING_FORK_KEY); } catch (e) {}
+    if (!res.ok) {
+      alert('This shared chat is no longer available.');
+      return;
+    }
+    const { session_id } = await res.json();
+    window.location.href = `/#chat/${session_id}`;
+  }
+
+  // The chat page, read-only: no sources, settings, composer or project switcher.
+  async function bootSharedView() {
+    ['navRail', 'sourcesPanel', 'wsSettingsDrawer', 'chatForm', 'chatWorkspaceSelect', 'backToGalleryBtn',
+     'toggleWsSettingsBtn', 'shareChatBtn', 'chatTitleEditIcon', 'chatCrumbSep'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
+    const vramPill = document.getElementById('headerVramPill');
+    if (vramPill) vramPill.style.display = 'none';
+    currentChatTitle.contentEditable = 'false';
+    document.body.classList.add('shared-view');
+    document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
+    document.getElementById('page-chat').classList.remove('hidden');
+    document.getElementById('breadcrumb').textContent = 'Shared chat';
+    document.getElementById('continueSharedBtn').addEventListener('click', () => forkSharedChat(SHARE_TOKEN));
+
+    const me = await fetch('/api/v1/auth/me');
+    if (me.ok) setCurrentUser((await me.json()).user);
+
+    const res = await fetch(`/api/v1/public/shares/${SHARE_TOKEN}`);
+    if (!res.ok) {
+      currentChatTitle.textContent = 'Shared chat unavailable';
+      messagesDiv.innerHTML = '<div class="text-sm text-on-surface-variant p-6">This shared chat doesn’t exist or its link was revoked.</div>';
+      return;
+    }
+    const snap = await res.json();
+    document.getElementById('sharedBanner').hidden = false;
+    currentChatTitle.textContent = snap.title;
+    document.title = `${snap.title} · IRA`;
+    messagesDiv.innerHTML = '';
+    snap.messages.forEach(m => appendChatMessage(m.role, m.content, m.citations, false, null));
+  }
+
+  (async function start() {
+    if (SHARE_TOKEN) { bootSharedView(); return; }
+    const res = await fetch('/api/v1/auth/me');
+    if (!res.ok) { showAuthGate('login'); return; }
+    setCurrentUser((await res.json()).user);
+    let pending = null;
+    try { pending = sessionStorage.getItem(PENDING_FORK_KEY); } catch (e) {}
+    if (pending) { forkSharedChat(pending); return; }
+    bootApp();
+  })();
 </script>
 </body>
 </html>
