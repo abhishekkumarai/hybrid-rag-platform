@@ -82,6 +82,9 @@ and the non-streaming one folds them into JSON (`fold_to_response`) — change c
 `api.py`, or the two transports drift apart again. All prompts are built by
 `services/retrieval/prompting.py::build_grounded_prompt` (history → evidence → current question last).
 `tests/unit/test_chat_pipeline_contract.py` pins the wire format for every mode.
+A project with no `system_prompt` gets the grounding persona from `generation.default_system_prompt`
+in `configs/default.yaml` (served to the UI at `/api/v1/prompts/default`). Oversized prompts go through
+`fit_prompt`, which cuts the middle of the evidence so the persona and the "Current question:" tail survive.
 
 **Citations are the invariant.** Every `Block`, `Chunk`, `Candidate` and `Citation` carries
 `doc_id`, `page`, and `bbox` `[x0, y0, x1, y1]`. Compaction, dedup and table pruning must preserve the bbox

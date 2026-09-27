@@ -447,8 +447,15 @@
 
           <!-- System Persona / Prompt -->
           <div>
-            <label class="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-wide">System Persona &amp; Directives</label>
-            <textarea id="drawerSystemPrompt" rows="3" placeholder="e.g., You are a strict SEC auditor. Answer strictly with verified numerical provenance..." class="w-full mt-1.5 resize-none border border-surface-container-high rounded-lg p-2.5 text-xs bg-surface-container-lowest text-on-surface focus:outline-none focus:border-primary font-mono"></textarea>
+            <div class="flex items-center justify-between gap-2">
+              <label for="drawerSystemPrompt" class="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-wide">System Persona &amp; Directives</label>
+              <div class="flex items-center gap-2">
+                <span id="drawerSystemPromptState" class="font-mono text-[10px] text-on-surface-variant">default</span>
+                <button id="drawerSystemPromptReset" type="button" class="hidden font-mono text-[10px] text-primary hover:underline">Reset to default</button>
+              </div>
+            </div>
+            <textarea id="drawerSystemPrompt" rows="9" placeholder="Leave empty to use the default grounding persona." class="w-full mt-1.5 resize-y border border-surface-container-high rounded-lg p-2.5 text-xs leading-relaxed bg-surface-container-lowest text-on-surface focus:outline-none focus:border-primary font-mono"></textarea>
+            <p class="mt-1 font-mono text-[10px] text-on-surface-variant">Sent with every turn and uses tokens from the context window. Keep edits short.</p>
           </div>
 
           <!-- Tuning Sliders (Local to Project) -->
@@ -2216,7 +2223,13 @@
       // Populate System Persona
       const drawerSystemPrompt = document.getElementById('drawerSystemPrompt');
       if (drawerSystemPrompt) {
-        drawerSystemPrompt.value = data.session.system_prompt || '';
+        const custom = data.session.system_prompt || '';
+        drawerSystemPrompt.value = custom;
+        loadDefaultSystemPrompt().then(def => {
+          // The project may have been switched while the default was loading.
+          if (!custom && drawerSystemPrompt.value === '') drawerSystemPrompt.value = def;
+          updateSystemPromptState();
+        });
       }
 
       // Populate Project Tuning Parameters
@@ -3087,11 +3100,48 @@
     });
   }
 
+  // Default grounding persona (configs/default.yaml -> generation.default_system_prompt), fetched once.
+  var defaultSystemPromptPromise = null; // var: may be read before this line runs (hoisted helpers)
+  function loadDefaultSystemPrompt() {
+    if (!defaultSystemPromptPromise) {
+      defaultSystemPromptPromise = fetch('/api/v1/prompts/default')
+        .then(r => (r.ok ? r.json() : { system_prompt: '' }))
+        .then(d => d.system_prompt || '')
+        .catch(() => { defaultSystemPromptPromise = null; return ''; });
+    }
+    return defaultSystemPromptPromise;
+  }
+
+  async function updateSystemPromptState() {
+    const box = document.getElementById('drawerSystemPrompt');
+    const state = document.getElementById('drawerSystemPromptState');
+    const reset = document.getElementById('drawerSystemPromptReset');
+    if (!box || !state || !reset) return;
+    const def = (await loadDefaultSystemPrompt()).trim();
+    const val = box.value.trim();
+    const isDefault = !val || val === def;
+    state.textContent = isDefault ? 'default' : 'custom';
+    state.classList.toggle('text-primary', !isDefault);
+    reset.classList.toggle('hidden', isDefault || !def);
+  }
+
   const drawerSystemPrompt = document.getElementById('drawerSystemPrompt');
+  const drawerSystemPromptReset = document.getElementById('drawerSystemPromptReset');
   if (drawerSystemPrompt) {
+    drawerSystemPrompt.addEventListener('input', updateSystemPromptState);
+    if (drawerSystemPromptReset) {
+      drawerSystemPromptReset.addEventListener('click', async () => {
+        drawerSystemPrompt.value = await loadDefaultSystemPrompt();
+        drawerSystemPrompt.dispatchEvent(new Event('change'));
+      });
+    }
     drawerSystemPrompt.addEventListener('change', async () => {
       if (!currentSessionId) return;
-      const val = drawerSystemPrompt.value.trim();
+      let val = drawerSystemPrompt.value.trim();
+      // The unchanged default is stored as null so the project keeps following the configured default.
+      if (val === (await loadDefaultSystemPrompt()).trim()) val = '';
+      if (!val) drawerSystemPrompt.value = await loadDefaultSystemPrompt();
+      updateSystemPromptState();
       try {
         await fetch(`/api/v1/sessions/${currentSessionId}`, {
           method: 'PATCH',

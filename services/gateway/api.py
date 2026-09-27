@@ -231,6 +231,12 @@ class ModelListResponse(BaseModel):
     ollama_alive: bool
 
 
+@app.get("/api/v1/prompts/default")
+def default_system_prompt() -> dict[str, str]:
+    """The grounding persona applied to projects that have no custom system prompt (REC-76)."""
+    return {"system_prompt": settings.generation.default_system_prompt}
+
+
 @app.get("/api/v1/models", response_model=ModelListResponse)
 def list_available_models() -> ModelListResponse:
     """Lists locally installed Ollama models and indicates the default active model."""

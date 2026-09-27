@@ -42,6 +42,23 @@ logger = get_logger("gateway.chat_pipeline")
 # Hard caps from the 6 GB VRAM target (CLAUDE.md, "Token budget").
 _LARGE_MODEL_TAGS = ("8b", "7b", "14b", "13b", "70b")
 NUM_PREDICT = 256
+_CHARS_PER_TOKEN = 3.5
+_TRUNCATION_NOTE = "\n\n[Context truncated to fit model context window]\n\n"
+
+
+def fit_prompt(prompt: str, max_chars: int) -> str:
+    """Shrinks an over-long prompt by cutting the *middle* (the evidence), never the ends.
+
+    The head holds the persona and the tail holds the current question and the answer instruction
+    (`build_grounded_prompt` puts them last). Cutting the tail, as the old code did, sent the model
+    evidence with no question at all (REC-76)."""
+    if len(prompt) <= max_chars:
+        return prompt
+    q = prompt.rfind("Current question:")
+    tail_len = len(prompt) - q if q != -1 else max_chars // 4
+    tail_len = min(tail_len, max_chars // 2)
+    head_len = max(max_chars - tail_len - len(_TRUNCATION_NOTE), 0)
+    return prompt[:head_len] + _TRUNCATION_NOTE + prompt[len(prompt) - tail_len:]
 
 
 class _Prepared:
@@ -85,6 +102,8 @@ class ChatPipeline:
         steps: list[AgentStep] = []
         sub_queries: list[str] = []
         mode_label: str | None = None
+        # A project without its own persona gets the configured grounding persona (REC-76).
+        persona = req.system_prompt or self.settings.generation.default_system_prompt or None
         t_ret = time.perf_counter()
 
         if is_agentic:
@@ -110,8 +129,8 @@ class ChatPipeline:
                 graph_context=res.graph_response.subgraph_text if res.graph_response else "",
                 compacted_context=res.compacted_context,
             )
-            if req.system_prompt:
-                prompt = f"System Persona & Directives:\n{req.system_prompt}\n\n{prompt}"
+            if persona:
+                prompt = f"System Persona & Directives:\n{persona}\n\n{prompt}"
             prepared = _Prepared(
                 prompt, res.candidates, res.citations,
                 res.candidates[0].rerank_score if res.candidates else 0.0, res.crag.status,
@@ -153,7 +172,7 @@ class ChatPipeline:
             graph_md = graph_res.subgraph_text if graph_res else ""
             prompt = build_grounded_prompt(
                 req.query, f"{graph_md}\n\n{evidence}" if graph_md else evidence,
-                history=history, system_prompt=req.system_prompt,
+                history=history, system_prompt=persona,
                 evidence_label="Relational & document context",
                 task_instructions="Synthesize an accurate answer using the verified graph relations and retrieved passages.",
             )
@@ -169,7 +188,7 @@ class ChatPipeline:
                 )
                 return
             evidence, _ = self._compact(req, retrieval_query, search_res.candidates, 0)
-            prompt = build_grounded_prompt(req.query, evidence, history=history, system_prompt=req.system_prompt)
+            prompt = build_grounded_prompt(req.query, evidence, history=history, system_prompt=persona)
             prepared = _Prepared(prompt, search_res.candidates, search_res.citations, search_res.top_score, None)
 
         yield from self._generate(
@@ -232,10 +251,13 @@ class ChatPipeline:
             agent_steps=steps, sub_queries=sub_queries,
         )
 
-    def _num_ctx(self, req: ChatTurnRequest) -> int:
+    def _num_ctx(self, req: ChatTurnRequest, prompt: str = "") -> int:
         # On the RTX 3050 6 GB target, 7B+ models get a 4K window to stay VRAM-resident.
         max_ctx = 4096 if any(tag in req.model.lower() for tag in _LARGE_MODEL_TAGS) else 8192
-        return min(max(req.compactor_budget + 512, 2048), max_ctx)
+        # Size for the actual prompt (persona + history + evidence + question) plus the answer, not
+        # just the passage budget -- the default persona alone is ~250 tokens (REC-76).
+        needed = max(req.compactor_budget + 512, int(len(prompt) / _CHARS_PER_TOKEN) + NUM_PREDICT + 64)
+        return min(max(needed, 2048), max_ctx)
 
     def _ollama(self, req: ChatTurnRequest, prompt: str, num_ctx: int, stream: bool) -> requests.Response:
         url = f"{self.settings.hardware.ollama_base_url}/api/generate"
@@ -254,17 +276,14 @@ class ChatPipeline:
         resp = call(prompt, num_ctx)
         if resp.status_code != 200:
             logger.warning(f"Ollama returned {resp.status_code}, retrying with safe num_ctx=2048: {resp.text}")
-            resp = call(prompt[:4000], 2048)
+            resp = call(fit_prompt(prompt, 4000), 2048)
         return resp
 
     def _generate(self, req: ChatTurnRequest, prep: _Prepared, t_start: float, retrieval_ms: float, *,
                   stream_llm: bool, is_agentic: bool, steps: list[AgentStep], sub_queries: list[str],
                   mode: str | None) -> Iterator[ChatEvent]:
-        num_ctx = self._num_ctx(req)
-        prompt = prep.prompt
-        max_prompt_chars = int((num_ctx - 350) * 3.5)
-        if len(prompt) > max_prompt_chars:
-            prompt = prompt[:max_prompt_chars] + "\n\n[Context truncated to fit model context window]\n"
+        num_ctx = self._num_ctx(req, prep.prompt)
+        prompt = fit_prompt(prep.prompt, int((num_ctx - 350) * _CHARS_PER_TOKEN))
 
         parts: list[str] = []
         token_count = 0

@@ -74,6 +74,11 @@ class RetrievalConfig(BaseModel):
     hnsw_ef_search: int = 128
 
 
+class GenerationConfig(BaseModel):
+    # Persona used when a project has no custom system prompt (text lives in configs/default.yaml).
+    default_system_prompt: str = ""
+
+
 class EvaluationConfig(BaseModel):
     # Fraction of answered turns also graded by an LLM judge (0 disables it). The judge shares the
     # 6 GB GPU with generation, so it runs in a background thread on a sample, never inline.
@@ -94,6 +99,7 @@ class AppConfig(BaseModel):
     ingestion: IngestionConfig = Field(default_factory=IngestionConfig)
     chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
+    generation: GenerationConfig = Field(default_factory=GenerationConfig)
     evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
