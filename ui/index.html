@@ -265,6 +265,11 @@
             <span>Select</span>
           </button>
 
+          <button id="webRagPresetBtn" class="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 text-xs font-label font-semibold transition cursor-pointer" title="Open or initialize Wiki Index Web RAG Project">
+            <span class="material-symbols-outlined text-[16px]">language</span>
+            <span>Web RAG Wiki</span>
+          </button>
+
           <button id="newWorkspaceBtn" class="flex items-center gap-2 bg-primary text-on-primary font-label text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition">
             <span class="material-symbols-outlined text-[18px]">add</span> New Project
           </button>
@@ -533,11 +538,19 @@
           <h1 class="font-headline font-bold text-2xl text-on-surface">Documents</h1>
           <p class="text-sm text-on-surface-variant mt-1" id="libraryScopeLabel">All documents</p>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 flex-wrap">
           <span class="font-mono text-[10px] text-on-surface-variant uppercase tracking-wider font-semibold">Scope:</span>
           <select id="libraryScopeSelect" class="border border-surface-container-high rounded-lg px-3 py-1.5 text-xs font-headline font-semibold bg-surface-container-lowest text-on-surface focus:outline-none focus:border-primary transition cursor-pointer">
             <option value="all">All documents (Global)</option>
           </select>
+          <button id="syncWebStoreBtn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 text-xs font-semibold font-headline transition cursor-pointer" title="Crawl & synchronize wiki-index.pages.dev directory into RAG store">
+            <span class="material-symbols-outlined text-[15px]">sync</span>
+            <span>Sync Wiki Index</span>
+          </button>
+          <button id="openWebRagProjectBtn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 text-xs font-semibold font-headline transition cursor-pointer" title="Open or create dedicated Wiki Index Web RAG project">
+            <span class="material-symbols-outlined text-[15px]">language</span>
+            <span>Web RAG Chat</span>
+          </button>
         </div>
       </div>
 
@@ -1604,6 +1617,7 @@
       </div>`;
     });
     escaped = escaped.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    escaped = escaped.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-primary underline hover:text-primary-hover inline-flex items-center gap-0.5 font-medium">$1<span class="material-symbols-outlined text-[11px] inline opacity-70">open_in_new</span></a>');
     escaped = escaped.replace(/`([^`]+)`/g, '<code style="font-family:\'JetBrains Mono\',monospace;font-size:11px;background:#f4f4ef;padding:2px 4px;border-radius:4px;border:1px solid #e1e3dd;">$1</code>');
     const tableRegex = /(\|.+?\|\n\|[-:| ]+\|\n(?:\|.+?\|\n?)+)/g;
     escaped = escaped.replace(tableRegex, (match) => {
@@ -1649,12 +1663,23 @@
   function citeTag(c, citations, idx) {
     const tag = document.createElement('span');
     tag.className = 'cite-tag';
-    const icon = c.is_figure ? 'image' : c.is_table ? 'table_chart' : 'description';
-    // The full badge carries the bbox, which wrapped every chip onto two lines; keep it in the tooltip.
-    const label = c.doc_id ? `${c.doc_id} · p.${c.page}` : c.formatted_badge;
-    tag.innerHTML = `<span class="material-symbols-outlined text-[13px]">${icon}</span><span class="cite-label"></span>`;
+    const isWeb = !!(c.is_web || (c.doc_id && c.doc_id.startsWith('web_')));
+    const icon = isWeb ? 'language' : c.is_figure ? 'image' : c.is_table ? 'table_chart' : 'description';
+    let label;
+    if (isWeb) {
+      label = c.resource_title ? `${c.resource_title}` : (c.formatted_badge || c.doc_id);
+    } else {
+      label = c.doc_id ? `${c.doc_id} · p.${c.page}` : c.formatted_badge;
+    }
+    tag.innerHTML = `<span class="material-symbols-outlined text-[13px] ${isWeb ? 'text-emerald-400' : ''}">${icon}</span><span class="cite-label"></span>`;
     tag.querySelector('.cite-label').textContent = label;
-    tag.title = `${c.formatted_badge}\nClick to inspect provenance`;
+    if (isWeb) {
+      tag.title = `${c.formatted_badge}\nResource: ${c.resource_url || 'N/A'}\nWiki: ${c.web_url || 'N/A'}\nClick to inspect Web provenance`;
+      tag.style.borderColor = 'rgba(16, 185, 129, 0.35)';
+      tag.style.backgroundColor = 'rgba(16, 185, 129, 0.08)';
+    } else {
+      tag.title = `${c.formatted_badge}\nClick to inspect provenance`;
+    }
     tag.addEventListener('click', () => openVisualPreview(c, citations, idx));
     return tag;
   }
@@ -1766,13 +1791,16 @@
     const body = document.getElementById('inspectorBody');
     inspector.hidden = false;
 
-    const isFig = !!(c.is_figure && c.image_path);
+    const isWeb = !!(c.is_web || (c.doc_id && c.doc_id.startsWith('web_')));
+    const isFig = !isWeb && !!(c.is_figure && c.image_path);
     const figUrl = isFig ? (c.image_path.startsWith('/') ? c.image_path : '/' + c.image_path) : null;
     const page = c.page || 1;
     const bboxArr = Array.isArray(c.bbox) ? c.bbox : [];
     const bboxParam = bboxArr.length === 4 ? `&bbox=${bboxArr.map(n => Math.round(n * 10) / 10).join(',')}` : '';
     const previewUrl = `/api/v1/preview?doc_id=${encodeURIComponent(c.doc_id)}&page=${page}${bboxParam}&zoom=1.5`;
     const rawPdfUrl = `/api/v1/documents/${encodeURIComponent(c.doc_id)}/raw`;
+    const rawDocLabel = isWeb ? 'Raw Markdown' : 'Raw PDF';
+    const rawDocIcon = isWeb ? 'description' : 'picture_as_pdf';
 
     const totalCites = activeCitationList ? activeCitationList.length : 1;
     const currentCiteNum = activeCitationIndex + 1;
@@ -1793,9 +1821,9 @@
                 <span class="material-symbols-outlined text-[14px]">chevron_right</span>
               </button>
             ` : ''}
-            <a href="${rawPdfUrl}" target="_blank" class="px-2 py-1 rounded border border-surface-container-high bg-surface-container-lowest hover:bg-surface-container-low text-[11px] font-mono text-on-surface flex items-center gap-1 transition" title="Open source PDF in new tab">
-              <span class="material-symbols-outlined text-[13px] text-primary">picture_as_pdf</span>
-              <span>Raw PDF</span>
+            <a href="${rawPdfUrl}" target="_blank" class="px-2 py-1 rounded border border-surface-container-high bg-surface-container-lowest hover:bg-surface-container-low text-[11px] font-mono text-on-surface flex items-center gap-1 transition" title="Open source in new tab">
+              <span class="material-symbols-outlined text-[13px] text-primary">${rawDocIcon}</span>
+              <span>${rawDocLabel}</span>
             </a>
           </div>
         </div>
@@ -1804,69 +1832,91 @@
         <div class="p-2.5 rounded-lg bg-surface-container-low border border-surface-container-high text-xs space-y-1">
           <div class="flex items-center justify-between">
             <span class="font-medium text-on-surface truncate max-w-[240px]" title="${c.doc_id}">
-              ${c.doc_id}
+              ${isWeb ? (c.resource_title || c.doc_id) : c.doc_id}
             </span>
-            <span class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-surface-container-high text-on-surface font-semibold shrink-0">
-              Page ${page}
+            <span class="font-mono text-[10px] px-1.5 py-0.5 rounded ${isWeb ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-surface-container-high text-on-surface'} font-semibold shrink-0">
+              ${isWeb ? 'Web Source' : `Page ${page}`}
             </span>
           </div>
           <div class="font-mono text-[10px] text-on-surface-variant truncate">
-            ${bboxArr.length === 4 ? `BBox: [${bboxArr.map(n => Math.round(n)).join(', ')}]` : 'Full Page'}
+            ${isWeb ? (c.web_url || c.doc_id) : (bboxArr.length === 4 ? `BBox: [${bboxArr.map(n => Math.round(n)).join(', ')}]` : 'Full Page')}
           </div>
         </div>
 
-        ${isFig ? `
-          <!-- Extracted Figure Section -->
+        ${isWeb ? `
+          <!-- Web Provenance Card -->
+          <div class="space-y-3">
+            <div class="p-3 rounded-lg border border-emerald-500/30 bg-emerald-950/20 text-xs space-y-2.5">
+              <div class="flex items-center gap-1.5 text-emerald-400 font-semibold font-headline">
+                <span class="material-symbols-outlined text-[16px]">language</span>
+                <span>Wiki Index Web Provenance</span>
+              </div>
+              ${c.resource_title ? `<div class="font-headline font-bold text-sm text-on-surface">${c.resource_title}</div>` : ''}
+              <div class="flex flex-wrap gap-2 pt-1">
+                ${c.resource_url ? `
+                  <a href="${c.resource_url}" target="_blank" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-on-primary font-semibold text-xs transition hover:opacity-90">
+                    <span class="material-symbols-outlined text-[14px]">open_in_new</span>
+                    <span>Visit Tool / Site</span>
+                  </a>
+                ` : ''}
+                ${c.web_url ? `
+                  <a href="${c.web_url}" target="_blank" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-surface-container-high bg-surface-container-lowest hover:bg-surface-container-low text-on-surface text-xs font-medium transition">
+                    <span class="material-symbols-outlined text-[14px] text-emerald-400">link</span>
+                    <span>View on Wiki Index</span>
+                  </a>
+                ` : ''}
+              </div>
+            </div>
+          </div>
+        ` : `
+          ${isFig ? `
+            <!-- Extracted Figure Section -->
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="font-headline font-semibold text-xs text-on-surface flex items-center gap-1.5">
+                  <span class="material-symbols-outlined text-[15px] text-primary">image</span>
+                  <span>Extracted Figure</span>
+                </span>
+                <a href="${figUrl}" target="_blank" class="text-[11px] font-mono text-primary hover:underline flex items-center gap-0.5">
+                  <span>View Full</span>
+                  <span class="material-symbols-outlined text-[12px]">open_in_new</span>
+                </a>
+              </div>
+              <div class="rounded-lg border border-surface-container-high bg-surface-container-lowest p-2 shadow-sm">
+                <img src="${figUrl}" alt="Figure from ${c.doc_id}" class="w-full h-auto rounded object-contain max-h-60" onerror="this.parentElement.innerHTML='<div class=\\'p-3 text-xs text-error flex items-center gap-1.5\\'><span class=\\'material-symbols-outlined text-[15px]\\'>broken_image</span> Figure image unavailable</div>'" />
+              </div>
+            </div>
+          ` : ''}
+
+          <!-- Page Provenance Snapshot Section -->
           <div>
             <div class="flex items-center justify-between mb-1.5">
               <span class="font-headline font-semibold text-xs text-on-surface flex items-center gap-1.5">
-                <span class="material-symbols-outlined text-[15px] text-primary">image</span>
-                <span>Extracted Figure</span>
+                <span class="material-symbols-outlined text-[15px] text-primary">find_in_page</span>
+                <span>${isFig ? 'Page Context (Bounding Box)' : 'Visual Provenance Snapshot'}</span>
               </span>
-              <a href="${figUrl}" target="_blank" class="text-[11px] font-mono text-primary hover:underline flex items-center gap-0.5">
-                <span>View Full</span>
-                <span class="material-symbols-outlined text-[12px]">open_in_new</span>
-              </a>
+              <span class="text-[10px] font-mono text-on-surface-variant">Page ${page}</span>
             </div>
-            <div class="rounded-lg border border-surface-container-high bg-surface-container-lowest p-2 shadow-sm">
-              <img src="${figUrl}" alt="Figure from ${c.doc_id}" class="w-full h-auto rounded object-contain max-h-60" onerror="this.parentElement.innerHTML='<div class=\\'p-3 text-xs text-error flex items-center gap-1.5\\'><span class=\\'material-symbols-outlined text-[15px]\\'>broken_image</span> Figure image unavailable</div>'" />
+
+            <div class="relative min-h-[200px] rounded-lg border border-surface-container-high bg-surface-container-lowest overflow-hidden shadow-sm flex flex-col items-center justify-center">
+              <div id="inspImgSkeleton" class="absolute inset-0 flex flex-col items-center justify-center bg-surface-container-low text-on-surface-variant gap-2 text-xs">
+                <span class="material-symbols-outlined animate-spin text-[22px] text-primary">progress_activity</span>
+                <span class="font-mono text-[11px]">Rendering page ${page}…</span>
+              </div>
+              <div id="inspImgError" class="hidden absolute inset-0 flex flex-col items-center justify-center p-4 bg-surface-container-low text-center space-y-2">
+                <span class="material-symbols-outlined text-[24px] text-error">broken_image</span>
+                <div class="text-xs font-medium text-on-surface">Page snapshot unavailable</div>
+                <p class="text-[11px] text-on-surface-variant max-w-[260px]">Could not render provenance snapshot for this document.</p>
+                <a href="${rawPdfUrl}" target="_blank" class="inline-flex items-center gap-1 px-3 py-1.5 bg-surface-container-lowest hover:bg-surface-container border border-surface-container-high rounded text-primary text-xs font-mono transition">
+                  <span class="material-symbols-outlined text-[14px]">open_in_new</span> Open Raw Document
+                </a>
+              </div>
+              <img id="inspImg" src="${previewUrl}" alt="Page ${page} provenance" class="w-full h-auto block rounded transition-opacity duration-150 opacity-0"
+                onload="document.getElementById('inspImgSkeleton').style.display='none'; this.classList.remove('opacity-0');"
+                onerror="document.getElementById('inspImgSkeleton').style.display='none'; document.getElementById('inspImgError').classList.remove('hidden'); this.style.display='none';" />
             </div>
           </div>
-        ` : ''}
-
-        <!-- Page Provenance Snapshot Section -->
-        <div>
-          <div class="flex items-center justify-between mb-1.5">
-            <span class="font-headline font-semibold text-xs text-on-surface flex items-center gap-1.5">
-              <span class="material-symbols-outlined text-[15px] text-primary">find_in_page</span>
-              <span>${isFig ? 'Page Context (Bounding Box)' : 'Visual Provenance Snapshot'}</span>
-            </span>
-            <span class="text-[10px] font-mono text-on-surface-variant">Page ${page}</span>
-          </div>
-
-          <div class="relative min-h-[200px] rounded-lg border border-surface-container-high bg-surface-container-lowest overflow-hidden shadow-sm flex flex-col items-center justify-center">
-            <!-- Loading skeleton -->
-            <div id="inspImgSkeleton" class="absolute inset-0 flex flex-col items-center justify-center bg-surface-container-low text-on-surface-variant gap-2 text-xs">
-              <span class="material-symbols-outlined animate-spin text-[22px] text-primary">progress_activity</span>
-              <span class="font-mono text-[11px]">Rendering page ${page}…</span>
-            </div>
-
-            <!-- Error fallback state -->
-            <div id="inspImgError" class="hidden absolute inset-0 flex flex-col items-center justify-center p-4 bg-surface-container-low text-center space-y-2">
-              <span class="material-symbols-outlined text-[24px] text-error">broken_image</span>
-              <div class="text-xs font-medium text-on-surface">Page snapshot unavailable</div>
-              <p class="text-[11px] text-on-surface-variant max-w-[260px]">Could not render provenance snapshot for this document.</p>
-              <a href="${rawPdfUrl}" target="_blank" class="inline-flex items-center gap-1 px-3 py-1.5 bg-surface-container-lowest hover:bg-surface-container border border-surface-container-high rounded text-primary text-xs font-mono transition">
-                <span class="material-symbols-outlined text-[14px]">open_in_new</span> Open Raw Document
-              </a>
-            </div>
-
-            <!-- Provenance Image -->
-            <img id="inspImg" src="${previewUrl}" alt="Page ${page} provenance" class="w-full h-auto block rounded transition-opacity duration-150 opacity-0"
-              onload="document.getElementById('inspImgSkeleton').style.display='none'; this.classList.remove('opacity-0');"
-              onerror="document.getElementById('inspImgSkeleton').style.display='none'; document.getElementById('inspImgError').classList.remove('hidden'); this.style.display='none';" />
-          </div>
-        </div>
+        `}
 
         <!-- Evidence Snippet -->
         ${c.snippet ? `
@@ -2298,6 +2348,47 @@
     } catch (e) { console.error('Failed to create project', e); }
   });
 
+  const handleOpenWebRagProject = async () => {
+    try {
+      const res = await fetch('/api/v1/web/preset-project', { method: 'POST' });
+      if (!res.ok) return;
+      const data = await res.json();
+      await loadSessions();
+      await loadDocuments();
+      openWorkspace(data.session_id);
+    } catch (e) {
+      console.error('Failed to open Web RAG project', e);
+    }
+  };
+
+  const webRagBtn = document.getElementById('webRagPresetBtn');
+  if (webRagBtn) webRagBtn.addEventListener('click', handleOpenWebRagProject);
+  const openWebRagProjectBtn = document.getElementById('openWebRagProjectBtn');
+  if (openWebRagProjectBtn) openWebRagProjectBtn.addEventListener('click', handleOpenWebRagProject);
+
+  const syncWebBtn = document.getElementById('syncWebStoreBtn');
+  if (syncWebBtn) {
+    syncWebBtn.addEventListener('click', async () => {
+      const origHtml = syncWebBtn.innerHTML;
+      try {
+        syncWebBtn.disabled = true;
+        syncWebBtn.innerHTML = '<span class="material-symbols-outlined text-[15px] animate-spin">refresh</span><span>Syncing…</span>';
+        const res = await fetch('/api/v1/web/sync', { method: 'POST' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        await loadDocuments();
+        await loadSessions();
+        alert(`Successfully synced Wiki Index: ${data.total_pages} categories, ${data.total_resources} resources, ${data.total_chunks} chunks.`);
+      } catch (e) {
+        console.error('Failed to sync wiki index', e);
+        alert(`Failed to sync wiki index: ${e.message || e}`);
+      } finally {
+        syncWebBtn.disabled = false;
+        syncWebBtn.innerHTML = origHtml;
+      }
+    });
+  }
+
   document.getElementById('manageLibraryLink').addEventListener('click', () => {
     libraryScope = currentSessionId || 'all';
     const libSel = document.getElementById('libraryScopeSelect');
@@ -2631,13 +2722,20 @@
     body.innerHTML = '';
     empty.hidden = docs.length > 0;
     docs.forEach(doc => {
-      const tr = document.createElement('tr');
-      tr.className = 'doc-row border-t border-surface-container-high';
+      const isWebDoc = !!doc.is_web;
+      const docTitleHtml = isWebDoc && doc.url
+        ? `<a href="${doc.url}" target="_blank" class="hover:underline flex items-center gap-1 font-medium text-on-surface hover:text-primary transition" title="${doc.url}"><span>${doc.name}</span><span class="material-symbols-outlined text-[12px] text-emerald-400">open_in_new</span></a>`
+        : `<span class="text-on-surface">${doc.name}</span>`;
+      const routeBadge = isWebDoc
+        ? `<span class="font-mono text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">web / ${doc.category || 'wiki'}</span>`
+        : `<span class="font-mono text-[10px] px-2 py-0.5 rounded bg-surface-container-low border border-surface-container-high">${doc.route || 'fast_text'}</span>`;
+      const pagesLabel = isWebDoc ? `${doc.resource_count || 0} links` : (doc.pages ?? '—');
+
       tr.innerHTML = `
-        <td class="px-4 py-2 text-on-surface">${doc.name}</td>
+        <td class="px-4 py-2">${docTitleHtml}</td>
         <td class="px-4 py-2 font-mono text-xs text-on-surface-variant">${doc.doc_id}</td>
-        <td class="px-4 py-2 font-mono text-xs">${doc.pages ?? '—'}</td>
-        <td class="px-4 py-2"><span class="font-mono text-[10px] px-2 py-0.5 rounded bg-surface-container-low border border-surface-container-high">${doc.route || 'fast_text'}</span></td>
+        <td class="px-4 py-2 font-mono text-xs">${pagesLabel}</td>
+        <td class="px-4 py-2">${routeBadge}</td>
         <td class="px-4 py-2 font-mono text-xs text-on-surface-variant">${doc.size_kb ? doc.size_kb + ' KB' : '—'}</td>
         <td class="px-4 py-2 text-right">
           ${currentSessionId ? `<button class="text-xs text-primary hover:underline" data-attach="${doc.doc_id}">Attach</button>` : ''}

@@ -57,10 +57,14 @@ def reciprocal_rank_fusion(
         # Normalized RRF score mapped to [0.0, 1.0] scale
         norm_rrf = min(1.0, scores[cid] / max_possible_rrf)
 
+        meta = payload.get("meta") or {}
+        doc_id_val = payload.get("doc_id", "")
+        is_web = bool(meta.get("is_web") or doc_id_val.startswith("web_"))
+
         candidates.append(
             Candidate(
                 id=cid,
-                doc_id=payload.get("doc_id", ""),
+                doc_id=doc_id_val,
                 page=payload.get("page", 1),
                 bbox=bbox_tuple,
                 text=payload.get("text", ""),
@@ -72,6 +76,10 @@ def reciprocal_rank_fusion(
                 is_figure=payload.get("is_figure", False),
                 image_path=payload.get("image_path"),
                 caption=payload.get("caption"),
+                is_web=is_web,
+                web_url=meta.get("wiki_url") or meta.get("url"),
+                resource_url=meta.get("resource_url"),
+                resource_title=meta.get("resource_title"),
             )
         )
 

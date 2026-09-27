@@ -38,6 +38,10 @@ class Candidate(BaseModel):
     is_figure: bool = Field(default=False, description="Figure chunk flag")
     image_path: str | None = Field(default=None, description="Relative path to figure PNG")
     caption: str | None = Field(default=None, description="Caption for table or figure")
+    is_web: bool = Field(default=False, description="Web chunk flag")
+    web_url: str | None = Field(default=None, description="Direct web URL or wiki section anchor")
+    resource_url: str | None = Field(default=None, description="External resource URL")
+    resource_title: str | None = Field(default=None, description="Resource title")
 
 
 class Citation(BaseModel):
@@ -50,6 +54,10 @@ class Citation(BaseModel):
     is_table: bool = Field(default=False, description="Table citation flag")
     is_figure: bool = Field(default=False, description="Figure citation flag")
     image_path: str | None = Field(default=None, description="Relative path to figure PNG if available")
+    is_web: bool = Field(default=False, description="Web citation flag")
+    web_url: str | None = Field(default=None, description="Direct web URL or wiki section anchor")
+    resource_url: str | None = Field(default=None, description="External resource URL")
+    resource_title: str | None = Field(default=None, description="Resource title")
 
 
 class RetrieveResponse(BaseModel):

@@ -35,6 +35,14 @@ from contracts.session import (
     SessionListResponse,
     UpdateSessionRequest,
 )
+from contracts.web import (
+    WebPageDocument,
+    WebPresetProjectRequest,
+    WebPresetProjectResponse,
+    WebSourcesListResponse,
+    WebSyncRequest,
+    WebSyncResponse,
+)
 from services.common.config import load_config
 from services.common.logger import get_logger
 from services.evaluation import project as project_eval
@@ -42,6 +50,7 @@ from services.feedback.store import RAGOpsStore
 from services.gateway.chat_pipeline import ChatPipeline, fold_to_response, to_sse
 from services.graph.extractor import EntityRelationshipExtractor
 from services.indexing.service import IndexingService
+from services.indexing.web_indexer import WebRAGIndexer
 from services.ingestion.service import IngestionService
 from services.ingestion.visualizer import render_page_with_bbox, resolve_document_path
 from services.retrieval.agentic import AgenticCoordinator
@@ -103,6 +112,17 @@ def get_services() -> tuple[IngestionService, IndexingService, RetrievalService]
             ollama_url=settings.hardware.ollama_base_url,
         )
     return _ingestion_service, _indexing_service, _retrieval_service
+
+
+_web_indexer: WebRAGIndexer | None = None
+
+
+def get_web_indexer() -> WebRAGIndexer:
+    global _web_indexer
+    if _web_indexer is None:
+        _, indexing, _ = get_services()
+        _web_indexer = WebRAGIndexer(indexing_service=indexing)
+    return _web_indexer
 
 
 STORE_RELOAD_INTERVAL_SECONDS = 60
@@ -444,7 +464,7 @@ def replay_dlq(task_id: str | None = None) -> dict[str, Any]:
 
 @app.get("/api/v1/documents")
 def list_documents() -> dict:
-    """Lists indexed and available documents in data/documents with metadata."""
+    """Lists indexed and available documents in data/documents and data/web_documents with metadata."""
     doc_dir = Path("data/documents")
     docs = []
     if doc_dir.exists():
@@ -462,13 +482,43 @@ def list_documents() -> dict:
                 "doc_id": f.name,
                 "pages": page_count,
                 "size_kb": round(f.stat().st_size / 1024, 1),
+                "is_web": False,
             })
+
+    # Include indexed web sources from Web RAG store
+    try:
+        indexer = get_web_indexer()
+        for ws in indexer.list_sources():
+            docs.append({
+                "name": f"🌐 {ws.title}",
+                "doc_id": ws.doc_id,
+                "pages": 1,
+                "size_kb": round((ws.chunks_count * 512 * 4) / 1024, 1),
+                "is_web": True,
+                "url": ws.url,
+                "category": ws.category,
+                "resource_count": ws.resources_count,
+                "chunks_count": ws.chunks_count,
+            })
+    except Exception as e:
+        logger.warning(f"Could not list web sources in list_documents: {e}")
+
     return {"documents": docs}
 
 
 @app.get("/api/v1/documents/{doc_id}/raw")
 def get_raw_document(doc_id: str) -> Response:
-    """Serves the raw PDF binary for browser preview or download."""
+    """Serves the raw PDF binary or Web Markdown representation for browser preview or download."""
+    if doc_id.startswith("web_") or doc_id.startswith("wiki_index"):
+        clean_name = Path(doc_id).stem
+        web_md_path = Path("data/web_documents") / f"{clean_name}.md"
+        if web_md_path.exists():
+            return Response(
+                content=web_md_path.read_bytes(),
+                media_type="text/markdown; charset=utf-8",
+                headers={"Content-Disposition": f'inline; filename="{clean_name}.md"'},
+            )
+
     doc_path = resolve_document_path(doc_id)
     if not doc_path:
         raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found")
@@ -636,6 +686,108 @@ def delete_session(session_id: str) -> dict[str, bool]:
     """Deletes a conversational session and its thread history."""
     deleted = session_manager.delete_session(session_id)
     return {"deleted": deleted}
+
+
+# --- Web RAG Store Endpoints (IRA-25, IRA-28) ---
+
+
+@app.post("/api/v1/web/sync", response_model=WebSyncResponse)
+def sync_web_store(req: WebSyncRequest | None = None) -> WebSyncResponse:
+    """Crawls and synchronizes wiki-index.pages.dev categories into the RAG store."""
+    indexer = get_web_indexer()
+    categories = req.categories if req else None
+    force_refresh = req.force_refresh if req else False
+    return indexer.sync_categories(categories=categories, force_refresh=force_refresh)
+
+
+@app.get("/api/v1/web/sources", response_model=WebSourcesListResponse)
+def list_web_sources() -> WebSourcesListResponse:
+    """Lists all indexed web source documents from the wiki-index store."""
+    indexer = get_web_indexer()
+    sources = indexer.list_sources()
+    total_res = sum(s.resources_count for s in sources)
+    return WebSourcesListResponse(
+        sources=sources,
+        total_sources=len(sources),
+        total_resources=total_res,
+        base_url="https://wiki-index.pages.dev",
+    )
+
+
+@app.get("/api/v1/web/sources/{doc_id}", response_model=WebPageDocument)
+def get_web_source_detail(doc_id: str) -> WebPageDocument:
+    """Returns complete metadata and extracted resources for a specific web source document."""
+    indexer = get_web_indexer()
+    doc = indexer.get_source(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"Web source '{doc_id}' not found")
+    return doc
+
+
+@app.post("/api/v1/web/preset-project", response_model=WebPresetProjectResponse)
+def create_or_sync_preset_web_project(req: WebPresetProjectRequest | None = None) -> WebPresetProjectResponse:
+    """Creates or updates a dedicated 'Wiki Index (Web RAG)' workspace session with web sources attached."""
+    title = req.title if (req and req.title) else "Wiki Index (Web RAG)"
+    indexer = get_web_indexer()
+    sources = indexer.list_sources()
+
+    # If no sources exist yet, trigger initial sync of core categories
+    if not sources:
+        indexer.sync_categories(
+            categories=["ai", "developer-tools", "internet-tools", "video", "audio", "gaming"],
+            max_pages=6,
+        )
+        sources = indexer.list_sources()
+
+    target_doc_ids = [s.doc_id for s in sources]
+    if req and req.categories:
+        cat_set = set(req.categories)
+        target_doc_ids = [s.doc_id for s in sources if s.category in cat_set]
+
+    system_persona = (
+        "You are a specialized Web Research & Directory Assistant powered by the curated Wiki Index "
+        "(https://wiki-index.pages.dev/).\n\n"
+        "Directives:\n"
+        "1. Recommend tools, resources, and platforms strictly based on the retrieved wiki directory evidence.\n"
+        "2. When mentioning any resource, ALWAYS provide a clickable markdown link [Resource Name](URL) "
+        "using the exact URL given in the retrieved excerpts.\n"
+        "3. Specify the section/category breadcrumbs and any key features or sign-up constraints mentioned.\n"
+        "4. If multiple tools exist for a task, organize them logically with brief pros/cons or highlights."
+    )
+
+    # Check if a preset session already exists
+    existing_sessions = session_manager.list_sessions()
+    target_session = next((s for s in existing_sessions if s.title == title), None)
+
+    if target_session:
+        # Update existing session files to include newly indexed web sources
+        merged_files = list(dict.fromkeys(target_session.files + target_doc_ids))
+        session_manager.update_session(
+            target_session.id,
+            UpdateSessionRequest(
+                system_prompt=system_persona,
+                files=merged_files,
+            ),
+        )
+        return WebPresetProjectResponse(
+            session_id=target_session.id,
+            title=title,
+            attached_sources=merged_files,
+            created=False,
+        )
+
+    # Create new session
+    new_sess = session_manager.create_session(
+        title=title,
+        system_prompt=system_persona,
+        files=target_doc_ids,
+    )
+    return WebPresetProjectResponse(
+        session_id=new_sess.id,
+        title=title,
+        attached_sources=target_doc_ids,
+        created=True,
+    )
 
 
 # --- System Observability & Telemetry Endpoint ---

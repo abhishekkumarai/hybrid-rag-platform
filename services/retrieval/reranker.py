@@ -127,7 +127,11 @@ class FlashRankReranker:
         citations: list[Citation] = []
         for c in top_candidates:
             b = c.bbox
-            formatted_badge = f"[{c.doc_id}: Page {c.page}, ({b[0]:.1f}, {b[1]:.1f}, {b[2]:.1f}, {b[3]:.1f})]"
+            if c.is_web or c.doc_id.startswith("web_"):
+                res_part = c.resource_title or (c.headings[-1] if c.headings else "Web")
+                formatted_badge = f"[{c.doc_id}: {res_part}]"
+            else:
+                formatted_badge = f"[{c.doc_id}: Page {c.page}, ({b[0]:.1f}, {b[1]:.1f}, {b[2]:.1f}, {b[3]:.1f})]"
             citations.append(
                 Citation(
                     doc_id=c.doc_id,
@@ -138,6 +142,10 @@ class FlashRankReranker:
                     is_table=c.is_table,
                     is_figure=c.is_figure,
                     image_path=c.image_path,
+                    is_web=bool(c.is_web or c.doc_id.startswith("web_")),
+                    web_url=c.web_url,
+                    resource_url=c.resource_url,
+                    resource_title=c.resource_title,
                 )
             )
 

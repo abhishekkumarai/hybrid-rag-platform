@@ -222,6 +222,7 @@ class QdrantStore:
                 "image_path": getattr(chunk, "image_path", None),
                 "caption": getattr(chunk, "caption", None),
                 "table_markdown": getattr(chunk, "table_markdown", None),
+                "meta": getattr(chunk, "meta", {}),
             }
             # Use deterministic integer or UUID hash for point ID
             import uuid

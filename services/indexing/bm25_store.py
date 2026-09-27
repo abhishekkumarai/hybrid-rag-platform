@@ -77,6 +77,7 @@ class BM25Store:
                 "is_figure": getattr(c, "is_figure", False),
                 "image_path": getattr(c, "image_path", None),
                 "caption": getattr(c, "caption", None),
+                "meta": getattr(c, "meta", {}),
             })
 
         # Re-tokenize and build BM25-Okapi index
