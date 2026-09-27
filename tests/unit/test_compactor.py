@@ -6,6 +6,20 @@ from services.retrieval.compactor import (
     calculate_jaccard_similarity,
     estimate_tokens,
     score_sentence_salience,
+    summarize_numeric_columns,
+)
+
+# The table from multimodal_hardware_benchmark.pdf exactly as the layout parser stores it, including
+# the empty `|  |` row it emits after the caption (IRA-19).
+BENCHMARK_TABLE = (
+    "### Table 1: Hardware Latency & VRAM Benchmarks across Devices\n"
+    "|  |\n"
+    "|Device / GPU|Model Name|VRAM|Dense Latency|Reranker|Throughput|\n"
+    "|---|---|---|---|---|---|\n"
+    "|RTX 3050 Laptop|llama3.2:3b|2.2 GB|18.5 ms|FlashRank CPU|32.4 tok/s|\n"
+    "|RTX 4060 Laptop|llama3.1:8b|5.4 GB|12.1 ms|FlashRank CPU|45.2 tok/s|\n"
+    "|Intel i7 CPU Core|llama3.2:1b|0.0 GB|85.0 ms|BM25s Lexical|8.1 tok/s|\n"
+    "|A100 TensorCore|deepseek-r1:14b|40.0 GB|4.2 ms|GPU Cross-Enc|110.0 tok/s|\n"
 )
 
 
@@ -54,6 +68,50 @@ def test_table_column_pruning():
     assert "VRAM" in pruned_text
     assert "Dense Latency" in pruned_text
     assert "Price" not in pruned_text or "TDP" not in pruned_text
+
+
+def test_numeric_column_extremes_cover_the_last_row():
+    """IRA-19: the maximum sits in the last row, which small models skipped."""
+    summary = summarize_numeric_columns(BENCHMARK_TABLE)
+
+    assert "Highest Throughput: A100 TensorCore (110.0 tok/s)" in summary
+    assert "Lowest Throughput: Intel i7 CPU Core (8.1 tok/s)" in summary
+    assert "Highest VRAM: A100 TensorCore (40.0 GB)" in summary
+    assert "Lowest Dense Latency: A100 TensorCore (4.2 ms)" in summary
+    # Text columns are never summarized.
+    assert "Reranker" not in summary and "Model Name" not in summary
+
+
+def test_numeric_column_extremes_skip_mixed_units_and_small_tables():
+    mixed = (
+        "| File | Size |\n| --- | --- |\n"
+        "| a.bin | 900 MB |\n| b.bin | 2 GB |\n| c.bin | 5 MB |\n"
+    )
+    assert summarize_numeric_columns(mixed) == ""  # "900 MB" is not larger than "2 GB"
+
+    two_rows = "| Device | VRAM |\n| --- | --- |\n| A | 2 GB |\n| B | 4 GB |\n"
+    assert summarize_numeric_columns(two_rows) == ""
+
+    thousands = (
+        "| City | Population |\n| --- | --- |\n"
+        "| X | 1,200,000 |\n| Y | 950,000 |\n| Z | 12,500 |\n"
+    )
+    assert "Highest Population: X (1,200,000)" in summarize_numeric_columns(thousands)
+
+
+def test_table_candidates_carry_extremes_into_the_prompt():
+    table = Candidate(
+        id="t1", doc_id="bench", page=1, bbox=(54.0, 185.0, 558.0, 305.0),
+        text=BENCHMARK_TABLE, rerank_score=0.9, is_table=True,
+    )
+    result = ContextCompactor().compress_candidates(
+        query="Which device has the highest throughput?", candidates=[table]
+    )
+
+    chunk = result.chunks[0]
+    assert "Highest Throughput: A100 TensorCore (110.0 tok/s)" in result.formatted_prompt_context
+    assert chunk.bbox == (54.0, 185.0, 558.0, 305.0)  # provenance unchanged
+    assert chunk.compressed_tokens == estimate_tokens(chunk.compressed_text)  # summary is budgeted
 
 
 def test_cross_passage_redundancy_deduplication():

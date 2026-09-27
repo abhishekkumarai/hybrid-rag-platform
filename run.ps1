@@ -24,6 +24,7 @@ function Show-Help {
     Write-Host "  run            - Launch Langflow with custom components (http://localhost:7860)"
     Write-Host "  eval           - Run offline evaluation & faithfulness benchmark"
     Write-Host "  gate           - Run CI/CD evaluation regression quality gate"
+    Write-Host "  eval-chat      - Multi-turn answer-quality regression suite (live gateway on :8010)"
     Write-Host "  demo           - Run end-to-end pipeline test against Ollama & Qdrant"
     Write-Host "  test           - Run all pytest unit & integration tests"
     Write-Host "  check          - Run ruff linter and full pytest suite"
@@ -53,6 +54,10 @@ switch ($Target.ToLower()) {
     "gate" {
         Write-Host "Running CI/CD evaluation regression gate..." -ForegroundColor Green
         python tests/eval/regression_gate.py
+    }
+    "eval-chat" {
+        Write-Host "Running multi-turn answer-quality regression suite..." -ForegroundColor Green
+        python tests/eval/conversation_regression.py
     }
     "demo" {
         Write-Host "Running live RAG pipeline demo..." -ForegroundColor Green

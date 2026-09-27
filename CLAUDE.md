@@ -31,6 +31,7 @@ make test                               # unit tests only
 make serve                              # gateway + web client on :8000
 make eval                               # retrieval quality + faithfulness benchmark
 make gate                               # regression gate; fails on metric regression vs baseline
+make eval-chat                          # multi-turn answer-quality suite vs the live gateway (sampled, N trials)
 make services-up / services-down        # full docker stack up/down
 make scheduler / worker                 # reconciler and Redis queue daemons
 ```

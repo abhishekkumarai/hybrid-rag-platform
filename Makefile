@@ -1,6 +1,6 @@
 # Makefile for Hybrid RAG Platform (SOA + Langflow)
 
-.PHONY: help setup services-up services-down stack-up stack-down stack-logs test check run serve eval gate scheduler worker clean
+.PHONY: help setup services-up services-down stack-up stack-down stack-logs test check run serve eval gate eval-chat scheduler worker clean
 
 help:
 	@echo "Available targets:"
@@ -16,6 +16,7 @@ help:
 	@echo "  make serve          - Launch SOA REST & SSE Gateway + UI (:8000)"
 	@echo "  make eval           - Run offline evaluation & faithfulness benchmark"
 	@echo "  make gate           - Run CI/CD evaluation regression quality gate"
+	@echo "  make eval-chat      - Multi-turn answer-quality regression suite (live gateway on :8010)"
 	@echo "  make scheduler      - Run directory reconciler daemon"
 	@echo "  make worker         - Run asynchronous Redis queue worker daemon"
 	@echo "  make clean          - Clean up temporary files and caches"
@@ -56,6 +57,9 @@ eval:
 
 gate:
 	python tests/eval/regression_gate.py
+
+eval-chat:
+	python tests/eval/conversation_regression.py
 
 scheduler:
 	python services/scheduler/reconciler.py

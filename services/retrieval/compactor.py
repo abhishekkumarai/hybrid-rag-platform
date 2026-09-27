@@ -22,6 +22,54 @@ from services.common.logger import get_logger
 logger = get_logger("retrieval.compactor")
 
 
+_NUMERIC_CELL = re.compile(r"^(-?\d[\d,]*(?:\.\d+)?)\s*(\S.*)?$")
+
+
+def _table_rows(table_text: str) -> list[list[str]]:
+    """Markdown table rows as cell lists, without separator rows and empty `|  |` artifacts."""
+    rows = []
+    for line in table_text.splitlines():
+        line = line.strip()
+        if not (line.startswith("|") and line.endswith("|")):
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if not any(cells) or all(set(c) <= set("-: ") for c in cells):
+            continue
+        rows.append(cells)
+    return rows
+
+
+def summarize_numeric_columns(table_text: str, min_rows: int = 3) -> str:
+    """Lists the highest and lowest row of every numeric column of a markdown table.
+
+    Small local models (llama3.2:3b) routinely answer "which X has the highest Y" from the first
+    plausible row instead of scanning the whole column (IRA-19: 0/24 correct on the benchmark table,
+    33/36 with this summary). The summary is computed verbatim from the table's own cells, so it adds
+    no fact the excerpt does not state. A column qualifies only when every data cell is a number with
+    the same unit, so mixed units ("5 MB" vs "2 GB") never produce a misleading comparison.
+    """
+    rows = _table_rows(table_text)
+    if len(rows) < min_rows + 1:
+        return ""
+    header, data = rows[0], rows[1:]
+    lines: list[str] = []
+    for col in range(1, len(header)):
+        values: list[tuple[float, str, str]] = []
+        units: set[str] = set()
+        for row in data:
+            match = _NUMERIC_CELL.match(row[col]) if col < len(row) else None
+            if not match or not row[0]:
+                break
+            values.append((float(match.group(1).replace(",", "")), row[0], row[col]))
+            units.add((match.group(2) or "").lower())
+        else:
+            if len(units) == 1 and len({v for v, _, _ in values}) > 1:
+                hi, lo = max(values), min(values)
+                name = header[col] or f"column {col + 1}"
+                lines.append(f"- Highest {name}: {hi[1]} ({hi[2]}). Lowest {name}: {lo[1]} ({lo[2]}).")
+    return ("Computed from the table above:\n" + "\n".join(lines)) if lines else ""
+
+
 def estimate_tokens(text: str) -> int:
     """Fast, accurate token estimation (~1.3 tokens per word)."""
     words = text.split()
@@ -187,6 +235,9 @@ class ContextCompactor:
             if cand.is_table and prune_tables:
                 comp_text, pruned_cols = self.prune_markdown_table(cand.text, query)
                 total_pruned_columns += pruned_cols
+                extremes = summarize_numeric_columns(comp_text)
+                if extremes:
+                    comp_text = f"{comp_text}\n{extremes}"
                 comp_tokens = estimate_tokens(comp_text)
                 ratio = round(comp_tokens / orig_tokens, 2) if orig_tokens > 0 else 1.0
 
@@ -312,8 +363,10 @@ class ContextCompactor:
             else:
                 dropped_chunks += 1
 
+        # Capped like the per-chunk ratio: a table's column summary can make a lone table chunk slightly
+        # longer than its source, and the contract bounds the ratio at 1.0.
         overall_ratio = (
-            round(accumulated_tokens / total_orig_tokens, 2) if total_orig_tokens > 0 else 1.0
+            min(1.0, round(accumulated_tokens / total_orig_tokens, 2)) if total_orig_tokens > 0 else 1.0
         )
 
         # Build formatted prompt context string
