@@ -2265,10 +2265,7 @@
       // Resolve project parameters: backend session parameters are the primary authority
       const p = data.session.parameters || {};
 
-      let wsModel = p.model;
-      if (!wsModel) {
-        try { wsModel = localStorage.getItem(`ri_workspace_model_${sessionId}`); } catch (e) {}
-      }
+      const wsModel = p.model || cachedProjectModel(sessionId);
       setWorkspaceModel(wsModel || 'llama3.2:3b', false);
 
       let wsMode = p.retrieval_mode;
@@ -3182,8 +3179,16 @@
         drawerSel.innerHTML = '';
         models.forEach(m => drawerSel.add(new Option(m.name || m.id, m.id, false, m.id === defaultModel)));
       }
-      applyModelChoice(defaultModel);
+      // The server default is only for when no project is open. This call resolves after startup has
+      // already opened the project from the URL, and applying the default here silently switched a
+      // reloaded project's chats to another model (IRA-20). Prefer the project's cached model, then
+      // whatever openWorkspace() has applied; openWorkspace() still re-applies the backend's value.
+      applyModelChoice(currentSessionId ? (cachedProjectModel(currentSessionId) || currentModel) : defaultModel);
     } catch (e) { console.warn('Failed to load models', e); }
+  }
+
+  function cachedProjectModel(sessionId) {
+    try { return localStorage.getItem(`ri_workspace_model_${sessionId}`); } catch (e) { return null; }
   }
 
   const wsModelSelect = document.getElementById('workspaceModelSelect');
