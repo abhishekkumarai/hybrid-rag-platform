@@ -77,12 +77,13 @@ class ChatPipeline:
     """Executes one chat turn. Collaborators are injected so the gateway keeps owning the singletons."""
 
     def __init__(self, *, retrieval: Any, coordinator: Any, session_manager: Any, telemetry: Any,
-                 settings: Any) -> None:
+                 settings: Any, models: Any = None) -> None:
         self.retrieval = retrieval
         self.coordinator = coordinator
         self.sessions = session_manager
         self.telemetry = telemetry
         self.settings = settings
+        self.models = models
 
     # ------------------------------------------------------------------ orchestration
 
@@ -91,6 +92,10 @@ class ChatPipeline:
         telemetry, done. `stream_llm` only changes how Ollama is called, never the event contract."""
         t_start = time.perf_counter()
         yield SessionEvent(session_id=req.session_id)
+
+        if self.models is not None and self.models.rejects(req.model):
+            yield from self._reject_model(req, t_start)
+            return
 
         retrieval_query = self.sessions.reformulate_query(req.query, req.session_id)
         history = self.sessions.build_conversation_context(req.session_id, max_turns=3)
@@ -232,6 +237,21 @@ class ChatPipeline:
             )
         return evidence, step
 
+    def _reject_model(self, req: ChatTurnRequest, t_start: float) -> Iterator[ChatEvent]:
+        """The project's model is an embedding or reranker model (IRA-31). Fail before retrieval, and
+        keep the turn out of history and telemetry: nothing was asked of a model that can answer."""
+        error = (
+            f"'{req.model}' is an embedding or reranker model and cannot generate answers. "
+            "Choose a chat model in Project Settings."
+        )
+        logger.warning(f"Rejected non-chat model {req.model!r} for session {req.session_id}")
+        yield ErrorEvent(error=error)
+        yield TelemetryEvent(telemetry=QueryTelemetry(
+            session_id=req.session_id, query_text=req.query,
+            total_ms=round((time.perf_counter() - t_start) * 1000, 2),
+        ))
+        yield DoneEvent(error=error)
+
     def _refuse(self, req: ChatTurnRequest, t_start: float, retrieval_ms: float, top_score: float, message: str,
                 *, is_agentic: bool, steps: list[AgentStep], sub_queries: list[str],
                 mode: str | None = None) -> Iterator[ChatEvent]:
@@ -292,11 +312,17 @@ class ChatPipeline:
         t_llm = time.perf_counter()
         try:
             resp = self._ollama(req, prompt, num_ctx, stream_llm)
+            # Ollama reports failures ("does not support generate", a crashed runner) as an `error`
+            # body; reading only `response` turned them into a silent empty answer (IRA-31).
+            if resp.status_code != 200:
+                raise RuntimeError(_ollama_error(resp))
             if stream_llm:
                 for line in resp.iter_lines():
                     if not line:
                         continue
                     chunk = json.loads(line)
+                    if chunk.get("error"):
+                        raise RuntimeError(chunk["error"])
                     tok = chunk.get("response", "")
                     if tok:
                         if token_count == 0:
@@ -308,6 +334,8 @@ class ChatPipeline:
                         break
             else:
                 body = resp.json()
+                if body.get("error"):
+                    raise RuntimeError(body["error"])
                 text = body.get("response", "")
                 if text:
                     parts.append(text)
@@ -375,6 +403,13 @@ class ChatPipeline:
 
 
 # ---------------------------------------------------------------------- transports
+
+
+def _ollama_error(resp: requests.Response) -> str:
+    try:
+        return resp.json().get("error") or f"Ollama returned HTTP {resp.status_code}"
+    except ValueError:
+        return f"Ollama returned HTTP {resp.status_code}: {resp.text[:200]}"
 
 
 def to_sse(event: ChatEvent) -> str:

@@ -120,8 +120,10 @@ defaults will push the model into CPU swap.
 
 `load_config()` merges three layers in order: `configs/default.yaml` → profile overlay
 `configs/profiles/{quality,fast}.yaml` → environment variables. Profile is selected by the `RAG_PROFILE`
-env var, else `hardware.profile` in the YAML. `quality` = `llama3.1:8b`, `fast` = `llama3.2:3b` (fully
-VRAM-resident). Add new tunables to the YAML plus the matching Pydantic model in
+env var, else `hardware.profile` in the YAML. `quality` = `llama3.1:latest` (the 8B model; there is no
+`llama3.1:8b` tag installed here), `fast` = `llama3.2:3b` (fully VRAM-resident). `/api/v1/models` lists
+only chat-capable models: `services/gateway/model_catalog.py` filters out the embedding and reranker
+models Ollama also has installed, and `ChatPipeline` rejects one if a project still has it saved. Add new tunables to the YAML plus the matching Pydantic model in
 `services/common/config.py` — nothing reads settings from the environment directly.
 
 Env overrides are opt-in per key and enumerated explicitly at the bottom of `load_config()`:

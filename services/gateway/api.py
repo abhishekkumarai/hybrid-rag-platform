@@ -48,6 +48,7 @@ from services.common.logger import get_logger
 from services.evaluation import project as project_eval
 from services.feedback.store import RAGOpsStore
 from services.gateway.chat_pipeline import ChatPipeline, fold_to_response, to_sse
+from services.gateway.model_catalog import ModelCatalog
 from services.graph.extractor import EntityRelationshipExtractor
 from services.indexing.service import IndexingService
 from services.indexing.web_indexer import WebRAGIndexer
@@ -69,6 +70,7 @@ session_manager = SessionManager(
     port=settings.storage.redis_port,
 )
 telemetry_tracker = TelemetryTracker()
+model_catalog = ModelCatalog(settings.hardware.ollama_base_url)
 ragops_store = RAGOpsStore(
     redis_host=settings.storage.redis_host,
     redis_port=settings.storage.redis_port,
@@ -259,30 +261,22 @@ def default_system_prompt() -> dict[str, str]:
 
 @app.get("/api/v1/models", response_model=ModelListResponse)
 def list_available_models() -> ModelListResponse:
-    """Lists locally installed Ollama models and indicates the default active model."""
-    default_model = settings.hardware.llm_model
-    models: list[ModelInfo] = []
-    ollama_alive = False
+    """Lists the installed Ollama models that can chat and indicates the default active model.
 
-    try:
-        r = requests.get(f"{settings.hardware.ollama_base_url}/api/tags", timeout=2.0)
-        if r.status_code == 200:
-            ollama_alive = True
-            data = r.json()
-            for m in data.get("models", []):
-                name = m.get("name", "")
-                if name:
-                    models.append(
-                        ModelInfo(
-                            name=name,
-                            size_bytes=m.get("size"),
-                            modified_at=m.get("modified_at"),
-                            digest=m.get("digest"),
-                            is_default=(name == default_model or name.startswith(default_model)),
-                        )
-                    )
-    except Exception as e:
-        logger.warning(f"Could not fetch models from Ollama ({settings.hardware.ollama_base_url}): {e}")
+    Embedding and reranker models are left out: selecting one broke every turn of the project (IRA-31)."""
+    default_model = settings.hardware.llm_model
+    installed = model_catalog.installed()
+    ollama_alive = installed is not None
+    models = [
+        ModelInfo(
+            name=m["name"],
+            size_bytes=m.get("size"),
+            modified_at=m.get("modified_at"),
+            digest=m.get("digest"),
+            is_default=(m["name"] == default_model or m["name"].startswith(default_model)),
+        )
+        for m in (model_catalog.chat_models(installed) or [])
+    ]
 
     if not models:
         # Ollama is unreachable, so we have no way to know what's actually installed. Offering a
@@ -816,6 +810,7 @@ def _chat_pipeline() -> ChatPipeline:
         session_manager=session_manager,
         telemetry=telemetry_tracker,
         settings=settings,
+        models=model_catalog,
     )
 
 

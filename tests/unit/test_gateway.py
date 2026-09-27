@@ -272,7 +272,7 @@ def test_gateway_chat_agentic_sync(mock_get_services, mock_get_coordinator, mock
     coordinator.build_agentic_prompt.return_value = "Comparative prompt"
     mock_get_coordinator.return_value = coordinator
 
-    mock_resp = MagicMock()
+    mock_resp = MagicMock(status_code=200)
     mock_resp.json.return_value = {"response": "Comparative analysis: X is dense, Y is sparse."}
     mock_requests_post.return_value = mock_resp
 

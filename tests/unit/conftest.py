@@ -13,3 +13,12 @@ def _no_sampled_llm_judge(monkeypatch):
     from services.gateway import api
 
     monkeypatch.setattr(api.settings.evaluation, "llm_judge_sample_rate", 0.0)
+
+
+@pytest.fixture(autouse=True)
+def _offline_model_catalog(monkeypatch):
+    """Keep the chat-model check (IRA-31) off the network: the gateway's catalog would otherwise
+    query a real Ollama on every chat test. Tests of the check patch `rejects` themselves."""
+    from services.gateway import api
+
+    monkeypatch.setattr(api.model_catalog, "rejects", lambda name: False)

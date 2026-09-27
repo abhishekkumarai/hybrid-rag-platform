@@ -184,6 +184,51 @@ def test_history_stores_answer_without_provenance_block(stream):
     assert stored.citations == [CIT]
 
 
+@pytest.mark.parametrize("stream", [True, False])
+def test_non_chat_model_is_rejected_before_retrieval(stream):
+    """IRA-31: an embedding/reranker model fails fast with a clear error and is never sent to Ollama."""
+    retrieval = _retrieval(refused=False)
+    with patch("services.gateway.api.get_services") as gs, \
+         patch("services.gateway.api.get_agentic_coordinator") as gc, \
+         patch("services.gateway.api.requests.post") as post, \
+         patch("services.gateway.api.model_catalog.rejects", return_value=True), \
+         patch("services.gateway.api.session_manager.append_message") as append:
+        gs.return_value = (MagicMock(), MagicMock(), retrieval)
+        gc.return_value = _coordinator(refused=False)
+        r = client.post("/api/v1/chat", json={"query": "What GPU?", "stream": stream,
+                                              "mode": "direct", "model": "bge-m3:latest"})
+    post.assert_not_called()
+    retrieval.retrieve.assert_not_called()
+    append.assert_not_called()
+    if stream:
+        events = _events(r.text)
+        assert [n for n, _ in events] == ["session", "error", "telemetry", "done"]
+        assert "cannot generate answers" in events[-1][1]["error"]
+    else:
+        data = r.json()
+        assert "cannot generate answers" in data["error"]
+        assert data["answer"].startswith("Error generating answer")
+
+
+@pytest.mark.parametrize("stream", [True, False])
+def test_ollama_error_body_is_reported_not_blank(stream):
+    """IRA-31: Ollama's `error` body used to become a silent empty answer."""
+    resp = MagicMock(status_code=500)
+    resp.json.return_value = {"error": '"bge-m3:latest" does not support generate'}
+    with patch("services.gateway.api.get_services") as gs, \
+         patch("services.gateway.api.get_agentic_coordinator") as gc, \
+         patch("services.gateway.api.requests.post", return_value=resp), \
+         patch("services.gateway.api.model_catalog.rejects", return_value=False):
+        gs.return_value = (MagicMock(), MagicMock(), _retrieval(refused=False))
+        gc.return_value = _coordinator(refused=False)
+        r = client.post("/api/v1/chat", json={"query": "What GPU?", "stream": stream, "mode": "direct"})
+    if stream:
+        errors = [p for n, p in _events(r.text) if n == "error"]
+        assert errors and "does not support generate" in errors[0]["error"]
+    else:
+        assert "does not support generate" in r.json()["error"]
+
+
 def test_sync_token_count_uses_ollama_eval_count():
     resp = _ollama()
     resp.json.return_value = {"response": ANSWER, "eval_count": 42}
