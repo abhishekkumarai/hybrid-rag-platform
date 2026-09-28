@@ -20,7 +20,8 @@ def _prompt_sent(mode: str, system_prompt: str | None) -> str:
         session_manager=MagicMock(), telemetry=MagicMock(), settings=settings,
     )
     pipeline.sessions.build_conversation_context.return_value = ""
-    pipeline.sessions.reformulate_query.side_effect = lambda q, _sid: q
+    pipeline.sessions.reformulate_query.side_effect = lambda q, _sid, _cid=None: q
+    pipeline.sessions.resolve_conversation_id.return_value = "conv_1"
     req = ChatTurnRequest(query="What GPU does it use?", session_id="s1", model="llama3.2:3b", mode=mode,
                           system_prompt=system_prompt)
     with patch("services.gateway.chat_pipeline.requests.post", return_value=_ollama()) as post:

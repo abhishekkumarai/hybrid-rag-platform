@@ -92,15 +92,18 @@ class ChatPipeline:
         """Yields the turn's events: session, [mode], [agent_step...], token..., [error], [eval],
         telemetry, done. `stream_llm` only changes how Ollama is called, never the event contract."""
         t_start = time.perf_counter()
-        yield SessionEvent(session_id=req.session_id)
+        conversation_id = self.sessions.resolve_conversation_id(req.session_id, req.conversation_id)
+        yield SessionEvent(session_id=req.session_id, conversation_id=conversation_id)
 
         if self.models is not None and self.models.rejects(req.model):
             yield from self._reject_model(req, t_start)
             return
 
-        retrieval_query = self.sessions.reformulate_query(req.query, req.session_id)
-        history = self.sessions.build_conversation_context(req.session_id, max_turns=3)
-        self.sessions.append_message(req.session_id, ChatMessage(role="user", content=req.query))
+        retrieval_query = self.sessions.reformulate_query(req.query, req.session_id, conversation_id)
+        history = self.sessions.build_conversation_context(req.session_id, conversation_id, max_turns=3)
+        self.sessions.append_message(
+            req.session_id, ChatMessage(role="user", content=req.query), conversation_id
+        )
 
         # An empty scope means "this project can read no documents", never "search everything": the
         # indexes are shared by every user, so an unscoped search would answer from other users'
@@ -272,7 +275,9 @@ class ChatPipeline:
         )
         self.telemetry.record_query(telemetry)
         self.sessions.append_message(
-            req.session_id, ChatMessage(role="assistant", content=message, latency_ms=round(total_ms, 2))
+            req.session_id,
+            ChatMessage(role="assistant", content=message, latency_ms=round(total_ms, 2)),
+            req.conversation_id,
         )
         yield TokenEvent(token=message)
         yield TelemetryEvent(telemetry=telemetry)
@@ -385,6 +390,7 @@ class ChatPipeline:
                 role="assistant", content=raw_answer, citations=prep.citations, latency_ms=round(total_ms, 2),
                 metadata={"eval": turn_eval.model_dump() if turn_eval else None, "query_id": telemetry.query_id},
             ),
+            req.conversation_id,
         )
 
         if turn_eval:
@@ -440,12 +446,14 @@ def to_sse(event: ChatEvent) -> str:
 def fold_to_response(events: Iterator[ChatEvent]) -> dict[str, Any]:
     """Collapses a turn's events into the non-streaming /api/v1/chat JSON body."""
     session_id: str | None = None
+    conversation_id: str | None = None
     telemetry: QueryTelemetry | None = None
     scores: RetrievalEvalScores | None = None
     done: DoneEvent | None = None
     for ev in events:
         if isinstance(ev, SessionEvent):
             session_id = ev.session_id
+            conversation_id = ev.conversation_id
         elif isinstance(ev, TelemetryEvent):
             telemetry = ev.telemetry
         elif isinstance(ev, EvalEvent):
@@ -457,6 +465,7 @@ def fold_to_response(events: Iterator[ChatEvent]) -> dict[str, Any]:
     body = done.model_dump(exclude={"kind"}, exclude_none=True)
     body.update(
         session_id=session_id,
+        conversation_id=conversation_id,
         telemetry=telemetry.model_dump(),
         duration_ms=telemetry.total_ms,
         eval=scores.model_dump() if scores else None,

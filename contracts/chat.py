@@ -26,6 +26,7 @@ class ChatTurnRequest(BaseModel):
 
     query: str = Field(min_length=1)
     session_id: str
+    conversation_id: str | None = None
     model: str
     mode: RetrievalMode = "auto"
     top_k: int = 20
@@ -43,6 +44,7 @@ class ChatTurnRequest(BaseModel):
 class SessionEvent(BaseModel):
     kind: Literal["session"] = "session"
     session_id: str
+    conversation_id: str | None = None
 
 
 class ModeEvent(BaseModel):

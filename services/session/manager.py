@@ -5,14 +5,27 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from contracts.session import ChatMessage, ChatSession, SessionParameters, UpdateSessionRequest
+from contracts.session import (
+    ChatMessage,
+    ChatSession,
+    Conversation,
+    SessionParameters,
+    UpdateSessionRequest,
+)
 from services.common.logger import get_logger
 
 logger = get_logger("session.manager")
 
+DEFAULT_CONVERSATION_TITLE = "Main"
+
 
 class SessionManager:
-    """Manages multi-turn conversation sessions, workspace parameters, and message history."""
+    """Manages multi-turn conversation sessions, workspace parameters, and message history.
+
+    A session (project) can own multiple conversations (IRA-24): documents, settings, and persona
+    stay on the `ChatSession`, while message history is scoped per `Conversation`. Callers that omit
+    `conversation_id` transparently get the project's oldest/default conversation, so pre-IRA-24
+    callers and data keep working."""
 
     def __init__(self, host: str = "127.0.0.1", port: int = 6379, db: int = 0) -> None:
         self.host = host
@@ -21,6 +34,8 @@ class SessionManager:
         self.redis_client: Any = None
         self._in_memory_sessions: dict[str, ChatSession] = {}
         self._in_memory_messages: dict[str, list[ChatMessage]] = {}
+        self._in_memory_conversations: dict[str, dict[str, Conversation]] = {}
+        self._in_memory_conv_messages: dict[str, list[ChatMessage]] = {}
 
         self._init_redis()
 
@@ -124,78 +139,213 @@ class SessionManager:
         self._in_memory_sessions[session.id] = session
 
     def get_session(self, session_id: str) -> tuple[ChatSession | None, list[ChatMessage]]:
-        """Retrieves session metadata and chronological message history."""
-        # 1. Fetch Session Metadata
-        session: ChatSession | None = None
-        if self.redis_client:
-            try:
-                raw_meta = self.redis_client.hget("rag:sessions:meta", session_id)
-                if raw_meta:
-                    session = ChatSession.model_validate_json(raw_meta)
-            except Exception as e:
-                logger.error(f"Error fetching session meta {session_id}: {e}")
-                session = self._in_memory_sessions.get(session_id)
-        else:
-            session = self._in_memory_sessions.get(session_id)
+        """Retrieves session metadata and the default conversation's message history.
 
+        Kept for callers that predate IRA-24 (e.g. `SessionDetailResponse`) — it always resolves to
+        the project's default/first conversation, migrating any pre-IRA-24 flat history into it."""
+        session = self._get_session_meta(session_id)
         if not session:
             return None, []
 
-        # 2. Fetch Messages
-        messages: list[ChatMessage] = []
-        if self.redis_client:
-            try:
-                raw_msgs = self.redis_client.lrange(f"rag:sessions:{session_id}:messages", 0, -1)
-                for m_json in raw_msgs:
-                    messages.append(ChatMessage.model_validate_json(m_json))
-            except Exception as e:
-                logger.error(f"Error fetching session messages {session_id}: {e}")
-                messages = self._in_memory_messages.get(session_id, [])
-        else:
-            messages = self._in_memory_messages.get(session_id, [])
-
+        conversation_id = self._resolve_default_conversation(session_id)
+        messages = self._get_conv_messages(session_id, conversation_id)
         return session, messages
 
-    def append_message(self, session_id: str, message: ChatMessage) -> None:
-        """Appends a new turn message to the session history and updates metadata."""
-        now = time.time()
+    def _get_session_meta(self, session_id: str) -> ChatSession | None:
         if self.redis_client:
             try:
-                self.redis_client.rpush(f"rag:sessions:{session_id}:messages", message.model_dump_json())
-                # Update session metadata
                 raw_meta = self.redis_client.hget("rag:sessions:meta", session_id)
                 if raw_meta:
-                    sess = ChatSession.model_validate_json(raw_meta)
-                    sess.updated_at = now
-                    sess.message_count += 1
-                    # Auto-update title from first user query if default
-                    if sess.title == "New Conversation" and message.role == "user":
-                        sess.title = message.content[:45] + ("..." if len(message.content) > 45 else "")
-                    self.redis_client.hset("rag:sessions:meta", session_id, sess.model_dump_json())
+                    return ChatSession.model_validate_json(raw_meta)
+                return None
+            except Exception as e:
+                logger.error(f"Error fetching session meta {session_id}: {e}")
+                return self._in_memory_sessions.get(session_id)
+        return self._in_memory_sessions.get(session_id)
+
+    # ------------------------------------------------------------------
+    # Conversations (IRA-24)
+    # ------------------------------------------------------------------
+
+    def _conv_meta_key(self, session_id: str) -> str:
+        return f"rag:sessions:{session_id}:conversations"
+
+    def _conv_messages_key(self, session_id: str, conversation_id: str) -> str:
+        return f"rag:sessions:{session_id}:conv:{conversation_id}:messages"
+
+    def _legacy_messages_key(self, session_id: str) -> str:
+        return f"rag:sessions:{session_id}:messages"
+
+    def _save_conversation(self, conversation: Conversation) -> None:
+        if self.redis_client:
+            try:
+                self.redis_client.hset(
+                    self._conv_meta_key(conversation.session_id),
+                    conversation.id,
+                    conversation.model_dump_json(),
+                )
+                return
+            except Exception as e:
+                logger.error(f"Error persisting conversation to Redis: {e}")
+        self._in_memory_conversations.setdefault(conversation.session_id, {})[conversation.id] = conversation
+
+    def _raw_list_conversations(self, session_id: str) -> list[Conversation]:
+        if self.redis_client:
+            try:
+                raw = self.redis_client.hgetall(self._conv_meta_key(session_id))
+                return [Conversation.model_validate_json(v) for v in raw.values()]
+            except Exception as e:
+                logger.error(f"Error listing conversations for {session_id}: {e}")
+        return list(self._in_memory_conversations.get(session_id, {}).values())
+
+    def _resolve_default_conversation(self, session_id: str) -> str:
+        """Returns the project's oldest conversation id, migrating legacy flat history if needed."""
+        existing = self._raw_list_conversations(session_id)
+        if existing:
+            existing.sort(key=lambda c: c.created_at)
+            return existing[0].id
+
+        # Lazily migrate a pre-IRA-24 flat message list into a new default conversation (idempotent:
+        # once the conversation exists above, this branch never runs again for this session).
+        legacy_messages = self._read_raw_messages(self._legacy_messages_key(session_id))
+        conversation = Conversation(
+            session_id=session_id,
+            title=DEFAULT_CONVERSATION_TITLE,
+            message_count=len(legacy_messages),
+        )
+        if legacy_messages:
+            self._write_raw_messages(self._conv_messages_key(session_id, conversation.id), legacy_messages)
+            conversation.created_at = legacy_messages[0].timestamp
+            conversation.updated_at = legacy_messages[-1].timestamp
+        self._save_conversation(conversation)
+        return conversation.id
+
+    def _read_raw_messages(self, key: str) -> list[ChatMessage]:
+        if self.redis_client:
+            try:
+                raw_msgs = self.redis_client.lrange(key, 0, -1)
+                return [ChatMessage.model_validate_json(m) for m in raw_msgs]
+            except Exception as e:
+                logger.error(f"Error fetching messages {key}: {e}")
+                return []
+        return list(self._in_memory_messages.get(key, []))
+
+    def _write_raw_messages(self, key: str, messages: list[ChatMessage]) -> None:
+        if self.redis_client:
+            try:
+                if messages:
+                    self.redis_client.rpush(key, *(m.model_dump_json() for m in messages))
+                return
+            except Exception as e:
+                logger.error(f"Error writing messages {key}: {e}")
+        self._in_memory_messages[key] = list(messages)
+
+    def resolve_conversation_id(self, session_id: str, conversation_id: str | None = None) -> str:
+        """Returns `conversation_id` unchanged, or the project's default conversation id if omitted."""
+        return conversation_id or self._resolve_default_conversation(session_id)
+
+    def list_conversations(self, session_id: str) -> list[Conversation]:
+        """Lists a project's chat threads, oldest first, migrating legacy history if needed."""
+        self._resolve_default_conversation(session_id)
+        conversations = self._raw_list_conversations(session_id)
+        conversations.sort(key=lambda c: c.created_at)
+        return conversations
+
+    def create_conversation(self, session_id: str, title: str | None = None) -> Conversation | None:
+        """Starts a new, empty chat thread within a project."""
+        if not self._get_session_meta(session_id):
+            return None
+        conversation = Conversation(session_id=session_id, title=title or "New Chat")
+        self._save_conversation(conversation)
+        return conversation
+
+    def rename_conversation(self, session_id: str, conversation_id: str, title: str) -> Conversation | None:
+        conversations = self._raw_list_conversations(session_id)
+        conversation = next((c for c in conversations if c.id == conversation_id), None)
+        if not conversation:
+            return None
+        conversation.title = title
+        conversation.updated_at = time.time()
+        self._save_conversation(conversation)
+        return conversation
+
+    def delete_conversation(self, session_id: str, conversation_id: str) -> bool:
+        """Deletes one chat thread. Refuses to delete a project's last remaining conversation."""
+        conversations = self.list_conversations(session_id)
+        if len(conversations) <= 1 or not any(c.id == conversation_id for c in conversations):
+            return False
+
+        if self.redis_client:
+            try:
+                self.redis_client.hdel(self._conv_meta_key(session_id), conversation_id)
+                self.redis_client.delete(self._conv_messages_key(session_id, conversation_id))
+            except Exception as e:
+                logger.error(f"Error deleting conversation {conversation_id}: {e}")
+        self._in_memory_conversations.get(session_id, {}).pop(conversation_id, None)
+        self._in_memory_messages.pop(self._conv_messages_key(session_id, conversation_id), None)
+        return True
+
+    def _get_conv_messages(self, session_id: str, conversation_id: str) -> list[ChatMessage]:
+        return self._read_raw_messages(self._conv_messages_key(session_id, conversation_id))
+
+    def get_conversation_messages(
+        self, session_id: str, conversation_id: str | None
+    ) -> tuple[Conversation | None, list[ChatMessage]]:
+        """Retrieves one conversation's metadata and message history. `None` resolves to the default."""
+        resolved_id = conversation_id or self._resolve_default_conversation(session_id)
+        conversations = self._raw_list_conversations(session_id)
+        conversation = next((c for c in conversations if c.id == resolved_id), None)
+        if not conversation:
+            return None, []
+        return conversation, self._get_conv_messages(session_id, resolved_id)
+
+    def append_message(
+        self, session_id: str, message: ChatMessage, conversation_id: str | None = None
+    ) -> None:
+        """Appends a new turn message to a conversation's history and updates both metadata records."""
+        now = time.time()
+        resolved_id = conversation_id or self._resolve_default_conversation(session_id)
+        key = self._conv_messages_key(session_id, resolved_id)
+
+        if self.redis_client:
+            try:
+                self.redis_client.rpush(key, message.model_dump_json())
             except Exception as e:
                 logger.error(f"Error appending message to Redis: {e}")
-                self._append_in_memory(session_id, message, now)
+                self._in_memory_messages.setdefault(key, []).append(message)
         else:
-            self._append_in_memory(session_id, message, now)
+            self._in_memory_messages.setdefault(key, []).append(message)
 
-    def _append_in_memory(self, session_id: str, message: ChatMessage, timestamp: float) -> None:
-        if session_id not in self._in_memory_messages:
-            self._in_memory_messages[session_id] = []
-        self._in_memory_messages[session_id].append(message)
-        sess = self._in_memory_sessions.get(session_id)
-        if sess:
-            sess.updated_at = timestamp
-            sess.message_count += 1
-            if sess.title == "New Conversation" and message.role == "user":
-                sess.title = message.content[:45] + ("..." if len(message.content) > 45 else "")
+        # Update conversation metadata (title auto-fill + counters)
+        conversations = self._raw_list_conversations(session_id)
+        conversation = next((c for c in conversations if c.id == resolved_id), None)
+        if conversation:
+            conversation.updated_at = now
+            conversation.message_count += 1
+            if conversation.title in ("New Chat", DEFAULT_CONVERSATION_TITLE) and message.role == "user":
+                conversation.title = message.content[:45] + ("..." if len(message.content) > 45 else "")
+            self._save_conversation(conversation)
+
+        # Update project metadata (bumps gallery ordering, keeps message_count as a project-wide total)
+        session = self._get_session_meta(session_id)
+        if session:
+            session.updated_at = now
+            session.message_count += 1
+            if session.title == "New Conversation" and message.role == "user":
+                session.title = message.content[:45] + ("..." if len(message.content) > 45 else "")
+            self._save(session)
 
     def delete_session(self, session_id: str) -> bool:
-        """Deletes a session and its message history."""
+        """Deletes a session, all its conversations, and their message history."""
         deleted = False
+        conversation_ids = [c.id for c in self._raw_list_conversations(session_id)]
         if self.redis_client:
             try:
                 self.redis_client.hdel("rag:sessions:meta", session_id)
-                self.redis_client.delete(f"rag:sessions:{session_id}:messages")
+                self.redis_client.delete(self._conv_meta_key(session_id))
+                for conversation_id in conversation_ids:
+                    self.redis_client.delete(self._conv_messages_key(session_id, conversation_id))
+                self.redis_client.delete(self._legacy_messages_key(session_id))
                 deleted = True
             except Exception as e:
                 logger.error(f"Error deleting session {session_id} from Redis: {e}")
@@ -203,8 +353,10 @@ class SessionManager:
         if session_id in self._in_memory_sessions:
             del self._in_memory_sessions[session_id]
             deleted = True
-        if session_id in self._in_memory_messages:
-            del self._in_memory_messages[session_id]
+        self._in_memory_messages.pop(session_id, None)
+        self._in_memory_conversations.pop(session_id, None)
+        for conversation_id in conversation_ids:
+            self._in_memory_messages.pop(self._conv_messages_key(session_id, conversation_id), None)
 
         logger.info(f"Deleted session '{session_id}' (success={deleted})")
         return deleted
@@ -293,7 +445,11 @@ class SessionManager:
         return session.files
 
     def build_conversation_context(
-        self, session_id: str, max_turns: int = 4, max_answer_chars: int = 240
+        self,
+        session_id: str,
+        conversation_id: str | None = None,
+        max_turns: int = 4,
+        max_answer_chars: int = 240,
     ) -> str:
         """Formats the last N turns as a compact reference-resolution aid for the prompt.
 
@@ -301,7 +457,10 @@ class SessionManager:
         is dropped) and truncated: history exists to resolve "he"/"that" in the next question, and a
         long verbatim prior answer is what small models copy instead of answering the new
         question (IRA-17)."""
-        _, messages = self.get_session(session_id)
+        if conversation_id:
+            messages = self._get_conv_messages(session_id, conversation_id)
+        else:
+            _, messages = self.get_session(session_id)
         if not messages:
             return ""
 
@@ -319,7 +478,9 @@ class SessionManager:
 
         return "\n".join(lines)
 
-    def reformulate_query(self, query: str, session_id: str | None) -> str:
+    def reformulate_query(
+        self, query: str, session_id: str | None, conversation_id: str | None = None
+    ) -> str:
         """Enriches short anaphoric follow-up queries with context from recent turns."""
         if not session_id:
             return query
@@ -336,7 +497,10 @@ class SessionManager:
         if not has_anaphora:
             return query
 
-        _, messages = self.get_session(session_id)
+        if conversation_id:
+            messages = self._get_conv_messages(session_id, conversation_id)
+        else:
+            _, messages = self.get_session(session_id)
         if not messages:
             return query
 
@@ -348,4 +512,3 @@ class SessionManager:
         last_query = prior_user_turns[-1].strip()
         logger.info(f"Query reformulation triggered for short query: '{query}' with context: '{last_query}'")
         return f"{query} ({last_query})"
-

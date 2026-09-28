@@ -134,6 +134,108 @@ def test_session_manager_redis_mocked():
         mock_redis.delete.assert_called_with(f"rag:sessions:{session.id}:messages")
 
 
+def test_conversations_are_isolated_per_project():
+    """IRA-24: a project can hold multiple chat threads with independent message history."""
+    with patch("redis.Redis") as mock_redis_cls:
+        mock_redis_cls.side_effect = Exception("Redis unavailable")
+        manager = SessionManager()
+
+    session = manager.create_session(title="Project")
+
+    # A project starts with an implicit default conversation, lazily created on first access.
+    default_list = manager.list_conversations(session.id)
+    assert len(default_list) == 1
+    default_conv = default_list[0]
+
+    manager.append_message(session.id, ChatMessage(role="user", content="Question in the default thread"))
+    _, default_msgs = manager.get_conversation_messages(session.id, default_conv.id)
+    assert len(default_msgs) == 1
+
+    second = manager.create_conversation(session.id, title="Second thread")
+    assert second is not None
+    assert second.id != default_conv.id
+
+    manager.append_message(
+        session.id, ChatMessage(role="user", content="Question in the second thread"), second.id
+    )
+    _, second_msgs = manager.get_conversation_messages(session.id, second.id)
+    assert len(second_msgs) == 1
+    assert second_msgs[0].content == "Question in the second thread"
+
+    # First conversation's history is untouched by the second's message.
+    _, default_msgs_again = manager.get_conversation_messages(session.id, default_conv.id)
+    assert len(default_msgs_again) == 1
+    assert default_msgs_again[0].content == "Question in the default thread"
+
+    conversations = manager.list_conversations(session.id)
+    assert {c.id for c in conversations} == {default_conv.id, second.id}
+
+    # The project's own message_count is the total across every conversation.
+    sess, _ = manager.get_session(session.id)
+    assert sess.message_count == 2
+
+    # A project can't be left with zero conversations.
+    assert manager.delete_conversation(session.id, default_conv.id) is True
+    assert manager.delete_conversation(session.id, second.id) is False
+    assert [c.id for c in manager.list_conversations(session.id)] == [second.id]
+
+    # Renaming works, and a missing conversation is reported as None.
+    renamed = manager.rename_conversation(session.id, second.id, "Renamed thread")
+    assert renamed.title == "Renamed thread"
+    assert manager.rename_conversation(session.id, "nonexistent", "x") is None
+
+
+def test_conversation_context_and_reformulation_are_per_conversation():
+    with patch("redis.Redis") as mock_redis_cls:
+        mock_redis_cls.side_effect = Exception("Redis unavailable")
+        manager = SessionManager()
+
+    session = manager.create_session()
+    default_id = manager.resolve_conversation_id(session.id)
+    other = manager.create_conversation(session.id)
+
+    manager.append_message(session.id, ChatMessage(role="user", content="Who is the candidate?"), default_id)
+    manager.append_message(
+        session.id,
+        ChatMessage(role="assistant", content="The candidate is Abhishek Kumar."),
+        default_id,
+    )
+
+    context = manager.build_conversation_context(session.id, default_id, max_turns=2)
+    assert "Who is the candidate?" in context
+
+    # The other, empty conversation has no context and no prior turn to reformulate against.
+    assert manager.build_conversation_context(session.id, other.id) == ""
+    neutral = "What was his previous role?"
+    assert manager.reformulate_query(neutral, session.id, other.id) == neutral
+
+    reformulated = manager.reformulate_query(neutral, session.id, default_id)
+    assert "Who is the candidate?" in reformulated
+
+
+def test_pre_ira24_flat_history_migrates_into_a_default_conversation():
+    """A project written before IRA-24 has messages under the legacy flat key with no conversation
+    records; the first touch after upgrading must fold that history into one migrated conversation
+    instead of losing it."""
+    with patch("redis.Redis") as mock_redis_cls:
+        mock_redis_cls.side_effect = Exception("Redis unavailable")
+        manager = SessionManager()
+
+    session = manager.create_session(title="Legacy project")
+    legacy_key = manager._legacy_messages_key(session.id)
+    manager._in_memory_messages[legacy_key] = [
+        ChatMessage(role="user", content="Pre-existing question"),
+        ChatMessage(role="assistant", content="Pre-existing answer"),
+    ]
+
+    conversations = manager.list_conversations(session.id)
+    assert len(conversations) == 1
+    assert conversations[0].message_count == 2
+
+    sess, msgs = manager.get_session(session.id)
+    assert [m.content for m in msgs] == ["Pre-existing question", "Pre-existing answer"]
+
+
 def test_session_scoped_parameters_and_files():
     from contracts.session import SessionParameters, UpdateSessionRequest
 

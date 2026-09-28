@@ -33,9 +33,13 @@ from contracts.retrieval import RetrieveResponse, SearchQuery
 from contracts.session import (
     AttachFilesRequest,
     ChatSession,
+    Conversation,
+    ConversationListResponse,
+    CreateConversationRequest,
     CreateSessionRequest,
     SessionDetailResponse,
     SessionListResponse,
+    UpdateConversationRequest,
     UpdateSessionRequest,
 )
 from contracts.share import (
@@ -306,6 +310,7 @@ class GraphExtractRequest(BaseModel):
 class ChatRequest(BaseModel):
     query: str = Field(min_length=1, description="User question")
     session_id: str | None = Field(default=None, description="Active chat session ID for multi-turn conversational memory")
+    conversation_id: str | None = Field(default=None, description="Chat thread within the session (IRA-24); omitted picks the project's default thread")
     # These default to None (unset), not their eventual runtime default, so the /chat handler can
     # tell "client omitted this field" apart from "client explicitly requested the default value" —
     # only the former should fall back to the session's stored preference.
@@ -957,6 +962,52 @@ def delete_session(session_id: str, user: User = Depends(current_user)) -> dict[
     return {"deleted": session_manager.delete_session(session.id)}
 
 
+# --- Chat Threads Within a Project (IRA-24) ---
+
+
+@app.get("/api/v1/sessions/{session_id}/conversations", response_model=ConversationListResponse)
+def list_conversations(session: ChatSession = Depends(owned_session)) -> ConversationListResponse:
+    """Lists a project's chat threads, oldest first."""
+    return ConversationListResponse(conversations=session_manager.list_conversations(session.id))
+
+
+@app.post("/api/v1/sessions/{session_id}/conversations", response_model=Conversation)
+def create_conversation(
+    req: CreateConversationRequest | None = None, session: ChatSession = Depends(owned_session)
+) -> Conversation:
+    """Starts a new chat thread within a project, keeping its documents/settings/persona."""
+    conversation = session_manager.create_conversation(session.id, title=req.title if req else None)
+    if not conversation:
+        raise HTTPException(status_code=404, detail=f"Session '{session.id}' not found")
+    return conversation
+
+
+@app.get("/api/v1/sessions/{session_id}/conversations/{conversation_id}", response_model=SessionDetailResponse)
+def get_conversation(conversation_id: str, session: ChatSession = Depends(owned_session)) -> SessionDetailResponse:
+    """Retrieves one chat thread's message history."""
+    conversation, msgs = session_manager.get_conversation_messages(session.id, conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail=f"Conversation '{conversation_id}' not found")
+    return SessionDetailResponse(session=session, messages=msgs)
+
+
+@app.patch("/api/v1/sessions/{session_id}/conversations/{conversation_id}", response_model=Conversation)
+def rename_conversation(
+    conversation_id: str, req: UpdateConversationRequest, session: ChatSession = Depends(owned_session)
+) -> Conversation:
+    """Renames a chat thread."""
+    conversation = session_manager.rename_conversation(session.id, conversation_id, req.title)
+    if not conversation:
+        raise HTTPException(status_code=404, detail=f"Conversation '{conversation_id}' not found")
+    return conversation
+
+
+@app.delete("/api/v1/sessions/{session_id}/conversations/{conversation_id}")
+def delete_conversation(conversation_id: str, session: ChatSession = Depends(owned_session)) -> dict[str, bool]:
+    """Deletes a chat thread. Refuses to delete a project's last remaining thread."""
+    return {"deleted": session_manager.delete_conversation(session.id, conversation_id)}
+
+
 # --- Web RAG Store Endpoints (IRA-25, IRA-28) ---
 
 
@@ -1129,6 +1180,7 @@ def chat(req: ChatRequest, user: User = Depends(current_user)):
     turn = ChatTurnRequest(
         query=req.query,
         session_id=active_session_id,
+        conversation_id=req.conversation_id,
         model=req.model if req.model is not None else params.model,
         mode=req.mode if req.mode is not None else params.retrieval_mode,
         top_k=req.top_k if req.top_k is not None else params.top_k,

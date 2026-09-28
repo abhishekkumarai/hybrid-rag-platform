@@ -89,3 +89,35 @@ class SessionListResponse(BaseModel):
 class SessionDetailResponse(BaseModel):
     session: ChatSession
     messages: list[ChatMessage]
+
+
+class Conversation(BaseModel):
+    """A single chat thread within a project (IRA-24). A project owns one or more of these."""
+
+    id: str = Field(default_factory=lambda: f"conv_{uuid.uuid4().hex[:12]}")
+    session_id: str
+    title: str = "New Chat"
+    created_at: float = Field(default_factory=time.time)
+    updated_at: float = Field(default_factory=time.time)
+    message_count: int = 0
+
+
+class CreateConversationRequest(BaseModel):
+    """Request payload to start a new chat thread within a project."""
+
+    title: str | None = None
+
+
+class UpdateConversationRequest(BaseModel):
+    """Request payload to rename a chat thread."""
+
+    title: str
+
+
+class ConversationListResponse(BaseModel):
+    conversations: list[Conversation]
+
+
+class ConversationDetailResponse(BaseModel):
+    conversation: Conversation
+    messages: list[ChatMessage]

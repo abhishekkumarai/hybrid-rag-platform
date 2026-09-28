@@ -37,6 +37,7 @@ def _in_memory_projects(monkeypatch):
     monkeypatch.setattr(api.session_manager, "redis_client", None)
     monkeypatch.setattr(api.session_manager, "_in_memory_sessions", {})
     monkeypatch.setattr(api.session_manager, "_in_memory_messages", {})
+    monkeypatch.setattr(api.session_manager, "_in_memory_conversations", {})
 
 
 @pytest.fixture
