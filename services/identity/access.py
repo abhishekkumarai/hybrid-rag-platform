@@ -18,8 +18,14 @@ _FIGURE_NAME = re.compile(r"^(?P<doc_id>.+)_p\d+_fig_\d+\.png$")
 
 
 def accessible_doc_ids(store: IdentityStore, user_id: str, public_doc_ids: Iterable[str] = ()) -> set[str]:
-    """Owned, plus granted through a live share, plus the public web corpus."""
-    return store.owned_doc_ids(user_id) | store.granted_doc_ids(user_id) | set(public_doc_ids)
+    """Owned, plus granted through a live share, plus documents attached to a project in one of the
+    user's workspaces (IRA-46), plus the public web corpus."""
+    return (
+        store.owned_doc_ids(user_id)
+        | store.granted_doc_ids(user_id)
+        | store.workspace_doc_ids(user_id)
+        | set(public_doc_ids)
+    )
 
 
 def resolve_scope(entries: Iterable[str], accessible: set[str]) -> list[str]:

@@ -65,6 +65,7 @@ class SessionManager:
         files: list[str] | None = None,
         owner_id: str | None = None,
         forked_from: str | None = None,
+        workspace_id: str | None = None,
     ) -> ChatSession:
         """Creates a new conversational chat session with scoped parameters, prompt, and files."""
         session = ChatSession(
@@ -74,6 +75,7 @@ class SessionManager:
             files=list(dict.fromkeys(files or [])),
             owner_id=owner_id,
             forked_from=forked_from,
+            workspace_id=workspace_id,
         )
         if self.redis_client:
             try:
@@ -90,8 +92,9 @@ class SessionManager:
         )
         return session
 
-    def list_sessions(self, owner_id: str | None = None) -> list[ChatSession]:
-        """Lists chat sessions sorted by updated_at descending; only `owner_id`'s when given.
+    def list_sessions(self, owner_id: str | None = None, workspace_id: str | None = None) -> list[ChatSession]:
+        """Lists chat sessions sorted by updated_at descending; only `owner_id`'s or `workspace_id`'s
+        when given.
 
         Filtering the one meta hash (rather than keeping a per-user index set) means ownership has a
         single source of truth that can't drift out of sync with the session records."""
@@ -109,6 +112,8 @@ class SessionManager:
 
         if owner_id is not None:
             sessions = [s for s in sessions if s.owner_id == owner_id]
+        if workspace_id is not None:
+            sessions = [s for s in sessions if s.workspace_id == workspace_id]
         sessions.sort(key=lambda s: s.updated_at, reverse=True)
         return sessions
 
@@ -116,6 +121,18 @@ class SessionManager:
         """Like `get_session`, but a session owned by someone else is reported as missing (IRA-34)."""
         session, messages = self.get_session(session_id)
         if not session or session.owner_id != owner_id:
+            return None, []
+        return session, messages
+
+    def get_for_member(
+        self, session_id: str, member_workspace_ids: set[str]
+    ) -> tuple[ChatSession | None, list[ChatMessage]]:
+        """Like `get_owned`, but visible to any member of the project's workspace (IRA-46).
+
+        A session with no `workspace_id` predates workspaces and isn't visible here even to its
+        owner — callers should fall back to `get_owned` for those until they're backfilled."""
+        session, messages = self.get_session(session_id)
+        if not session or session.workspace_id is None or session.workspace_id not in member_workspace_ids:
             return None, []
         return session, messages
 
@@ -128,6 +145,16 @@ class SessionManager:
                 self._save(session)
                 adopted += 1
         return adopted
+
+    def stamp_workspace_for_owner(self, owner_id: str, workspace_id: str) -> int:
+        """Stamps every one of `owner_id`'s sessions that has no workspace yet. Returns how many changed."""
+        stamped = 0
+        for session in self.list_sessions(owner_id=owner_id):
+            if session.workspace_id is None:
+                session.workspace_id = workspace_id
+                self._save(session)
+                stamped += 1
+        return stamped
 
     def _save(self, session: ChatSession) -> None:
         if self.redis_client:

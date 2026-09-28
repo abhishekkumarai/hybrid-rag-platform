@@ -45,6 +45,30 @@ def apply_migrations(conninfo: str) -> list[str]:
     return applied
 
 
+def backfill_personal_workspaces(conninfo: str, *, redis_host: str, redis_port: int) -> dict[str, int]:
+    """Gives every pre-IRA-46 user a personal workspace and stamps their existing Redis projects with
+    it. Idempotent: a user who already owns a workspace (from signup, demo, or a prior run of this)
+    is skipped, and `stamp_workspace_for_owner` only touches sessions still missing a `workspace_id`."""
+    from services.identity.store import PostgresIdentityStore
+    from services.session.manager import SessionManager
+
+    store = PostgresIdentityStore(conninfo)
+    sessions = SessionManager(host=redis_host, port=redis_port)
+
+    created = 0
+    stamped = 0
+    for user in store.list_users():
+        workspaces = [w for w in store.list_workspaces_for_user(user.id) if w.owner_id == user.id]
+        if workspaces:
+            workspace = workspaces[0]
+        else:
+            workspace = store.create_workspace(name=f"{user.display_name or user.email}'s Workspace", owner_id=user.id)
+            created += 1
+        if sessions.redis_client is not None:
+            stamped += sessions.stamp_workspace_for_owner(user.id, workspace.id)
+    return {"workspaces_created": created, "sessions_stamped": stamped}
+
+
 def adopt_legacy(admin_email: str, *, redis_host: str, redis_port: int, conninfo: str) -> dict[str, int]:
     """Stamps unowned Redis projects with the admin and registers every legacy document as theirs."""
     from services.identity.store import PostgresIdentityStore
@@ -87,6 +111,13 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Target database: {settings.auth.database} on {settings.storage.postgres_host}:{settings.storage.postgres_port}")
     applied = apply_migrations(settings.auth_postgres_url)
     print(f"Applied: {', '.join(applied) if applied else 'nothing (up to date)'}")
+    backfill = backfill_personal_workspaces(
+        settings.auth_postgres_url, redis_host=settings.storage.redis_host, redis_port=settings.storage.redis_port
+    )
+    print(
+        f"Workspaces: created {backfill['workspaces_created']} personal workspace(s), "
+        f"stamped {backfill['sessions_stamped']} project(s)"
+    )
     if args.adopt_legacy:
         result = adopt_legacy(
             args.adopt_legacy, redis_host=settings.storage.redis_host,

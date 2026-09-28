@@ -23,7 +23,21 @@ from contracts.compactor import CompactedContext, CompactorRequest
 from contracts.document import Block, IngestRequest, IngestResponse
 from contracts.feedback import FeedbackRecord, FeedbackRequest, RAGOpsSummary
 from contracts.graph import GraphExtractionResult, GraphRAGResponse, GraphSearchQuery
-from contracts.identity import LoginRequest, MeResponse, OwnedDocument, SignupRequest, User
+from contracts.identity import (
+    AddMemberRequest,
+    CreateWorkspaceRequest,
+    LoginRequest,
+    MemberListResponse,
+    MeResponse,
+    OwnedDocument,
+    SignupRequest,
+    UpdateMemberRequest,
+    UpdateWorkspaceRequest,
+    User,
+    Workspace,
+    WorkspaceListResponse,
+    WorkspaceMemberResponse,
+)
 from contracts.metrics import (
     ProjectEvalRun,
     ProjectEvalSummary,
@@ -163,9 +177,29 @@ def auth_gate(request: Request, _csrf: None = Depends(csrf_guard), user: User | 
         raise HTTPException(status_code=401, detail="Sign in required")
 
 
-def owned_session(session_id: str, user: User = Depends(current_user)) -> ChatSession:
-    """Someone else's project is reported as missing, not forbidden, so ids can't be probed."""
-    session, _ = session_manager.get_owned(session_id, user.id)
+def _user_workspace_ids(user: User) -> set[str]:
+    return get_identity_store().workspace_ids_for_user(user.id)
+
+
+def _default_workspace_id(user: User) -> str | None:
+    """The workspace a new project should be stamped with: the user's oldest owned workspace (their
+    personal one, created at signup/CLI account creation) — or, defensively, a freshly created one
+    for an account that predates IRA-46 and hasn't been through the migration backfill yet."""
+    store = get_identity_store()
+    workspaces = [w for w in store.list_workspaces_for_user(user.id) if w.owner_id == user.id]
+    if workspaces:
+        return workspaces[0].id
+    return store.create_workspace(name=f"{user.display_name or user.email}'s Workspace", owner_id=user.id).id
+
+
+def workspace_session(session_id: str, user: User = Depends(current_user)) -> ChatSession:
+    """Someone else's project is reported as missing, not forbidden, so ids can't be probed.
+
+    Visible to any member of the project's workspace (IRA-46), falling back to strict ownership for
+    a pre-IRA-46 session that hasn't been stamped with a `workspace_id` yet."""
+    session, _ = session_manager.get_for_member(session_id, _user_workspace_ids(user))
+    if not session:
+        session, _ = session_manager.get_owned(session_id, user.id)
     if not session:
         raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
     return session
@@ -403,6 +437,7 @@ def signup(req: SignupRequest) -> JSONResponse:
         )
     except DuplicateEmailError:
         raise HTTPException(status_code=409, detail="An account with this email already exists")
+    get_identity_store().create_workspace(name=f"{user.display_name or user.email}'s Workspace", owner_id=user.id)
     logger.info(f"Signup: created user '{user.id}'")
     return _start_login(user)
 
@@ -426,6 +461,7 @@ def start_demo(request: Request) -> JSONResponse:
         display_name="Guest",
         is_demo=True,
     )
+    get_identity_store().create_workspace(name="Guest Workspace", owner_id=user.id)
     logger.info(f"Demo: created guest '{user.id}'")
     return _start_login(user, ttl_s=settings.auth.demo_session_hours * 3600)
 
@@ -896,6 +932,7 @@ def retrieve(query: SearchQuery, user: User = Depends(current_user)) -> Retrieve
 @app.post("/api/v1/sessions", response_model=ChatSession)
 def create_session(req: CreateSessionRequest | None = None, user: User = Depends(current_user)) -> ChatSession:
     """Creates a new conversational session with optional custom prompt, parameters, and scoped files."""
+    workspace_id = _default_workspace_id(user)
     if req:
         return session_manager.create_session(
             title=req.title,
@@ -903,18 +940,26 @@ def create_session(req: CreateSessionRequest | None = None, user: User = Depends
             parameters=req.parameters,
             files=_validated_files(req.files, user),
             owner_id=user.id,
+            workspace_id=workspace_id,
         )
-    return session_manager.create_session(owner_id=user.id)
+    return session_manager.create_session(owner_id=user.id, workspace_id=workspace_id)
 
 
 @app.get("/api/v1/sessions", response_model=SessionListResponse)
-def list_sessions(user: User = Depends(current_user)) -> SessionListResponse:
-    """Lists the caller's conversational sessions sorted by recency."""
+def list_sessions(
+    workspace_id: str | None = Query(default=None), user: User = Depends(current_user)
+) -> SessionListResponse:
+    """Lists the caller's conversational sessions sorted by recency; `workspace_id` narrows to one
+    workspace shared with the caller (IRA-46), still 404-shaped to a non-member via an empty list."""
+    if workspace_id is not None:
+        if workspace_id not in _user_workspace_ids(user):
+            raise HTTPException(status_code=404, detail=f"Workspace '{workspace_id}' not found")
+        return SessionListResponse(sessions=session_manager.list_sessions(workspace_id=workspace_id))
     return SessionListResponse(sessions=session_manager.list_sessions(owner_id=user.id))
 
 
 @app.get("/api/v1/sessions/{session_id}", response_model=SessionDetailResponse)
-def get_session(session: ChatSession = Depends(owned_session)) -> SessionDetailResponse:
+def get_session(session: ChatSession = Depends(workspace_session)) -> SessionDetailResponse:
     """Retrieves session metadata and historical message thread."""
     _, msgs = session_manager.get_session(session.id)
     return SessionDetailResponse(session=session, messages=msgs)
@@ -922,7 +967,7 @@ def get_session(session: ChatSession = Depends(owned_session)) -> SessionDetailR
 
 @app.patch("/api/v1/sessions/{session_id}", response_model=ChatSession)
 def update_session(
-    req: UpdateSessionRequest, session: ChatSession = Depends(owned_session), user: User = Depends(current_user)
+    req: UpdateSessionRequest, session: ChatSession = Depends(workspace_session), user: User = Depends(current_user)
 ) -> ChatSession:
     """Partially updates session title, system prompt, parameters, or attached files."""
     if req.files is not None:
@@ -935,17 +980,21 @@ def update_session(
 
 @app.post("/api/v1/sessions/{session_id}/files", response_model=ChatSession)
 def attach_files_to_session(
-    req: AttachFilesRequest, session: ChatSession = Depends(owned_session), user: User = Depends(current_user)
+    req: AttachFilesRequest, session: ChatSession = Depends(workspace_session), user: User = Depends(current_user)
 ) -> ChatSession:
     """Attaches documents the caller can read to a session workspace (stored as exact doc_ids)."""
-    updated = session_manager.attach_files(session.id, _validated_files(req.files, user) or [])
+    doc_ids = _validated_files(req.files, user) or []
+    updated = session_manager.attach_files(session.id, doc_ids)
     if not updated:
         raise HTTPException(status_code=404, detail=f"Session '{session.id}' not found")
+    if updated.workspace_id:
+        for doc_id in doc_ids:
+            get_identity_store().attach_workspace_document(updated.workspace_id, doc_id, added_by=user.id)
     return updated
 
 
 @app.delete("/api/v1/sessions/{session_id}/files/{doc_id}", response_model=ChatSession)
-def detach_file_from_session(doc_id: str, session: ChatSession = Depends(owned_session)) -> ChatSession:
+def detach_file_from_session(doc_id: str, session: ChatSession = Depends(workspace_session)) -> ChatSession:
     """Detaches a specific document from a session workspace."""
     updated = session_manager.detach_file(session.id, doc_id)
     if not updated:
@@ -962,18 +1011,143 @@ def delete_session(session_id: str, user: User = Depends(current_user)) -> dict[
     return {"deleted": session_manager.delete_session(session.id)}
 
 
+# --- Workspaces (IRA-46) ---
+
+
+def _workspace_member(workspace_id: str, user: User = Depends(current_user)) -> tuple[Workspace, str]:
+    """A workspace the caller belongs to, plus their role. Non-members get a 404, same as `workspace_session`."""
+    store = get_identity_store()
+    workspace = store.get_workspace(workspace_id)
+    member = store.get_member(workspace_id, user.id) if workspace else None
+    if not workspace or not member:
+        raise HTTPException(status_code=404, detail=f"Workspace '{workspace_id}' not found")
+    return workspace, member.role
+
+
+def _workspace_admin(workspace_id: str, user: User = Depends(current_user)) -> Workspace:
+    workspace, role = _workspace_member(workspace_id, user)
+    if role not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Only workspace owners and admins can do this")
+    return workspace
+
+
+@app.post("/api/v1/workspaces", response_model=Workspace)
+def create_workspace(req: CreateWorkspaceRequest, user: User = Depends(current_user)) -> Workspace:
+    """Creates a new shared workspace; the caller becomes its owner."""
+    return get_identity_store().create_workspace(name=req.name, owner_id=user.id)
+
+
+@app.get("/api/v1/workspaces", response_model=WorkspaceListResponse)
+def list_workspaces(user: User = Depends(current_user)) -> WorkspaceListResponse:
+    """Lists every workspace the caller is a member of."""
+    return WorkspaceListResponse(workspaces=get_identity_store().list_workspaces_for_user(user.id))
+
+
+@app.get("/api/v1/workspaces/{workspace_id}", response_model=Workspace)
+def get_workspace_route(workspace: tuple[Workspace, str] = Depends(_workspace_member)) -> Workspace:
+    return workspace[0]
+
+
+@app.patch("/api/v1/workspaces/{workspace_id}", response_model=Workspace)
+def rename_workspace(
+    req: UpdateWorkspaceRequest, workspace: Workspace = Depends(_workspace_admin)
+) -> Workspace:
+    """Renames a workspace. Owners and admins only."""
+    updated = get_identity_store().update_workspace(workspace.id, req.name)
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"Workspace '{workspace.id}' not found")
+    return updated
+
+
+@app.delete("/api/v1/workspaces/{workspace_id}")
+def delete_workspace_route(
+    workspace_id: str, membership: tuple[Workspace, str] = Depends(_workspace_member), user: User = Depends(current_user)
+) -> dict[str, bool]:
+    """Deletes a workspace. Owners only — projects that belonged to it keep their `workspace_id`
+    stamp but become unreadable until reassigned, same as any other dangling reference.
+
+    Checked against `workspace.owner_id` (the account that created it), never the member table's
+    `role` column: `role` is caller-settable data (see `add_workspace_member`/`update_workspace_member`,
+    which now refuse to hand out "owner"), so trusting a member row saying "owner" here would let
+    anyone who could write that row delete workspaces they don't own."""
+    workspace, _ = membership
+    if user.id != workspace.owner_id:
+        raise HTTPException(status_code=403, detail="Only the workspace owner can delete it")
+    return {"deleted": get_identity_store().delete_workspace(workspace_id)}
+
+
+@app.get("/api/v1/workspaces/{workspace_id}/members", response_model=MemberListResponse)
+def list_workspace_members(workspace: tuple[Workspace, str] = Depends(_workspace_member)) -> MemberListResponse:
+    store = get_identity_store()
+    members = store.list_members(workspace[0].id)
+    resolved = [
+        WorkspaceMemberResponse(member=m, user=u)
+        for m in members
+        if (u := store.get_user(m.user_id)) is not None
+    ]
+    return MemberListResponse(members=resolved)
+
+
+@app.post("/api/v1/workspaces/{workspace_id}/members", response_model=WorkspaceMemberResponse)
+def add_workspace_member(
+    req: AddMemberRequest, workspace: Workspace = Depends(_workspace_admin)
+) -> WorkspaceMemberResponse:
+    """Adds an existing user (by email) to the workspace. Owners and admins only.
+
+    `role="owner"` is refused: ownership is set once at creation and isn't transferable through
+    this endpoint, otherwise an admin could hand themselves (or an accomplice) the owner role and
+    then pass any check that trusts the member table's `role` column instead of `workspace.owner_id`."""
+    if req.role == "owner":
+        raise HTTPException(status_code=400, detail="Cannot grant the owner role; ownership isn't transferable here")
+    store = get_identity_store()
+    target = store.get_user_by_email(req.email)
+    if not target:
+        raise HTTPException(status_code=404, detail=f"No account for '{req.email}'")
+    member = store.add_member(workspace.id, target.id, req.role)
+    return WorkspaceMemberResponse(member=member, user=target)
+
+
+@app.patch("/api/v1/workspaces/{workspace_id}/members/{user_id}", response_model=WorkspaceMemberResponse)
+def update_workspace_member(
+    user_id: str, req: UpdateMemberRequest, workspace: Workspace = Depends(_workspace_admin)
+) -> WorkspaceMemberResponse:
+    """Changes a member's role. Owners and admins only; the workspace's owner role is fixed here —
+    ownership transfer is out of scope, and granting "owner" is refused for the same reason
+    `add_workspace_member` refuses it (see its docstring)."""
+    if req.role == "owner":
+        raise HTTPException(status_code=400, detail="Cannot grant the owner role; ownership isn't transferable here")
+    store = get_identity_store()
+    if user_id == workspace.owner_id:
+        raise HTTPException(status_code=400, detail="The workspace owner's role can't be changed")
+    member = store.update_member_role(workspace.id, user_id, req.role)
+    target = store.get_user(user_id)
+    if not member or not target:
+        raise HTTPException(status_code=404, detail=f"Member '{user_id}' not found")
+    return WorkspaceMemberResponse(member=member, user=target)
+
+
+@app.delete("/api/v1/workspaces/{workspace_id}/members/{user_id}")
+def remove_workspace_member(
+    user_id: str, workspace: Workspace = Depends(_workspace_admin)
+) -> dict[str, bool]:
+    """Removes a member. Owners and admins only; the owner can't be removed this way."""
+    if user_id == workspace.owner_id:
+        raise HTTPException(status_code=400, detail="The workspace owner can't be removed")
+    return {"removed": get_identity_store().remove_member(workspace.id, user_id)}
+
+
 # --- Chat Threads Within a Project (IRA-24) ---
 
 
 @app.get("/api/v1/sessions/{session_id}/conversations", response_model=ConversationListResponse)
-def list_conversations(session: ChatSession = Depends(owned_session)) -> ConversationListResponse:
+def list_conversations(session: ChatSession = Depends(workspace_session)) -> ConversationListResponse:
     """Lists a project's chat threads, oldest first."""
     return ConversationListResponse(conversations=session_manager.list_conversations(session.id))
 
 
 @app.post("/api/v1/sessions/{session_id}/conversations", response_model=Conversation)
 def create_conversation(
-    req: CreateConversationRequest | None = None, session: ChatSession = Depends(owned_session)
+    req: CreateConversationRequest | None = None, session: ChatSession = Depends(workspace_session)
 ) -> Conversation:
     """Starts a new chat thread within a project, keeping its documents/settings/persona."""
     conversation = session_manager.create_conversation(session.id, title=req.title if req else None)
@@ -983,7 +1157,7 @@ def create_conversation(
 
 
 @app.get("/api/v1/sessions/{session_id}/conversations/{conversation_id}", response_model=SessionDetailResponse)
-def get_conversation(conversation_id: str, session: ChatSession = Depends(owned_session)) -> SessionDetailResponse:
+def get_conversation(conversation_id: str, session: ChatSession = Depends(workspace_session)) -> SessionDetailResponse:
     """Retrieves one chat thread's message history."""
     conversation, msgs = session_manager.get_conversation_messages(session.id, conversation_id)
     if not conversation:
@@ -993,7 +1167,7 @@ def get_conversation(conversation_id: str, session: ChatSession = Depends(owned_
 
 @app.patch("/api/v1/sessions/{session_id}/conversations/{conversation_id}", response_model=Conversation)
 def rename_conversation(
-    conversation_id: str, req: UpdateConversationRequest, session: ChatSession = Depends(owned_session)
+    conversation_id: str, req: UpdateConversationRequest, session: ChatSession = Depends(workspace_session)
 ) -> Conversation:
     """Renames a chat thread."""
     conversation = session_manager.rename_conversation(session.id, conversation_id, req.title)
@@ -1003,7 +1177,7 @@ def rename_conversation(
 
 
 @app.delete("/api/v1/sessions/{session_id}/conversations/{conversation_id}")
-def delete_conversation(conversation_id: str, session: ChatSession = Depends(owned_session)) -> dict[str, bool]:
+def delete_conversation(conversation_id: str, session: ChatSession = Depends(workspace_session)) -> dict[str, bool]:
     """Deletes a chat thread. Refuses to delete a project's last remaining thread."""
     return {"deleted": session_manager.delete_conversation(session.id, conversation_id)}
 
@@ -1107,6 +1281,7 @@ def create_or_sync_preset_web_project(
         system_prompt=system_persona,
         files=target_doc_ids,
         owner_id=user.id,
+        workspace_id=_default_workspace_id(user),
     )
     return WebPresetProjectResponse(
         session_id=new_sess.id,
@@ -1166,11 +1341,13 @@ def chat(req: ChatRequest, user: User = Depends(current_user)):
     Omitting `session_id` starts a new project for the caller; naming a project the caller doesn't
     own is a 404 (it used to silently start a new one)."""
     if req.session_id:
-        session, _ = session_manager.get_owned(req.session_id, user.id)
+        session, _ = session_manager.get_for_member(req.session_id, _user_workspace_ids(user))
+        if not session:
+            session, _ = session_manager.get_owned(req.session_id, user.id)
         if not session:
             raise HTTPException(status_code=404, detail=f"Session '{req.session_id}' not found")
     else:
-        session = session_manager.create_session(owner_id=user.id)
+        session = session_manager.create_session(owner_id=user.id, workspace_id=_default_workspace_id(user))
     active_session_id = session.id
 
     # req.X is None means the client omitted the field — fall back to the session's stored
@@ -1318,7 +1495,7 @@ def compact_context(req: CompactorRequest) -> CompactedContext:
 
 
 @app.get("/api/v1/sessions/{session_id}/eval/summary", response_model=ProjectEvalSummary)
-def project_eval_summary(session_id: str, _session: ChatSession = Depends(owned_session)) -> ProjectEvalSummary:
+def project_eval_summary(session_id: str, _session: ChatSession = Depends(workspace_session)) -> ProjectEvalSummary:
     """Aggregates this project's per-turn online evaluation scores (trend + weakest turns)."""
     records, judge = project_eval.load_session_telemetry(
         session_id,
@@ -1330,14 +1507,14 @@ def project_eval_summary(session_id: str, _session: ChatSession = Depends(owned_
 
 
 @app.get("/api/v1/sessions/{session_id}/eval/run", response_model=ProjectEvalRun | None)
-def project_eval_last_run(session_id: str, _session: ChatSession = Depends(owned_session)) -> ProjectEvalRun | None:
+def project_eval_last_run(session_id: str, _session: ChatSession = Depends(workspace_session)) -> ProjectEvalRun | None:
     """Returns this project's most recent golden-set run, or null if it has never been run."""
     return project_eval.load_last_run(session_id)
 
 
 @app.post("/api/v1/sessions/{session_id}/eval/run", response_model=ProjectEvalRun)
 def project_eval_run(
-    rebuild: bool = False, session: ChatSession = Depends(owned_session), user: User = Depends(current_user)
+    rebuild: bool = False, session: ChatSession = Depends(workspace_session), user: User = Depends(current_user)
 ) -> ProjectEvalRun:
     """Runs the project's golden set (generated from its own documents) with its own settings."""
     # Evaluate against exactly the documents the caller can read, like a chat turn would.
@@ -1388,7 +1565,7 @@ def trigger_evaluation_run(_admin: User = Depends(require_admin)) -> dict[str, A
 
 @app.post("/api/v1/sessions/{session_id}/shares", response_model=CreateShareResponse)
 def create_share(
-    request: Request, session: ChatSession = Depends(owned_session), user: User = Depends(current_user)
+    request: Request, session: ChatSession = Depends(workspace_session), user: User = Depends(current_user)
 ) -> CreateShareResponse:
     """Publishes a snapshot of the project's chat at a public URL. The token is returned once."""
     _, messages = session_manager.get_session(session.id)
@@ -1399,7 +1576,7 @@ def create_share(
 
 
 @app.get("/api/v1/sessions/{session_id}/shares", response_model=ShareListResponse)
-def list_shares(session: ChatSession = Depends(owned_session)) -> ShareListResponse:
+def list_shares(session: ChatSession = Depends(workspace_session)) -> ShareListResponse:
     return ShareListResponse(shares=_share_service().list_for_session(session.id))
 
 

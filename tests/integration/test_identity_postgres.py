@@ -76,3 +76,37 @@ def test_documents_shares_and_grants(store):
     store.revoke_share(share.id)
     assert store.get_share(share.id).revoked_at is not None
     assert store.granted_doc_ids(reader.id) == set()
+
+
+def test_workspaces_membership_and_documents(store):
+    owner, member, outsider = _user(store), _user(store), _user(store)
+
+    workspace = store.create_workspace(name="IT Team", owner_id=owner.id)
+    assert store.get_member(workspace.id, owner.id).role == "owner"
+    assert store.list_workspaces_for_user(owner.id) == [workspace]
+
+    added = store.add_member(workspace.id, member.id, "member")
+    assert added.role == "member"
+    assert {m.user_id for m in store.list_members(workspace.id)} == {owner.id, member.id}
+    assert store.workspace_ids_for_user(member.id) == {workspace.id}
+    assert store.workspace_ids_for_user(outsider.id) == set()
+
+    promoted = store.update_member_role(workspace.id, member.id, "admin")
+    assert promoted.role == "admin"
+
+    doc_id = f"doc_{uuid.uuid4().hex[:8]}"
+    store.attach_workspace_document(workspace.id, doc_id, added_by=owner.id)
+    store.attach_workspace_document(workspace.id, doc_id, added_by=owner.id)  # idempotent
+    assert store.workspace_doc_ids(owner.id) == {doc_id}
+    assert store.workspace_doc_ids(member.id) == {doc_id}
+    assert store.workspace_doc_ids(outsider.id) == set()
+
+    renamed = store.update_workspace(workspace.id, "Renamed Team")
+    assert renamed.name == "Renamed Team"
+
+    assert store.remove_member(workspace.id, member.id) is True
+    assert store.get_member(workspace.id, member.id) is None
+    assert store.workspace_doc_ids(member.id) == set()
+
+    assert store.delete_workspace(workspace.id) is True
+    assert store.get_workspace(workspace.id) is None

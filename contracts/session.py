@@ -56,6 +56,9 @@ class ChatSession(BaseModel):
     parameters: SessionParameters = Field(default_factory=SessionParameters, description="Runtime execution parameters")
     owner_id: str | None = Field(default=None, description="User who owns this project (IRA-34)")
     forked_from: str | None = Field(default=None, description="Share id this project was forked from (IRA-35)")
+    workspace_id: str | None = Field(
+        default=None, description="Workspace this project belongs to; its members can all see it (IRA-46)"
+    )
 
 
 class CreateSessionRequest(BaseModel):

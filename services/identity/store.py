@@ -11,7 +11,7 @@ import threading
 import time
 from typing import Protocol
 
-from contracts.identity import OwnedDocument, User
+from contracts.identity import OwnedDocument, User, Workspace, WorkspaceMember, WorkspaceRole
 from contracts.share import Share, ShareSnapshot
 from services.common.logger import get_logger
 
@@ -30,6 +30,7 @@ class IdentityStore(Protocol):
     def get_user(self, user_id: str) -> User | None: ...
     def get_credentials(self, email: str) -> tuple[User, str] | None: ...
     def get_user_by_email(self, email: str) -> User | None: ...
+    def list_users(self) -> list[User]: ...
 
     # login sessions
     def create_auth_session(self, user_id: str, token_hash: str, expires_at: float) -> None: ...
@@ -55,6 +56,21 @@ class IdentityStore(Protocol):
     def revoke_share(self, share_id: str) -> None: ...
     def record_share_view(self, share_id: str) -> None: ...
 
+    # workspaces (IRA-46)
+    def create_workspace(self, name: str, owner_id: str) -> Workspace: ...
+    def get_workspace(self, workspace_id: str) -> Workspace | None: ...
+    def list_workspaces_for_user(self, user_id: str) -> list[Workspace]: ...
+    def update_workspace(self, workspace_id: str, name: str) -> Workspace | None: ...
+    def delete_workspace(self, workspace_id: str) -> bool: ...
+    def workspace_ids_for_user(self, user_id: str) -> set[str]: ...
+    def get_member(self, workspace_id: str, user_id: str) -> WorkspaceMember | None: ...
+    def list_members(self, workspace_id: str) -> list[WorkspaceMember]: ...
+    def add_member(self, workspace_id: str, user_id: str, role: WorkspaceRole) -> WorkspaceMember: ...
+    def update_member_role(self, workspace_id: str, user_id: str, role: WorkspaceRole) -> WorkspaceMember | None: ...
+    def remove_member(self, workspace_id: str, user_id: str) -> bool: ...
+    def attach_workspace_document(self, workspace_id: str, doc_id: str, added_by: str) -> None: ...
+    def workspace_doc_ids(self, user_id: str) -> set[str]: ...
+
 
 def normalize_email(email: str) -> str:
     return email.strip().lower()
@@ -69,6 +85,9 @@ class InMemoryIdentityStore:
         self.documents: dict[tuple[str, str], OwnedDocument] = {}
         self.grants: set[tuple[str, str, str]] = set()
         self.shares: dict[str, Share] = {}
+        self.workspaces: dict[str, Workspace] = {}
+        self.members: dict[tuple[str, str], WorkspaceMember] = {}
+        self.workspace_documents: dict[tuple[str, str], str] = {}  # (workspace_id, doc_id) -> added_by
 
     def create_user(
         self, email: str, password_hash: str, display_name: str = "", is_admin: bool = False, is_demo: bool = False
@@ -88,6 +107,9 @@ class InMemoryIdentityStore:
     def get_user_by_email(self, email: str) -> User | None:
         email = normalize_email(email)
         return next((u for u in self.users.values() if u.email == email), None)
+
+    def list_users(self) -> list[User]:
+        return list(self.users.values())
 
     def get_credentials(self, email: str) -> tuple[User, str] | None:
         user = self.get_user_by_email(email)
@@ -157,6 +179,67 @@ class InMemoryIdentityStore:
         if share:
             share.view_count += 1
 
+    def create_workspace(self, name: str, owner_id: str) -> Workspace:
+        workspace = Workspace(name=name, owner_id=owner_id)
+        self.workspaces[workspace.id] = workspace
+        self.members[(workspace.id, owner_id)] = WorkspaceMember(
+            workspace_id=workspace.id, user_id=owner_id, role="owner"
+        )
+        return workspace
+
+    def get_workspace(self, workspace_id: str) -> Workspace | None:
+        return self.workspaces.get(workspace_id)
+
+    def list_workspaces_for_user(self, user_id: str) -> list[Workspace]:
+        ids = {wid for (wid, uid) in self.members if uid == user_id}
+        return sorted((self.workspaces[i] for i in ids if i in self.workspaces), key=lambda w: w.created_at)
+
+    def update_workspace(self, workspace_id: str, name: str) -> Workspace | None:
+        workspace = self.workspaces.get(workspace_id)
+        if not workspace:
+            return None
+        workspace.name = name
+        return workspace
+
+    def delete_workspace(self, workspace_id: str) -> bool:
+        existed = self.workspaces.pop(workspace_id, None) is not None
+        self.members = {k: v for k, v in self.members.items() if k[0] != workspace_id}
+        self.workspace_documents = {k: v for k, v in self.workspace_documents.items() if k[0] != workspace_id}
+        return existed
+
+    def workspace_ids_for_user(self, user_id: str) -> set[str]:
+        return {wid for (wid, uid) in self.members if uid == user_id}
+
+    def get_member(self, workspace_id: str, user_id: str) -> WorkspaceMember | None:
+        return self.members.get((workspace_id, user_id))
+
+    def list_members(self, workspace_id: str) -> list[WorkspaceMember]:
+        return sorted(
+            (m for (wid, _), m in self.members.items() if wid == workspace_id), key=lambda m: m.added_at
+        )
+
+    def add_member(self, workspace_id: str, user_id: str, role: WorkspaceRole) -> WorkspaceMember:
+        member = WorkspaceMember(workspace_id=workspace_id, user_id=user_id, role=role)
+        self.members[(workspace_id, user_id)] = member
+        return member
+
+    def update_member_role(self, workspace_id: str, user_id: str, role: WorkspaceRole) -> WorkspaceMember | None:
+        member = self.members.get((workspace_id, user_id))
+        if not member:
+            return None
+        member.role = role
+        return member
+
+    def remove_member(self, workspace_id: str, user_id: str) -> bool:
+        return self.members.pop((workspace_id, user_id), None) is not None
+
+    def attach_workspace_document(self, workspace_id: str, doc_id: str, added_by: str) -> None:
+        self.workspace_documents.setdefault((workspace_id, doc_id), added_by)
+
+    def workspace_doc_ids(self, user_id: str) -> set[str]:
+        workspace_ids = self.workspace_ids_for_user(user_id)
+        return {d for (wid, d) in self.workspace_documents if wid in workspace_ids}
+
 
 class PostgresIdentityStore:
     """One short-lived autocommit connection per call: traffic is a handful of lookups per request
@@ -211,6 +294,11 @@ class PostgresIdentityStore:
                 f"SELECT {self._USER_COLS} FROM users WHERE email = %s", (normalize_email(email),)
             ).fetchone()
         return self._user(row) if row else None
+
+    def list_users(self) -> list[User]:
+        with self._conn() as conn:
+            rows = conn.execute(f"SELECT {self._USER_COLS} FROM users").fetchall()
+        return [self._user(r) for r in rows]
 
     def get_credentials(self, email: str) -> tuple[User, str] | None:
         with self._conn() as conn:
@@ -341,6 +429,124 @@ class PostgresIdentityStore:
     def record_share_view(self, share_id: str) -> None:
         with self._conn() as conn:
             conn.execute("UPDATE shares SET view_count = view_count + 1 WHERE id = %s", (share_id,))
+
+    @staticmethod
+    def _workspace(row) -> Workspace:
+        return Workspace(id=row[0], name=row[1], owner_id=row[2], created_at=row[3])
+
+    _WORKSPACE_COLS = "id, name, owner_id, created_at"
+
+    def create_workspace(self, name: str, owner_id: str) -> Workspace:
+        workspace = Workspace(name=name, owner_id=owner_id)
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT INTO workspaces (id, name, owner_id, created_at) VALUES (%s, %s, %s, %s)",
+                (workspace.id, workspace.name, workspace.owner_id, workspace.created_at),
+            )
+            conn.execute(
+                "INSERT INTO workspace_members (workspace_id, user_id, role, added_at) VALUES (%s, %s, 'owner', %s)",
+                (workspace.id, owner_id, workspace.created_at),
+            )
+        return workspace
+
+    def get_workspace(self, workspace_id: str) -> Workspace | None:
+        with self._conn() as conn:
+            row = conn.execute(
+                f"SELECT {self._WORKSPACE_COLS} FROM workspaces WHERE id = %s", (workspace_id,)
+            ).fetchone()
+        return self._workspace(row) if row else None
+
+    def list_workspaces_for_user(self, user_id: str) -> list[Workspace]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT w.id, w.name, w.owner_id, w.created_at FROM workspaces w "
+                "JOIN workspace_members m ON m.workspace_id = w.id WHERE m.user_id = %s ORDER BY w.created_at",
+                (user_id,),
+            ).fetchall()
+        return [self._workspace(r) for r in rows]
+
+    def update_workspace(self, workspace_id: str, name: str) -> Workspace | None:
+        with self._conn() as conn:
+            conn.execute("UPDATE workspaces SET name = %s WHERE id = %s", (name, workspace_id))
+        return self.get_workspace(workspace_id)
+
+    def delete_workspace(self, workspace_id: str) -> bool:
+        with self._conn() as conn:
+            cur = conn.execute("DELETE FROM workspaces WHERE id = %s", (workspace_id,))
+            return cur.rowcount > 0
+
+    def workspace_ids_for_user(self, user_id: str) -> set[str]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT workspace_id FROM workspace_members WHERE user_id = %s", (user_id,)
+            ).fetchall()
+        return {r[0] for r in rows}
+
+    @staticmethod
+    def _member(row) -> WorkspaceMember:
+        return WorkspaceMember(workspace_id=row[0], user_id=row[1], role=row[2], added_at=row[3])
+
+    _MEMBER_COLS = "workspace_id, user_id, role, added_at"
+
+    def get_member(self, workspace_id: str, user_id: str) -> WorkspaceMember | None:
+        with self._conn() as conn:
+            row = conn.execute(
+                f"SELECT {self._MEMBER_COLS} FROM workspace_members WHERE workspace_id = %s AND user_id = %s",
+                (workspace_id, user_id),
+            ).fetchone()
+        return self._member(row) if row else None
+
+    def list_members(self, workspace_id: str) -> list[WorkspaceMember]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                f"SELECT {self._MEMBER_COLS} FROM workspace_members WHERE workspace_id = %s ORDER BY added_at",
+                (workspace_id,),
+            ).fetchall()
+        return [self._member(r) for r in rows]
+
+    def add_member(self, workspace_id: str, user_id: str, role: WorkspaceRole) -> WorkspaceMember:
+        member = WorkspaceMember(workspace_id=workspace_id, user_id=user_id, role=role)
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT INTO workspace_members (workspace_id, user_id, role, added_at) VALUES (%s, %s, %s, %s) "
+                "ON CONFLICT (workspace_id, user_id) DO UPDATE SET role = EXCLUDED.role",
+                (member.workspace_id, member.user_id, member.role, member.added_at),
+            )
+        return member
+
+    def update_member_role(self, workspace_id: str, user_id: str, role: WorkspaceRole) -> WorkspaceMember | None:
+        with self._conn() as conn:
+            cur = conn.execute(
+                "UPDATE workspace_members SET role = %s WHERE workspace_id = %s AND user_id = %s",
+                (role, workspace_id, user_id),
+            )
+            if cur.rowcount == 0:
+                return None
+        return self.get_member(workspace_id, user_id)
+
+    def remove_member(self, workspace_id: str, user_id: str) -> bool:
+        with self._conn() as conn:
+            cur = conn.execute(
+                "DELETE FROM workspace_members WHERE workspace_id = %s AND user_id = %s", (workspace_id, user_id)
+            )
+            return cur.rowcount > 0
+
+    def attach_workspace_document(self, workspace_id: str, doc_id: str, added_by: str) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT INTO workspace_documents (workspace_id, doc_id, added_by, added_at) "
+                "VALUES (%s, %s, %s, %s) ON CONFLICT (workspace_id, doc_id) DO NOTHING",
+                (workspace_id, doc_id, added_by, time.time()),
+            )
+
+    def workspace_doc_ids(self, user_id: str) -> set[str]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT d.doc_id FROM workspace_documents d "
+                "JOIN workspace_members m ON m.workspace_id = d.workspace_id WHERE m.user_id = %s",
+                (user_id,),
+            ).fetchall()
+        return {r[0] for r in rows}
 
 
 def build_identity_store(conninfo: str) -> IdentityStore:
