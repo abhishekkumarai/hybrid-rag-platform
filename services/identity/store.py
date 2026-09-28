@@ -24,7 +24,9 @@ class DuplicateEmailError(ValueError):
 
 class IdentityStore(Protocol):
     # users
-    def create_user(self, email: str, password_hash: str, display_name: str = "", is_admin: bool = False) -> User: ...
+    def create_user(
+        self, email: str, password_hash: str, display_name: str = "", is_admin: bool = False, is_demo: bool = False
+    ) -> User: ...
     def get_user(self, user_id: str) -> User | None: ...
     def get_credentials(self, email: str) -> tuple[User, str] | None: ...
     def get_user_by_email(self, email: str) -> User | None: ...
@@ -68,12 +70,14 @@ class InMemoryIdentityStore:
         self.grants: set[tuple[str, str, str]] = set()
         self.shares: dict[str, Share] = {}
 
-    def create_user(self, email: str, password_hash: str, display_name: str = "", is_admin: bool = False) -> User:
+    def create_user(
+        self, email: str, password_hash: str, display_name: str = "", is_admin: bool = False, is_demo: bool = False
+    ) -> User:
         email = normalize_email(email)
         with self._lock:
             if any(u.email == email for u in self.users.values()):
                 raise DuplicateEmailError(email)
-            user = User(email=email, display_name=display_name, is_admin=is_admin)
+            user = User(email=email, display_name=display_name, is_admin=is_admin, is_demo=is_demo)
             self.users[user.id] = user
             self.password_hashes[user.id] = password_hash
         return user
@@ -172,20 +176,25 @@ class PostgresIdentityStore:
 
     @staticmethod
     def _user(row) -> User:
-        return User(id=row[0], email=row[1], display_name=row[2], is_admin=row[3], created_at=row[4])
+        return User(
+            id=row[0], email=row[1], display_name=row[2], is_admin=row[3], created_at=row[4], is_demo=row[5]
+        )
 
-    _USER_COLS = "id, email, display_name, is_admin, created_at"
+    _USER_COLS = "id, email, display_name, is_admin, created_at, is_demo"
 
-    def create_user(self, email: str, password_hash: str, display_name: str = "", is_admin: bool = False) -> User:
+    def create_user(
+        self, email: str, password_hash: str, display_name: str = "", is_admin: bool = False, is_demo: bool = False
+    ) -> User:
         import psycopg
 
-        user = User(email=normalize_email(email), display_name=display_name, is_admin=is_admin)
+        user = User(email=normalize_email(email), display_name=display_name, is_admin=is_admin, is_demo=is_demo)
         try:
             with self._conn() as conn:
                 conn.execute(
-                    "INSERT INTO users (id, email, display_name, password_hash, is_admin, created_at) "
-                    "VALUES (%s, %s, %s, %s, %s, %s)",
-                    (user.id, user.email, user.display_name, password_hash, user.is_admin, user.created_at),
+                    "INSERT INTO users (id, email, display_name, password_hash, is_admin, is_demo, created_at) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    (user.id, user.email, user.display_name, password_hash, user.is_admin, user.is_demo,
+                     user.created_at),
                 )
         except psycopg.errors.UniqueViolation as exc:
             raise DuplicateEmailError(user.email) from exc
@@ -208,7 +217,7 @@ class PostgresIdentityStore:
             row = conn.execute(
                 f"SELECT {self._USER_COLS}, password_hash FROM users WHERE email = %s", (normalize_email(email),)
             ).fetchone()
-        return (self._user(row), row[5]) if row else None
+        return (self._user(row), row[6]) if row else None
 
     def create_auth_session(self, user_id: str, token_hash: str, expires_at: float) -> None:
         with self._conn() as conn:

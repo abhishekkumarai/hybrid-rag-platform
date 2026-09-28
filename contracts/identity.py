@@ -15,6 +15,7 @@ class User(BaseModel):
     email: str
     display_name: str = ""
     is_admin: bool = False
+    is_demo: bool = Field(default=False, description="Throwaway guest from \"Try demo\" (IRA-38)")
     created_at: float = Field(default_factory=time.time)
 
 

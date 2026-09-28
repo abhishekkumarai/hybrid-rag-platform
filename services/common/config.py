@@ -100,6 +100,10 @@ class AuthConfig(BaseModel):
     # Origins allowed to make credentialed cross-origin calls. The bundled UI is same-origin and
     # needs none; never "*" (browsers reject "*" with credentials, and it would defeat the cookie).
     cors_origins: list[str] = Field(default_factory=list)
+    # "Try demo" (IRA-38): one click creates a throwaway guest account with a short login.
+    allow_demo: bool = True
+    demo_session_hours: int = Field(default=24, ge=1, le=720)
+    demo_max_per_hour: int = Field(default=20, ge=1)  # per client IP
     login_max_attempts: int = Field(default=10, ge=1)
     login_window_s: int = Field(default=300, ge=10)
 

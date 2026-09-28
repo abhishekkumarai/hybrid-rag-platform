@@ -107,3 +107,29 @@ def test_admin_endpoints_refuse_regular_users(client):
     assert client.post("/api/v1/eval/run", headers=H).status_code == 403
     assert client.get("/api/v1/queue/dlq").status_code == 403
     assert client.get("/api/v1/metrics").status_code == 403
+
+
+def test_try_demo_signs_in_an_isolated_short_lived_guest(client, identity):
+    """IRA-38: one click, no sign-up; each guest is a separate private non-admin user."""
+    r = client.post("/api/v1/auth/demo", headers=H)
+    assert r.status_code == 200
+    guest = r.json()["user"]
+    assert guest["is_demo"] is True and guest["is_admin"] is False
+    assert f"Max-Age={api.settings.auth.demo_session_hours * 3600}" in r.headers["set-cookie"]
+    assert client.get("/api/v1/auth/me").json()["user"]["id"] == guest["id"]
+    sid = client.post("/api/v1/sessions", json={"title": "guest one"}, headers=H).json()["id"]
+
+    other = TestClient(api.app)
+    other_guest = other.post("/api/v1/auth/demo", headers=H).json()["user"]
+    assert other_guest["id"] != guest["id"]
+    assert other.get(f"/api/v1/sessions/{sid}").status_code == 404
+    assert other.get("/api/v1/sessions").json()["sessions"] == []
+    assert other.get("/api/v1/metrics").status_code == 403
+
+
+def test_try_demo_can_be_disabled_and_is_rate_limited(client, monkeypatch):
+    monkeypatch.setattr(api, "demo_limiter", LoginRateLimiter(max_attempts=2, window_s=60))
+    codes = [client.post("/api/v1/auth/demo", headers=H).status_code for _ in range(3)]
+    assert codes == [200, 200, 429]
+    monkeypatch.setattr(api.settings.auth, "allow_demo", False)
+    assert client.post("/api/v1/auth/demo", headers=H).status_code == 403

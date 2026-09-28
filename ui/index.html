@@ -243,6 +243,7 @@
         <span class="material-symbols-outlined text-[16px] text-on-surface-variant">account_circle</span>
         <span id="userChipEmail" class="font-mono text-[11px] text-on-surface truncate max-w-[180px]"></span>
         <span id="userChipAdmin" class="hidden font-mono text-[10px] px-1.5 py-0.5 rounded border border-surface-container-high text-on-surface-variant">admin</span>
+        <span id="userChipDemo" class="hidden font-mono text-[10px] px-1.5 py-0.5 rounded border border-surface-container-high text-on-surface-variant" title="Temporary guest workspace. It ends when you sign out or after a day.">demo</span>
         <button id="signOutBtn" class="text-xs font-label text-on-surface-variant hover:text-primary px-2 py-1 rounded-md hover:bg-surface-container-low transition">Sign out</button>
       </div>
     </div>
@@ -1476,8 +1477,8 @@
 
 <!-- ============ RIGHT INSPECTOR (hidden by default) ============ -->
 <!-- ============ SIGN-IN (IRA-36) ============ -->
-<div id="authGate" hidden class="fixed inset-0 z-50 flex items-center justify-center bg-background p-4">
-  <form id="authForm" class="w-full max-w-sm bg-surface-container-lowest border border-surface-container-high rounded-xl p-6 space-y-4" novalidate>
+<div id="authGate" hidden class="fixed inset-0 z-50 flex overflow-y-auto bg-background p-4">
+  <form id="authForm" class="m-auto w-full max-w-sm bg-surface-container-lowest border border-surface-container-high rounded-xl p-6 space-y-4" novalidate>
     <div class="flex items-center gap-3 pb-4 border-b border-surface-container-high">
       <div class="w-7 h-7 rounded bg-primary flex items-center justify-center text-on-primary font-mono text-xs font-bold shrink-0">IRA</div>
       <div class="min-w-0">
@@ -1498,6 +1499,13 @@
     <div id="authError" hidden role="alert" class="text-xs text-error"></div>
     <button type="submit" id="authSubmit" class="w-full bg-primary text-on-primary rounded-lg py-2 text-xs font-label font-medium hover:opacity-90 transition disabled:opacity-60">Sign in</button>
     <button type="button" id="authToggle" class="w-full text-xs font-label text-primary hover:underline">No account? Create one</button>
+    <!-- "Try demo" (IRA-38): a throwaway guest account, private like any other -->
+    <div class="pt-4 border-t border-surface-container-high space-y-1.5">
+      <button type="button" id="authDemo" class="w-full flex items-center justify-center gap-1.5 border border-surface-container-high bg-surface-container-lowest hover:bg-surface-container-low text-on-surface rounded-lg py-2 text-xs font-label font-medium transition disabled:opacity-60">
+        <span class="material-symbols-outlined text-[16px] text-primary">play_circle</span> Try demo
+      </button>
+      <p class="font-mono text-[10px] text-on-surface-variant text-center">No sign-up. A private guest workspace that expires after a day.</p>
+    </div>
   </form>
 </div>
 
@@ -4741,6 +4749,28 @@
     }
   });
 
+  document.getElementById('authDemo').addEventListener('click', async () => {
+    const btn = document.getElementById('authDemo');
+    const errEl = document.getElementById('authError');
+    errEl.hidden = true;
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/v1/auth/demo', { method: 'POST' });
+      if (!res.ok) {
+        const detail = (await res.json().catch(() => ({}))).detail;
+        errEl.textContent = typeof detail === 'string' ? detail : 'The demo is not available right now.';
+        errEl.hidden = false;
+        return;
+      }
+      await afterSignIn();
+    } catch (err) {
+      errEl.textContent = 'Could not reach the server.';
+      errEl.hidden = false;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   async function afterSignIn() {
     let pending = null;
     try { pending = sessionStorage.getItem(PENDING_FORK_KEY); } catch (e) {}
@@ -4757,6 +4787,7 @@
     emailEl.textContent = user.display_name || user.email;
     emailEl.title = user.email;
     document.getElementById('userChipAdmin').classList.toggle('hidden', !user.is_admin);
+    document.getElementById('userChipDemo').classList.toggle('hidden', !user.is_demo);
     // Crawling the shared web corpus is an admin operation (the server enforces it too).
     const syncBtn = document.getElementById('syncWebStoreBtn');
     if (syncBtn) syncBtn.hidden = !user.is_admin;

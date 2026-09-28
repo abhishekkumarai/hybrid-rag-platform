@@ -175,7 +175,10 @@ loopback), which fails and falls back to a per-process, non-persistent in-memory
 `RAG_AUTH_DB`). This deliberately does not use `storage.postgres_db`: that honors `POSTGRES_DB`, which this
 machine exports system-wide as `trackmyrupee`. Accounts: `python -m services.identity.cli create-admin <email>`
 (password prompted, or `RAG_NEW_PASSWORD`); regular users can sign up in the UI unless `auth.allow_signup` is
-false. `python -m services.identity.migrate --adopt-legacy <admin-email>` hands pre-accounts projects and indexed
+false. "Try demo" on the sign-in card (`POST /api/v1/auth/demo`, IRA-38) creates a throwaway guest (`is_demo`,
+`guest-…@demo.invalid`, random never-shown password, login of `auth.demo_session_hours`, capped per IP by
+`auth.demo_max_per_hour`) — a normal isolated user, never admin; turn it off with `auth.allow_demo: false`. Guest
+accounts and their projects are not purged automatically yet. `python -m services.identity.migrate --adopt-legacy <admin-email>` hands pre-accounts projects and indexed
 documents to that admin — until it runs, those are invisible to everyone. It is idempotent; re-run it after
 dropping files straight into `data/documents/` (reconciler-indexed files have no uploader). The gateway falls
 back to an in-memory identity store, loudly logged, when Postgres is down or unmigrated.

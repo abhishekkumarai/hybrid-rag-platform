@@ -91,6 +91,7 @@ ragops_store = RAGOpsStore(
 )
 
 login_limiter = LoginRateLimiter(settings.auth.login_max_attempts, settings.auth.login_window_s)
+demo_limiter = LoginRateLimiter(settings.auth.demo_max_per_hour, 3600)
 
 # --- Identity & access (IRA-33, IRA-34) ---
 
@@ -372,9 +373,9 @@ def health_check() -> dict[str, Any]:
 # --- Authentication (IRA-33) ---
 
 
-def _start_login(user: User) -> JSONResponse:
+def _start_login(user: User, ttl_s: int | None = None) -> JSONResponse:
     token = new_token()
-    ttl_s = settings.auth.session_ttl_days * 86400
+    ttl_s = ttl_s or settings.auth.session_ttl_days * 86400
     get_identity_store().create_auth_session(user.id, hash_token(token), time.time() + ttl_s)
     resp = JSONResponse(MeResponse(user=user).model_dump())
     resp.set_cookie(
@@ -399,6 +400,29 @@ def signup(req: SignupRequest) -> JSONResponse:
         raise HTTPException(status_code=409, detail="An account with this email already exists")
     logger.info(f"Signup: created user '{user.id}'")
     return _start_login(user)
+
+
+@app.post("/api/v1/auth/demo", response_model=MeResponse)
+def start_demo(request: Request) -> JSONResponse:
+    """"Try demo" (IRA-38): creates a throwaway guest account and signs it in, no sign-up needed.
+
+    Each guest is a real, isolated user, so demo visitors never see each other's projects. Its
+    password is random and never shown, so once the short login expires the account can't be used
+    again. Never an admin; creation is capped per client IP."""
+    if not settings.auth.allow_demo:
+        raise HTTPException(status_code=403, detail="The demo is disabled on this server")
+    key = f"demo|{request.client.host if request.client else '-'}"
+    if demo_limiter.blocked(key):
+        raise HTTPException(status_code=429, detail="Too many demo sessions from this address. Try again later.")
+    demo_limiter.record_failure(key)
+    user = get_identity_store().create_user(
+        f"guest-{new_token(9).lower().replace('_', '').replace('-', '')}@demo.invalid",
+        hash_password(new_token()),
+        display_name="Guest",
+        is_demo=True,
+    )
+    logger.info(f"Demo: created guest '{user.id}'")
+    return _start_login(user, ttl_s=settings.auth.demo_session_hours * 3600)
 
 
 @app.post("/api/v1/auth/login", response_model=MeResponse)
