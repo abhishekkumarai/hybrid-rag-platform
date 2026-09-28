@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>IRA Evergreen - FY24 10-K Cross-exam</title>
+<!-- Fonts: DM Sans, Public Sans & JetBrains Mono -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&amp;family=JetBrains+Mono:wght@400;500;600&amp;family=Public+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS v3 -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            canvas: "#FBFBF9",
+            hairline: "#E7E5E0",
+            ink: "#1C1917",
+            "ink-secondary": "#57534E",
+            "ink-muted": "#8A8580",
+            evergreen: "#1F6B52",
+            "evergreen-hover": "#185742",
+            "evergreen-tint": "#E9F2EE",
+            "folder-sage": "#E9F2EE",
+            "folder-sage-icon": "#1F6B52",
+            "folder-sky": "#E8F0F8",
+            "folder-sky-icon": "#3F7CAC",
+            "folder-sand": "#FBF3E4",
+            "folder-sand-icon": "#B7791F",
+            "folder-rose": "#F9ECEC",
+            "folder-rose-icon": "#B4534F",
+          },
+          borderRadius: {
+            "DEFAULT": "0.5rem",
+            "card": "12px",
+            "btn": "10px",
+            "lg": "1rem",
+            "xl": "1.5rem",
+            "full": "9999px"
+          },
+          fontFamily: {
+            headline: ["DM Sans", "sans-serif"],
+            display: ["DM Sans", "sans-serif"],
+            body: ["DM Sans", "sans-serif"],
+            label: ["Public Sans", "sans-serif"],
+            mono: ["JetBrains Mono", "monospace"]
+          }
+        },
+      },
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+      font-size: 18px;
+      line-height: 1;
+      display: inline-block;
+      vertical-align: middle;
+    }
+    .material-symbols-outlined.fill-icon {
+      font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+    }
+    /* Subtle custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #E7E5E0;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #8A8580;
+    }
+  </style>
+</head>
+<body class="bg-[#FBFBF9] text-[#1C1917] font-body antialiased flex h-screen w-screen overflow-hidden selection:bg-[#E9F2EE] selection:text-[#1F6B52]">
+<!-- ========================================================================= -->
+<!-- 1. LEFT SIDEBAR (Shared Component: SideNavBar adapted for IRA Evergreen)  -->
+<!-- ========================================================================= -->
+<aside class="w-64 h-screen flex flex-col flex-shrink-0 bg-white border-r border-[#E7E5E0] justify-between p-3 select-none z-30">
+<!-- Top Group -->
+<div class="flex flex-col gap-3">
+<!-- Brand & Product Header -->
+<div class="flex items-center justify-between px-2 pt-1 pb-1">
+<div class="flex items-center gap-2">
+<!-- Geometric Evergreen Mark -->
+<div class="w-6 h-6 rounded-md bg-[#1F6B52] flex items-center justify-center text-white font-bold text-xs shadow-xs">
+<svg fill="none" height="14" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" viewbox="0 0 24 24" width="14">
+<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+</svg>
+</div>
+<span class="font-headline font-bold text-base text-[#1C1917] tracking-tight">IRA</span>
+<span class="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600 border border-neutral-200">RAG</span>
+</div>
+<button class="p-1 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded transition-colors" title="Collapse sidebar">
+<span class="material-symbols-outlined text-[18px]">keyboard_double_arrow_left</span>
+</button>
+</div>
+<!-- Workspace Switcher Card -->
+<div class="border border-[#E7E5E0] rounded-lg p-2 bg-[#FBFBF9] flex items-center justify-between cursor-pointer hover:bg-neutral-50 transition-colors">
+<div class="flex items-center gap-2.5 overflow-hidden">
+<div class="w-7 h-7 rounded bg-[#1C1917] text-white flex items-center justify-center text-xs font-semibold shrink-0">
+            EF
+          </div>
+<div class="flex flex-col min-w-0">
+<span class="text-xs font-semibold text-[#1C1917] truncate leading-tight">Enterprise Financial AI</span>
+<span class="text-[11px] text-neutral-500 font-normal">Pro Workspace</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-neutral-400 text-base">unfold_more</span>
+</div>
+<!-- Workspace Level Navigation Links -->
+<nav class="space-y-0.5 pt-1">
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 transition-colors" href="#">
+<span class="material-symbols-outlined text-[18px]">space_dashboard</span>
+<span>Overview</span>
+</a>
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 transition-colors" href="#">
+<span class="material-symbols-outlined text-[18px]">folder_supervised</span>
+<span>Knowledge Base</span>
+</a>
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 transition-colors" href="#">
+<span class="material-symbols-outlined text-[18px]">insights</span>
+<span>Model Evaluation</span>
+</a>
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 transition-colors" href="#">
+<span class="material-symbols-outlined text-[18px]">monitoring</span>
+<span>Observability</span>
+</a>
+</nav>
+<!-- Projects Section -->
+<div class="pt-2">
+<div class="flex items-center justify-between px-2 mb-1.5">
+<span class="text-[10px] font-mono uppercase tracking-wider text-neutral-400 font-semibold">Projects</span>
+<button class="w-5 h-5 flex items-center justify-center rounded hover:bg-neutral-100 text-neutral-400 hover:text-neutral-800 transition-colors" title="New Project">
+<span class="material-symbols-outlined text-[16px]">add</span>
+</button>
+</div>
+<div class="space-y-1">
+<!-- Active Project Item -->
+<a class="bg-[#E9F2EE] text-[#1F6B52] font-semibold rounded-md px-2 py-1.5 flex items-center justify-between text-xs transition-colors" href="#">
+<div class="flex items-center gap-2 truncate">
+<div class="w-6 h-6 rounded bg-[#E9F2EE] border border-[#1F6B52]/20 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[15px] text-[#1F6B52]">folder_open</span>
+</div>
+<span class="truncate">FY24 10-K Cross-exam</span>
+</div>
+<div class="w-1.5 h-1.5 rounded-full bg-[#1F6B52]"></div>
+</a>
+<!-- Project Row 2 -->
+<a class="text-neutral-600 hover:text-neutral-900 hover:bg-neutral-50 rounded-md px-2 py-1.5 flex items-center gap-2 text-xs transition-colors" href="#">
+<div class="w-6 h-6 rounded bg-[#E8F0F8] border border-[#3F7CAC]/20 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[15px] text-[#3F7CAC]">folder</span>
+</div>
+<span class="truncate">Q3 Earnings Calls</span>
+</a>
+<!-- Project Row 3 -->
+<a class="text-neutral-600 hover:text-neutral-900 hover:bg-neutral-50 rounded-md px-2 py-1.5 flex items-center gap-2 text-xs transition-colors" href="#">
+<div class="w-6 h-6 rounded bg-[#FBF3E4] border border-[#B7791F]/20 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[15px] text-[#B7791F]">folder</span>
+</div>
+<span class="truncate">Credit Risk Policies</span>
+</a>
+<!-- Project Row 4 -->
+<a class="text-neutral-600 hover:text-neutral-900 hover:bg-neutral-50 rounded-md px-2 py-1.5 flex items-center gap-2 text-xs transition-colors" href="#">
+<div class="w-6 h-6 rounded bg-[#F9ECEC] border border-[#B4534F]/20 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[15px] text-[#B4534F]">folder</span>
+</div>
+<span class="truncate">Basel III Capital Rules</span>
+</a>
+<!-- Project Row 5 -->
+<a class="text-neutral-600 hover:text-neutral-900 hover:bg-neutral-50 rounded-md px-2 py-1.5 flex items-center justify-between text-xs transition-colors" href="#">
+<div class="flex items-center gap-2 truncate">
+<div class="w-6 h-6 rounded bg-[#E9F2EE] border border-[#1F6B52]/20 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[15px] text-[#1F6B52]">folder</span>
+</div>
+<span class="truncate">Web RAG</span>
+</div>
+<span class="text-[9px] font-mono px-1 rounded bg-neutral-100 text-neutral-500 border border-neutral-200">preset</span>
+</a>
+</div>
+</div>
+</div>
+<!-- Bottom / Footer Section -->
+<div class="border-t border-[#E7E5E0] pt-3 flex flex-col gap-2.5">
+<!-- Services Health Status -->
+<div class="px-2 py-1.5 bg-[#FBFBF9] border border-[#E7E5E0] rounded-lg">
+<div class="flex items-center justify-between mb-1">
+<span class="text-[10px] font-mono uppercase tracking-wider text-neutral-400 font-semibold">Services Health</span>
+<div class="flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+</div>
+</div>
+<p class="text-[11px] font-mono text-neutral-500 truncate">Qdrant · Redis · Ollama</p>
+</div>
+<!-- Settings Nav Item -->
+<a class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 transition-colors" href="#">
+<span class="material-symbols-outlined text-[18px]">settings</span>
+<span>Settings</span>
+</a>
+<!-- User Card with Initials Avatar -->
+<div class="flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-neutral-100 transition-colors cursor-pointer">
+<div class="flex items-center gap-2.5 overflow-hidden">
+<div class="w-7 h-7 rounded-full bg-[#E9F2EE] text-[#1F6B52] border border-[#1F6B52]/30 flex items-center justify-center text-xs font-semibold shrink-0">
+            AK
+          </div>
+<div class="flex flex-col min-w-0">
+<span class="text-xs font-medium text-[#1C1917] truncate leading-tight">AK Abhishek</span>
+<span class="text-[11px] text-neutral-400 font-normal">Admin</span>
+</div>
+</div>
+<button class="text-neutral-400 hover:text-neutral-700">
+<span class="material-symbols-outlined text-base">more_horiz</span>
+</button>
+</div>
+</div>
+</aside>
+<!-- ========================================================================= -->
+<!-- 2. MAIN CONTENT AREA                                                     -->
+<!-- ========================================================================= -->
+<main class="flex-1 flex flex-col h-screen bg-[#FBFBF9] overflow-hidden min-w-0">
+<!-- Top App Navigation / Project Header -->
+<header class="bg-white border-b border-[#E7E5E0] px-6 pt-3.5 pb-0 flex flex-col gap-3 shrink-0">
+<!-- Breadcrumb + Title + Global Actions -->
+<div class="flex items-center justify-between">
+<div class="flex flex-col">
+<div class="flex items-center gap-1.5 text-xs text-neutral-500 font-medium mb-0.5">
+<span>Projects</span>
+<span class="material-symbols-outlined text-[12px] text-neutral-400">chevron_right</span>
+<span class="text-neutral-800">FY24 10-K Cross-exam</span>
+</div>
+<h1 class="font-headline text-xl font-bold text-[#1C1917] tracking-tight">FY24 10-K Cross-exam</h1>
+</div>
+<div class="flex items-center gap-2">
+<!-- Quick search -->
+<div class="relative hidden lg:flex items-center">
+<span class="material-symbols-outlined absolute left-2.5 text-neutral-400 text-[16px]">search</span>
+<input class="pl-8 pr-3 py-1.5 bg-[#FBFBF9] border border-[#E7E5E0] rounded-lg text-xs text-neutral-700 placeholder:text-neutral-400 focus:outline-none focus:border-[#1F6B52] w-48 font-body" placeholder="Search project…" type="text"/>
+</div>
+<!-- Secondary Share Button -->
+<button class="border border-[#E7E5E0] bg-white text-xs font-medium text-[#1C1917] px-3 py-1.5 rounded-lg hover:bg-neutral-50 flex items-center gap-1.5 transition-colors shadow-xs">
+<span class="material-symbols-outlined text-[16px] text-neutral-600">share</span>
+<span>Share</span>
+</button>
+<!-- Primary Evergreen Add Source Button -->
+<button class="bg-[#1F6B52] hover:bg-[#185541] text-white text-xs font-medium px-3.5 py-1.5 rounded-lg shadow-xs flex items-center gap-1.5 transition-colors">
+<span class="material-symbols-outlined text-[16px]">add</span>
+<span>Add source</span>
+</button>
+</div>
+</div>
+<!-- Project View Tabs -->
+<div class="flex items-center gap-6 border-b border-transparent text-xs font-medium -mb-[1px]">
+<button class="text-neutral-500 hover:text-neutral-900 pb-3 -mb-[1px] transition-colors flex items-center gap-1">
+<span>Overview</span>
+</button>
+<button class="text-neutral-500 hover:text-neutral-900 pb-3 -mb-[1px] transition-colors flex items-center gap-1.5">
+<span>Sources</span>
+<span class="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-neutral-100 text-neutral-600 border border-neutral-200">4</span>
+</button>
+<!-- Active Tab: Chat sessions -->
+<button class="text-[#1F6B52] font-semibold border-b-2 border-[#1F6B52] pb-3 -mb-[1px] flex items-center gap-1.5">
+<span>Chat sessions</span>
+<span class="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-[#E9F2EE] text-[#1F6B52] font-semibold border border-[#1F6B52]/20">6</span>
+</button>
+<button class="text-neutral-500 hover:text-neutral-900 pb-3 -mb-[1px] transition-colors flex items-center gap-1">
+<span>Evaluation</span>
+</button>
+<button class="text-neutral-500 hover:text-neutral-900 pb-3 -mb-[1px] transition-colors flex items-center gap-1">
+<span>Settings</span>
+</button>
+</div>
+</header>
+<!-- ========================================================================= -->
+<!-- 3. THREE-PANE WORKSPACE AREA                                             -->
+<!-- ========================================================================= -->
+<div class="flex-1 flex overflow-hidden">
+<!-- PANE A: SESSIONS LIST (w-[250px] shrink-0) -->
+<section class="w-[250px] shrink-0 border-r border-[#E7E5E0] bg-white flex flex-col p-3 gap-3 overflow-y-auto select-none">
+<!-- New Conversation CTA -->
+<button class="border border-[#E7E5E0] rounded-lg py-2 px-3 text-xs font-semibold text-[#1C1917] hover:bg-neutral-50 flex items-center justify-center gap-1.5 shadow-xs transition-colors">
+<span class="material-symbols-outlined text-[16px] text-[#1F6B52]">add</span>
+<span>New conversation</span>
+</button>
+<!-- Search Chats Input -->
+<div class="relative">
+<span class="material-symbols-outlined absolute left-2.5 top-2 text-neutral-400 text-[16px]">search</span>
+<input class="w-full pl-8 pr-2.5 py-1.5 rounded-lg border border-[#E7E5E0] text-xs bg-[#FBFBF9] text-neutral-700 placeholder:text-neutral-400 focus:outline-none focus:border-[#1F6B52]" placeholder="Search chats" type="text"/>
+</div>
+<!-- Group: TODAY -->
+<div>
+<div class="text-[10px] font-mono uppercase tracking-wider text-neutral-400 font-semibold px-1 mt-1 mb-1.5">
+            Today
+          </div>
+<div class="space-y-1">
+<!-- Active Session Row -->
+<div class="bg-[#E9F2EE] border border-[#1F6B52]/25 rounded-lg p-2.5 cursor-pointer transition-all">
+<div class="text-xs font-semibold text-[#1F6B52] truncate leading-snug">
+                Datacenter gross margin
+              </div>
+<div class="text-[11px] text-neutral-500 font-normal mt-0.5 flex items-center gap-1 font-mono">
+<span>4 messages</span>
+<span>·</span>
+<span>12 min ago</span>
+</div>
+</div>
+<!-- Inactive Session Row -->
+<div class="hover:bg-neutral-50 rounded-lg p-2.5 cursor-pointer transition-colors border border-transparent">
+<div class="text-xs font-medium text-[#1C1917] truncate leading-snug">
+                Cash flow reconciliation
+              </div>
+<div class="text-[11px] text-neutral-400 font-normal mt-0.5 flex items-center gap-1 font-mono">
+<span>6 messages</span>
+<span>·</span>
+<span>2 hr ago</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Group: YESTERDAY -->
+<div>
+<div class="text-[10px] font-mono uppercase tracking-wider text-neutral-400 font-semibold px-1 mt-2 mb-1.5">
+            Yesterday
+          </div>
+<div class="space-y-1">
+<div class="hover:bg-neutral-50 rounded-lg p-2.5 cursor-pointer transition-colors border border-transparent">
+<div class="text-xs font-medium text-neutral-700 truncate leading-snug">
+                Risk factor supply constraints
+              </div>
+<div class="text-[11px] text-neutral-400 font-normal mt-0.5 font-mono">
+                2 messages · Yesterday
+              </div>
+</div>
+<!-- Forked Session Row -->
+<div class="hover:bg-neutral-50 rounded-lg p-2.5 cursor-pointer transition-colors border border-transparent flex flex-col gap-1">
+<div class="flex items-center justify-between gap-1">
+<span class="text-xs font-medium text-neutral-700 truncate">Vendor margin comparison</span>
+<span class="shrink-0 bg-[#F4F4F5] text-[#52525B] text-[10px] font-mono px-1.5 py-0.5 rounded flex items-center gap-0.5 border border-neutral-200">
+<span class="material-symbols-outlined text-[11px]">call_split</span>
+                  forked
+                </span>
+</div>
+<span class="text-[11px] text-neutral-400 font-mono">11 messages</span>
+</div>
+</div>
+</div>
+<!-- Group: EARLIER -->
+<div>
+<div class="text-[10px] font-mono uppercase tracking-wider text-neutral-400 font-semibold px-1 mt-2 mb-1.5">
+            Earlier
+          </div>
+<div class="space-y-1">
+<div class="hover:bg-neutral-50 rounded-lg p-2.5 cursor-pointer transition-colors border border-transparent">
+<div class="text-xs font-medium text-neutral-700 truncate leading-snug">
+                Segment revenue table check
+              </div>
+<div class="text-[11px] text-neutral-400 font-normal mt-0.5 font-mono">
+                8 messages · 3d ago
+              </div>
+</div>
+</div>
+</div>
+</section>
+<!-- PANE B: CONVERSATION FLUID PANE -->
+<section class="flex-1 flex flex-col bg-[#FBFBF9] overflow-hidden border-r border-[#E7E5E0] min-w-0">
+<!-- Conversation Header Bar -->
+<div class="bg-white border-b border-[#E7E5E0] px-6 py-2.5 flex items-center justify-between shrink-0">
+<div class="flex flex-col">
+<h2 class="text-sm font-semibold text-[#1C1917] leading-tight">Datacenter gross margin</h2>
+<div class="text-xs text-neutral-500 font-mono flex items-center gap-1.5 mt-0.5">
+<span>Grounded in 4 sources</span>
+<span>·</span>
+<span class="text-neutral-700">llama3.1:latest</span>
+<span>·</span>
+<span class="px-1 py-0.2 rounded bg-neutral-100 text-neutral-600 text-[10px]">Auto</span>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<button class="border border-[#E7E5E0] bg-white rounded-md px-2.5 py-1 text-xs font-medium text-[#1C1917] hover:bg-neutral-50 flex items-center gap-1.5 shadow-xs transition-colors">
+<span class="material-symbols-outlined text-[15px] text-neutral-500">call_split</span>
+<span>Fork</span>
+</button>
+<button class="w-7 h-7 flex items-center justify-center rounded-md border border-[#E7E5E0] text-neutral-600 hover:bg-neutral-50 shadow-xs">
+<span class="material-symbols-outlined text-[16px]">more_horiz</span>
+</button>
+</div>
+</div>
+<!-- Chat Scroll Body -->
+<div class="flex-1 overflow-y-auto p-6 space-y-6">
+<!-- Turn 1: USER TURN -->
+<div class="flex items-start justify-end gap-3 max-w-2xl ml-auto">
+<div class="bg-[#E9F2EE] border border-[#1F6B52]/20 rounded-2xl rounded-tr-sm p-4 text-sm text-[#1C1917] leading-relaxed shadow-xs">
+              How did Datacenter gross margin move in FY24, and does it reconcile with cash flow?
+            </div>
+<div class="w-8 h-8 rounded-full bg-[#1C1917] text-white flex items-center justify-center text-xs font-semibold shrink-0">
+              AK
+            </div>
+</div>
+<!-- Turn 2: ASSISTANT TURN -->
+<div class="flex items-start gap-3 max-w-3xl">
+<!-- IRA Evergreen Rounded-Square Avatar -->
+<div class="w-8 h-8 rounded-lg bg-[#1F6B52] text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+<span class="material-symbols-outlined text-[18px]">neurology</span>
+</div>
+<div class="flex-1 bg-white border border-[#E7E5E0] rounded-xl p-5 shadow-xs space-y-4">
+<!-- Model Execution Tagline -->
+<div class="flex items-center justify-between border-b border-[#E7E5E0] pb-2">
+<span class="font-mono text-[11px] text-neutral-400">IRA · llama3.1:latest · Auto (CRAG)</span>
+<span class="font-mono text-[11px] text-neutral-400">latency 642ms</span>
+</div>
+<!-- Body Paragraph 1 with Inline Citations -->
+<p class="text-sm text-[#1C1917] leading-relaxed">
+                Datacenter revenue reached <strong class="font-semibold text-neutral-900">$47.5B</strong> in FY24, expanding segment gross margin to <strong class="font-semibold text-neutral-900">72.7%</strong>
+<button class="inline-flex items-center justify-center text-[10px] font-mono font-semibold text-[#1F6B52] bg-[#E9F2EE] hover:bg-[#1F6B52] hover:text-white px-1.5 py-0.2 rounded transition-colors align-baseline mx-0.5">
+                  [1]
+                </button>, driven primarily by hyper-scaler demand for Hopper architecture acceleration modules and networking fabrics 
+                <button class="inline-flex items-center justify-center text-[10px] font-mono font-semibold text-[#1F6B52] bg-[#E9F2EE] hover:bg-[#1F6B52] hover:text-white px-1.5 py-0.2 rounded transition-colors align-baseline mx-0.5">
+                  [2]
+                </button>.
+              </p>
+<!-- Body Paragraph 2 -->
+<p class="text-sm text-[#1C1917] leading-relaxed">
+                Operating cash flow reconciled at <strong class="font-semibold text-neutral-900">$28.1B</strong> compared to GAAP net income of <strong class="font-semibold text-neutral-900">$29.8B</strong>, accounting for non-cash stock-based compensation and working capital adjustments.
+              </p>
+<!-- Compact Financial Table in Mono -->
+<div class="border border-[#E7E5E0] rounded-lg overflow-hidden text-xs font-mono">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-[#FBFBF9] border-b border-[#E7E5E0] text-neutral-500 font-medium">
+<th class="py-2 px-3">Metric</th>
+<th class="py-2 px-3 text-right">FY23</th>
+<th class="py-2 px-3 text-right">FY24</th>
+<th class="py-2 px-3 text-right">YoY Δ</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-[#E7E5E0] text-neutral-800">
+<tr class="hover:bg-neutral-50/50">
+<td class="py-2 px-3 font-body font-medium text-neutral-900">Datacenter Revenue</td>
+<td class="py-2 px-3 text-right text-neutral-600">$15,005M</td>
+<td class="py-2 px-3 text-right font-semibold text-neutral-900">$47,525M</td>
+<td class="py-2 px-3 text-right text-emerald-700 font-medium">+217%</td>
+</tr>
+<tr class="hover:bg-neutral-50/50">
+<td class="py-2 px-3 font-body font-medium text-neutral-900">Segment Gross Margin</td>
+<td class="py-2 px-3 text-right text-neutral-600">59.2%</td>
+<td class="py-2 px-3 text-right font-semibold text-neutral-900">72.7%</td>
+<td class="py-2 px-3 text-right text-emerald-700 font-medium">+1,350 bps</td>
+</tr>
+<tr class="hover:bg-neutral-50/50">
+<td class="py-2 px-3 font-body font-medium text-neutral-900">Free Cash Flow</td>
+<td class="py-2 px-3 text-right text-neutral-600">$3,808M</td>
+<td class="py-2 px-3 text-right font-semibold text-neutral-900">$27,021M</td>
+<td class="py-2 px-3 text-right text-emerald-700 font-medium">+610%</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Sources Row Chips -->
+<div class="pt-1">
+<div class="text-[10px] font-mono uppercase tracking-wider text-neutral-400 font-semibold mb-2">Sources Referenced</div>
+<div class="flex flex-wrap gap-2">
+<!-- Chip 1 (Selected) -->
+<div class="bg-[#E9F2EE] border border-[#1F6B52] text-[#1F6B52] font-medium text-xs px-2.5 py-1 rounded-md flex items-center gap-1.5 cursor-pointer shadow-xs">
+<span class="material-symbols-outlined text-[16px]">description</span>
+<span>nvda_10k_fy24.pdf p. 14</span>
+</div>
+<!-- Chip 2 -->
+<div class="border border-[#E7E5E0] bg-white hover:bg-neutral-50 text-neutral-600 text-xs px-2.5 py-1 rounded-md flex items-center gap-1.5 cursor-pointer transition-colors shadow-xs">
+<span class="material-symbols-outlined text-[16px] text-neutral-400">description</span>
+<span>financial_tables_fy24.pdf p. 8</span>
+</div>
+<!-- Chip 3 -->
+<div class="border border-[#E7E5E0] bg-white hover:bg-neutral-50 text-neutral-600 text-xs px-2.5 py-1 rounded-md flex items-center gap-1.5 cursor-pointer transition-colors shadow-xs">
+<span class="material-symbols-outlined text-[16px] text-neutral-400">table_chart</span>
+<span>financial_tables_fy24.pdf p. 41</span>
+</div>
+</div>
+</div>
+<!-- Evaluation Status Line -->
+<div class="flex items-center gap-3 pt-1 border-t border-[#E7E5E0]">
+<div class="bg-[#E9F2EE] text-[#1F6B52] text-[11px] font-semibold px-2 py-0.5 rounded border border-[#1F6B52]/30 flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-[#1F6B52]"></span>
+<span>Confident</span>
+</div>
+<span class="text-[11px] font-mono text-neutral-500">
+                  grounded 92% · relevance 88% · citations 100%
+                </span>
+</div>
+<!-- Footer Action Row -->
+<div class="border-t border-[#E7E5E0] pt-3 flex items-center justify-between text-xs text-neutral-500">
+<div class="flex items-center gap-2">
+<span class="text-neutral-500">Was this helpful?</span>
+<button class="border border-[#E7E5E0] hover:bg-neutral-50 px-2 py-0.5 rounded text-[11px] text-neutral-700 transition-colors">Yes</button>
+<button class="border border-[#E7E5E0] hover:bg-neutral-50 px-2 py-0.5 rounded text-[11px] text-neutral-700 transition-colors">No</button>
+</div>
+<button class="text-neutral-600 hover:text-[#1F6B52] flex items-center gap-1 text-xs font-medium cursor-pointer transition-colors">
+<span class="material-symbols-outlined text-[15px]">call_split</span>
+<span>Fork from here</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Turn 3: SECOND ASSISTANT TURN (Refusal Guardrail Card) -->
+<div class="flex items-start gap-3 max-w-3xl">
+<div class="w-8 h-8 rounded-lg bg-[#F9ECEC] border border-[#B4534F]/30 text-[#B4534F] flex items-center justify-center font-bold text-xs shrink-0">
+<span class="material-symbols-outlined text-[18px]">verified_user</span>
+</div>
+<!-- Rose-tinted Refusal Card -->
+<div class="bg-rose-50/50 border border-rose-200 rounded-xl p-4 flex-1 flex flex-col gap-1.5">
+<div class="flex items-center gap-2">
+<span class="bg-rose-100 text-rose-700 text-[10px] font-mono font-semibold px-2 py-0.5 rounded border border-rose-300 uppercase">
+                  Refused
+                </span>
+<span class="text-[11px] font-mono text-rose-800">Deterministic RAG Guardrail · Out of Distribution</span>
+</div>
+<p class="text-xs text-neutral-700 leading-relaxed">
+                The sources in this project don't cover FY25 guidance, so no answer was generated. Please upload the Q4 earnings call transcript or relevant investor deck to expand project context.
+              </p>
+</div>
+</div>
+</div>
+<!-- Composer Docked Bottom -->
+<div class="bg-white border-t border-[#E7E5E0] p-4 shrink-0">
+<div class="border border-[#E7E5E0] rounded-xl p-3 shadow-xs focus-within:border-[#1F6B52] bg-white space-y-2.5 transition-colors">
+<!-- Text Input -->
+<input class="w-full text-xs text-neutral-800 placeholder:text-neutral-400 outline-none bg-transparent font-body" placeholder="Ask a follow-up question…" type="text"/>
+<!-- Bottom Row Controls -->
+<div class="flex items-center justify-between pt-1">
+<div class="flex items-center gap-2">
+<!-- Segmented Control for Retrieval Mode -->
+<div class="bg-[#FBFBF9] border border-[#E7E5E0] rounded-lg p-0.5 flex text-[11px] font-medium text-neutral-600">
+<button class="bg-white shadow-xs text-[#1F6B52] font-semibold px-2 py-0.5 rounded">Auto</button>
+<button class="hover:text-neutral-900 px-2 py-0.5 rounded transition-colors">Agentic</button>
+<button class="hover:text-neutral-900 px-2 py-0.5 rounded transition-colors">Graph</button>
+<button class="hover:text-neutral-900 px-2 py-0.5 rounded transition-colors">Direct</button>
+</div>
+<!-- Mono Model Select Dropdown -->
+<div class="flex items-center gap-1 font-mono text-xs border border-[#E7E5E0] rounded-md px-2 py-1 text-neutral-700 bg-white cursor-pointer hover:bg-neutral-50 shadow-xs">
+<span>llama3.1:latest</span>
+<span class="material-symbols-outlined text-[14px] text-neutral-400">expand_more</span>
+</div>
+</div>
+<!-- Evergreen Round Send Button -->
+<button class="bg-[#1F6B52] hover:bg-[#185742] text-white w-7 h-7 rounded-full flex items-center justify-center transition-colors shadow-xs" title="Send query">
+<span class="material-symbols-outlined text-[16px]">arrow_upward</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+<!-- PANE C: INSPECTOR WHITE CARD (w-[340px] shrink-0) -->
+<aside class="w-[340px] shrink-0 bg-white flex flex-col h-full border-l border-[#E7E5E0] overflow-y-auto select-none">
+<!-- Inspector Header -->
+<div class="px-4 py-3 border-b border-[#E7E5E0] flex items-center justify-between shrink-0">
+<div class="flex items-center gap-2">
+<span class="text-xs font-semibold text-[#1C1917]">Source 1 of 3</span>
+<div class="flex items-center border border-[#E7E5E0] rounded-md overflow-hidden">
+<button class="px-1.5 py-0.5 text-neutral-400 hover:text-neutral-800 hover:bg-neutral-50 text-xs">‹</button>
+<button class="px-1.5 py-0.5 text-neutral-400 hover:text-neutral-800 hover:bg-neutral-50 text-xs border-l border-[#E7E5E0]">›</button>
+</div>
+</div>
+<button class="text-neutral-400 hover:text-neutral-700 p-0.5 rounded hover:bg-neutral-100 transition-colors" title="Close inspector">
+<span class="material-symbols-outlined text-[18px]">close</span>
+</button>
+</div>
+<!-- Source ID Row -->
+<div class="text-[11px] font-mono text-neutral-500 px-4 py-2 border-b border-[#E7E5E0] bg-[#FBFBF9] flex items-center justify-between shrink-0">
+<span class="truncate">nvda_10k_fy24_3f2a91c4</span>
+<span class="font-semibold text-neutral-700 shrink-0">page 14</span>
+</div>
+<!-- Page Preview Section -->
+<div class="p-4 border-b border-[#E7E5E0]">
+<div class="text-[10px] font-mono uppercase tracking-wider text-neutral-400 font-semibold mb-2">
+            Page Preview
+          </div>
+<!-- Document Mockup Container -->
+<div class="bg-white border border-[#E7E5E0] rounded-lg p-3 shadow-xs text-[9px] font-serif text-neutral-600 space-y-1.5 relative select-none">
+<div class="text-[8px] font-mono uppercase text-neutral-400 border-b border-[#E7E5E0] pb-1 flex justify-between">
+<span>UNITED STATES SEC · FORM 10-K</span>
+<span>PART II · ITEM 7</span>
+</div>
+<div class="h-1.5 bg-neutral-200 rounded-sm w-3/4"></div>
+<div class="h-1 bg-neutral-100 rounded-sm w-full"></div>
+<div class="h-1 bg-neutral-100 rounded-sm w-5/6"></div>
+<!-- Highlight Box Around Cited Passage -->
+<div class="border-2 border-[#1F6B52] bg-[#E9F2EE]/40 p-2 rounded my-1 text-neutral-900 font-mono text-[9px] leading-tight shadow-xs">
+<span class="font-bold text-[#1F6B52]">[Extracted Context]</span>
+              Datacenter revenue reached $47.5B in FY24, expanding gross margin to 72.7% driven by accelerated computing architectures.
+            </div>
+<div class="h-1 bg-neutral-100 rounded-sm w-full"></div>
+<div class="h-1 bg-neutral-100 rounded-sm w-11/12"></div>
+<div class="h-1 bg-neutral-100 rounded-sm w-4/6"></div>
+<div class="text-[7px] text-right font-mono text-neutral-400 pt-1">
+              Page 14 of 168
+            </div>
+</div>
+</div>
+<!-- Cited Passage Section -->
+<div class="p-4 border-b border-[#E7E5E0]">
+<div class="text-[10px] font-mono uppercase tracking-wider text-neutral-400 font-semibold mb-1.5">
+            Cited Passage
+          </div>
+<div class="border-l-2 border-[#1F6B52] bg-[#FBFBF9] p-3 text-xs text-neutral-800 italic leading-relaxed rounded-r-md">
+            "Datacenter revenue reached <mark class="bg-[#E9F2EE] text-[#1F6B52] font-semibold not-italic px-1 rounded">
+              $47.5B
+            </mark> in FY24, expanding gross margin to <mark class="bg-[#E9F2EE] text-[#1F6B52] font-semibold not-italic px-1 rounded">
+              72.7%
+            </mark>, driven primarily by hyper-scaler demand for Hopper architecture acceleration modules and network fabrics."
+          </div>
+</div>
+<!-- Extraction Metadata Section -->
+<div class="p-4 border-b border-[#E7E5E0] space-y-2">
+<div class="text-[10px] font-mono uppercase tracking-wider text-neutral-400 font-semibold">
+            Extraction Metadata
+          </div>
+<div class="text-xs font-mono text-neutral-600 bg-[#FBFBF9] p-2.5 rounded-lg border border-[#E7E5E0] space-y-1">
+<div class="flex justify-between">
+<span class="text-neutral-400">bbox</span>
+<span class="text-neutral-800">[72, 310, 540, 388]</span>
+</div>
+<div class="flex justify-between">
+<span class="text-neutral-400">rerank_score</span>
+<span class="text-emerald-700 font-semibold">0.962</span>
+</div>
+<div class="flex justify-between">
+<span class="text-neutral-400">chunk_id</span>
+<span class="text-neutral-800">chk_89a24cf1</span>
+</div>
+<div class="flex justify-between">
+<span class="text-neutral-400">retrieval_strategy</span>
+<span class="text-neutral-800">Hybrid (Dense+BM25)</span>
+</div>
+</div>
+</div>
+<!-- Inspector Footer with Open Document CTA -->
+<div class="p-4 mt-auto">
+<button class="w-full border border-[#E7E5E0] rounded-lg py-2 px-3 text-xs font-medium text-[#1C1917] hover:bg-neutral-50 flex items-center justify-center gap-1.5 transition-colors shadow-xs">
+<span class="material-symbols-outlined text-[16px] text-neutral-500">open_in_new</span>
+<span>Open document</span>
+</button>
+</div>
+</aside>
+</div>
+</main>
+</body></html>
