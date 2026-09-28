@@ -23,3 +23,8 @@ docs
 !README.md
 !architecture_plan.md
 .vscode
+# The gateway image only needs the pre-built web bundle (IRA-52) — not the Dart/Android/iOS
+# source tree, which is large and irrelevant to a Python container. Build it first with
+# `make flutter-web` / `.\run.ps1 flutter-web`, then `docker build`.
+app_flutter
+!app_flutter/build/web

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -113,6 +113,13 @@ class LoggingConfig(BaseModel):
     dir: str = "logs"
 
 
+class UIConfig(BaseModel):
+    # "legacy" serves ui/index.html (default until the Flutter rewrite's parity checklist
+    # passes); "flutter" serves app_flutter/build/web instead (IRA-52). The legacy page stays
+    # reachable at /legacy either way until it's retired.
+    client: Literal["legacy", "flutter"] = "legacy"
+
+
 class AppConfig(BaseModel):
     hardware: HardwareConfig = Field(default_factory=HardwareConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
@@ -123,6 +130,7 @@ class AppConfig(BaseModel):
     evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    ui: UIConfig = Field(default_factory=UIConfig)
 
     @property
     def auth_postgres_url(self) -> str:

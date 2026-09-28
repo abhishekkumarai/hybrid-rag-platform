@@ -1,0 +1,6 @@
+This directory is populated by `make flutter-web` (or `.\run.ps1 flutter-web`), which runs
+`flutter build web --release` in app_flutter/. It's intentionally tracked as an empty placeholder
+(see the .gitignore negation for this exact file) so `docker build`'s `COPY app_flutter/build/web
+app_flutter/build/web` always has something to copy, even before a real Flutter build has run —
+the gateway's ui.client stays "legacy" by default either way, so an empty build/web changes nothing
+until it's explicitly flipped to "flutter" (see services/common/config.py::UIConfig).

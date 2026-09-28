@@ -19,7 +19,10 @@ __pycache__/
 .mypy_cache/
 .ipynb_checkpoints/
 *.egg-info/
-build/
+# Root-anchored: the bare form also matched app_flutter/build/, which needs its own more precise
+# rule (app_flutter/.gitignore) to keep a tracked placeholder at app_flutter/build/web/.gitkeep —
+# see IRA-52's Dockerfile COPY of that path.
+/build/
 dist/
 .venv/
 venv/
@@ -28,6 +31,7 @@ venv/
 rag.ipynb
 highlighted.png
 screenshot_*.png
+flutter_web_*.png
 notebook/
 
 # Editor / OS

@@ -67,6 +67,15 @@ scheduler:
 worker:
 	python services/scheduler/worker.py
 
+flutter-web:
+	cd app_flutter && flutter build web --release
+
+flutter-test:
+	cd app_flutter && flutter analyze && flutter test
+
+flutter-apk:
+	cd app_flutter && flutter build apk --release
+
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 	find . -type d -name ".pytest_cache" -exec rm -rf {} +

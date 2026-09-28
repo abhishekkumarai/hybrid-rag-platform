@@ -68,6 +68,7 @@ class CreateSessionRequest(BaseModel):
     system_prompt: str | None = None
     parameters: SessionParameters | None = None
     files: list[str] | None = None
+    workspace_id: str | None = None
 
 
 class UpdateSessionRequest(BaseModel):

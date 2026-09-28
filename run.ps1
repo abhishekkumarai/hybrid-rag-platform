@@ -35,6 +35,9 @@ function Show-Help {
     Write-Host "  stack-logs     - Tail logs from the containerised app services"
     Write-Host "  scheduler      - Run directory reconciler daemon"
     Write-Host "  worker         - Run asynchronous Redis queue worker daemon"
+    Write-Host "  flutter-web    - Build the Flutter web client (app_flutter/build/web)"
+    Write-Host "  flutter-test   - Run flutter analyze + flutter test for app_flutter"
+    Write-Host "  flutter-apk    - Build a release Android APK"
     Write-Host "  clean          - Remove __pycache__, .pytest_cache, and .ruff_cache"
 }
 
@@ -100,6 +103,25 @@ switch ($Target.ToLower()) {
     "worker" {
         Write-Host "Starting asynchronous Redis queue worker..." -ForegroundColor Green
         python services/scheduler/worker.py
+    }
+    "flutter-web" {
+        Write-Host "Building Flutter web client..." -ForegroundColor Green
+        Push-Location app_flutter
+        flutter build web --release
+        Pop-Location
+    }
+    "flutter-test" {
+        Write-Host "Running flutter analyze and flutter test..." -ForegroundColor Green
+        Push-Location app_flutter
+        flutter analyze
+        flutter test
+        Pop-Location
+    }
+    "flutter-apk" {
+        Write-Host "Building release Android APK..." -ForegroundColor Green
+        Push-Location app_flutter
+        flutter build apk --release
+        Pop-Location
     }
     "clean" {
         Write-Host "Cleaning cache directories..." -ForegroundColor Green

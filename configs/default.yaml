@@ -74,6 +74,9 @@ auth:
   session_ttl_days: 30
   cookie_secure: false          # true behind HTTPS
   cors_origins: []              # the bundled UI is same-origin; list extra origins explicitly
+  # `flutter run -d chrome` serves the Flutter client off its own dev-server origin (a random
+  # localhost port unless you pass --web-port), so it's cross-origin from this gateway and needs
+  # its exact origin added here, e.g. cors_origins: ["http://localhost:5000"] (IRA-52).
   allow_demo: true              # "Try demo": one-click throwaway guest accounts (IRA-38)
   demo_session_hours: 24        # a guest's login lasts this long; they can't sign in again after
   demo_max_per_hour: 20         # guest accounts per client IP per hour
@@ -83,3 +86,9 @@ auth:
 logging:
   level: "INFO"
   dir: "logs"
+
+ui:
+  # "legacy" serves ui/index.html; "flutter" serves app_flutter/build/web (IRA-52). Flip to
+  # "flutter" once the parity checklist passes — /legacy still reaches the old page either way,
+  # until it's retired.
+  client: "flutter"
