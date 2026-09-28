@@ -26,6 +26,19 @@ def identity(monkeypatch):
     api.app.dependency_overrides.clear()
 
 
+@pytest.fixture(autouse=True)
+def _in_memory_projects(monkeypatch):
+    """Keep projects and messages out of the live Redis (IRA-37). The gateway's SessionManager is a
+    module-level singleton connected to 127.0.0.1:6379 whenever Redis runs, so without this every
+    suite run left dozens of junk projects in the real store. Patching the shared instance (not the
+    module attribute) also covers tests that imported `session_manager` directly."""
+    from services.gateway import api
+
+    monkeypatch.setattr(api.session_manager, "redis_client", None)
+    monkeypatch.setattr(api.session_manager, "_in_memory_sessions", {})
+    monkeypatch.setattr(api.session_manager, "_in_memory_messages", {})
+
+
 @pytest.fixture
 def real_auth():
     """Drops the signed-in override so requests authenticate through the real cookie path."""
