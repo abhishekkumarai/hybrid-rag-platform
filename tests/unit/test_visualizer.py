@@ -44,10 +44,16 @@ def test_render_page_missing_file():
         render_page_with_bbox("non_existent_file.pdf", page_num=1)
 
 
-def test_gateway_preview_endpoint(sample_pdf: Path):
-    # Copy to data/documents for resolve_document_path
+def test_gateway_preview_endpoint(sample_pdf: Path, identity):
+    from contracts.identity import OwnedDocument
+    from tests.unit.conftest import TEST_USER
+
     dest = Path("data/documents") / "provenance_test_doc.pdf"
     dest.write_bytes(sample_pdf.read_bytes())
+    # Preview resolves the exact doc_id through the caller's ownership record (IRA-34)
+    identity.add_document(OwnedDocument(
+        user_id=TEST_USER.id, doc_id="provenance_test_doc.pdf", filename=dest.name, path=str(dest)
+    ))
 
     try:
         response = client.get(

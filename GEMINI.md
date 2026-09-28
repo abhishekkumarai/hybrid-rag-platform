@@ -1,4 +1,4 @@
-# Agent Directives & UI Design Standards
+# Antigravity Agent Directives & UI Design Protocol
 
 ## UI / UX Design Directives (Priority 1: Figma MCP)
 
@@ -15,9 +15,11 @@
 - **Component Implementation**: Use **shadcn/ui MCP** (`shadcn`) to install headless/Tailwind primitives that match the Figma design structure.
 - **Rapid Prototyping**: Use **v0 MCP** for complex component generation, always conditioned on Figma node schemas and constraints.
 
-## UI / UX Design Standards (Enforced for all Frontend & Web Work)
+---
 
-You must never generate generic, outdated "AI slop" interfaces (e.g., standard Bootstrap cards, garish saturated purple/blue gradients, fuzzy drop shadows, oversized rounded pills, or unstyled default layouts). Always adhere to the modern "Craft" aesthetic inspired by getdesign.md, Linear, Vercel, and Raycast.
+## UI / UX Craft Standards (Visual & Interaction Guidelines)
+
+Adhere strictly to the modern "Craft" aesthetic inspired by getdesign.md, Linear, Vercel, and Raycast:
 
 ### 1. Visual Hierarchy & Theme
 - **Aesthetic**: Modern Craft / Technical Elegance. Default to obsidian/zinc dark mode unless light mode is explicitly requested.

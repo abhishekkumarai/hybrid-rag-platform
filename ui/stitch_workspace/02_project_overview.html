@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>IRA — FY24 10-K Cross-exam Workspace</title>
+<!-- Google Fonts: DM Sans & JetBrains Mono -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&amp;family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS CDN -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Configuration verbatim as mandated -->
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "on-secondary-fixed-variant": "#404946",
+            "tertiary-container": "#904b46",
+            "surface-container-highest": "#e9e1dd",
+            "surface": "#fff8f5",
+            "secondary": "#57605d",
+            "on-secondary": "#ffffff",
+            "outline": "#6f7973",
+            "primary-fixed": "#a8f2d2",
+            "surface-variant": "#e9e1dd",
+            "primary": "#00523c",
+            "secondary-fixed-dim": "#bfc8c5",
+            "primary-fixed-dim": "#8cd5b6",
+            "tertiary-fixed-dim": "#ffb3ad",
+            "on-tertiary": "#ffffff",
+            "secondary-fixed": "#dbe4e1",
+            "surface-dim": "#e0d8d5",
+            "secondary-container": "#d9e2de",
+            "on-tertiary-fixed-variant": "#723430",
+            "surface-container": "#f4ece8",
+            "surface-container-lowest": "#ffffff",
+            "outline-variant": "#bfc9c2",
+            "surface-container-high": "#eee7e3",
+            "tertiary-fixed": "#ffdad6",
+            "on-background": "#1e1b19",
+            "error": "#ba1a1a",
+            "on-tertiary-container": "#ffcec9",
+            "inverse-primary": "#8cd5b6",
+            "inverse-surface": "#33302d",
+            "background": "#fff8f5",
+            "surface-container-low": "#faf2ee",
+            "on-secondary-container": "#5c6462",
+            "on-primary": "#ffffff",
+            "error-container": "#ffdad6",
+            "on-surface-variant": "#3f4944",
+            "on-primary-container": "#9fe9c9",
+            "tertiary": "#733430",
+            "on-error-container": "#93000a",
+            "surface-bright": "#fff8f5",
+            "on-primary-fixed": "#002116",
+            "on-error": "#ffffff",
+            "surface-tint": "#1e6a51",
+            "on-secondary-fixed": "#151d1b",
+            "primary-container": "#1f6b52",
+            "inverse-on-surface": "#f7efeb",
+            "on-surface": "#1e1b19",
+            "on-tertiary-fixed": "#3a0908",
+            "on-primary-fixed-variant": "#00513b"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+          "spacing": {
+            "space-xl": "2rem",
+            "space-md": "0.75rem",
+            "margin-sm": "1rem",
+            "margin": "2rem",
+            "gutter": "1.5rem",
+            "space-lg": "1.25rem",
+            "space-sm": "0.5rem",
+            "gutter-sm": "1rem",
+            "space-xs": "0.25rem"
+          },
+          "fontFamily": {
+            "label-md": ["JetBrains Mono"],
+            "body-sm": ["DM Sans"],
+            "headline-md": ["DM Sans"],
+            "headline-lg": ["DM Sans"],
+            "body-md": ["DM Sans"],
+            "headline-xl-mobile": ["DM Sans"],
+            "headline-xl": ["DM Sans"],
+            "label-lg": ["JetBrains Mono"],
+            "label-sm": ["JetBrains Mono"],
+            "headline-sm": ["DM Sans"],
+            "body-lg": ["DM Sans"]
+          },
+          "fontSize": {
+            "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0em", "fontWeight": "400" }],
+            "body-sm": ["13px", { "lineHeight": "18px", "letterSpacing": "0em", "fontWeight": "400" }],
+            "headline-md": ["20px", { "lineHeight": "28px", "letterSpacing": "-0.01em", "fontWeight": "500" }],
+            "headline-lg": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.015em", "fontWeight": "600" }],
+            "body-md": ["14px", { "lineHeight": "22px", "letterSpacing": "0em", "fontWeight": "400" }],
+            "headline-xl-mobile": ["28px", { "lineHeight": "36px", "letterSpacing": "-0.015em", "fontWeight": "600" }],
+            "headline-xl": ["36px", { "lineHeight": "44px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+            "label-lg": ["13px", { "lineHeight": "18px", "letterSpacing": "-0.01em", "fontWeight": "500" }],
+            "label-sm": ["11px", { "lineHeight": "14px", "letterSpacing": "0.02em", "fontWeight": "400" }],
+            "headline-sm": ["16px", { "lineHeight": "24px", "letterSpacing": "-0.005em", "fontWeight": "500" }],
+            "body-lg": ["16px", { "lineHeight": "26px", "letterSpacing": "0em", "fontWeight": "400" }]
+          }
+        },
+      },
+    }
+  </script>
+<style>
+    body {
+      background-color: #FBFBF9;
+      color: #1C1917;
+      font-family: 'DM Sans', sans-serif;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+      vertical-align: middle;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .custom-scroll::-webkit-scrollbar {
+      width: 4px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: #E7E5E0;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="bg-[#FBFBF9] text-[#1C1917] h-screen flex overflow-hidden antialiased">
+<!-- 1. SIDEBAR (Execution aligned with Shared Components JSON & Spec) -->
+<aside class="w-[260px] h-screen flex-shrink-0 flex flex-col justify-between p-4 bg-surface-container-lowest border-r border-[#E7E5E0] select-none z-20">
+<div class="flex flex-col min-h-0">
+<!-- Top Brand Header -->
+<div class="flex items-center gap-2.5 px-1 py-1">
+<div class="w-8 h-8 rounded-lg bg-primary-container flex items-center justify-center text-white flex-shrink-0">
+<span class="material-symbols-outlined text-[18px]" data-icon="layers">layers</span>
+</div>
+<div class="flex flex-col">
+<span class="text-headline-md font-headline-md text-primary font-semibold tracking-tight text-base leading-none">IRA</span>
+<span class="text-[11px] font-medium text-[#78716C] tracking-tight mt-0.5">Enterprise Financial AI</span>
+</div>
+</div>
+<!-- Workspace Switcher Card -->
+<div class="rounded-lg p-2.5 bg-[#FAF9F5] border border-[#E7E5E0] flex items-center justify-between mt-4 cursor-pointer hover:bg-[#F5F4EF] transition-colors duration-150">
+<div class="flex items-center gap-2.5 min-w-0">
+<div class="w-7 h-7 rounded-md bg-[#E9F2EE] text-[#1F6B52] font-semibold text-xs flex items-center justify-center flex-shrink-0">
+            EF
+          </div>
+<div class="flex flex-col min-w-0">
+<span class="font-medium text-xs text-[#1C1917] truncate leading-tight">Enterprise Financial AI</span>
+<span class="text-[11px] text-[#78716C] leading-tight mt-0.5">Workspace · admin</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-[#78716C] text-sm ml-1" data-icon="unfold_more">unfold_more</span>
+</div>
+<!-- Main Navigation Cluster -->
+<nav class="mt-4 flex flex-col gap-0.5">
+<!-- Overview (Active item based on page context) -->
+<a class="text-primary font-medium bg-primary-fixed/30 rounded-lg px-2.5 py-1.5 flex items-center gap-2.5 transition-colors duration-150 active:scale-[0.99]" href="#">
+<span class="material-symbols-outlined text-[18px]" data-icon="dashboard">dashboard</span>
+<span class="text-xs font-medium">Overview</span>
+</a>
+<a class="text-[#57534E] hover:text-[#1C1917] hover:bg-[#F5F4EF] rounded-lg px-2.5 py-1.5 flex items-center gap-2.5 transition-colors duration-150 active:scale-[0.99]" href="#">
+<span class="material-symbols-outlined text-[18px]" data-icon="folder_open">folder_open</span>
+<span class="text-xs font-medium">Library</span>
+</a>
+<a class="text-[#57534E] hover:text-[#1C1917] hover:bg-[#F5F4EF] rounded-lg px-2.5 py-1.5 flex items-center gap-2.5 transition-colors duration-150 active:scale-[0.99]" href="#">
+<span class="material-symbols-outlined text-[18px]" data-icon="fact_check">fact_check</span>
+<span class="text-xs font-medium">Evaluation</span>
+</a>
+<a class="text-[#57534E] hover:text-[#1C1917] hover:bg-[#F5F4EF] rounded-lg px-2.5 py-1.5 flex items-center gap-2.5 transition-colors duration-150 active:scale-[0.99]" href="#">
+<span class="material-symbols-outlined text-[18px]" data-icon="monitoring">monitoring</span>
+<span class="text-xs font-medium">Observability</span>
+</a>
+</nav>
+<!-- Projects Section Header -->
+<div class="px-2.5 mt-5 mb-1.5 flex justify-between items-center">
+<span class="text-[11px] font-semibold text-[#A8A29E] tracking-wider uppercase">PROJECTS</span>
+<button class="text-[#78716C] hover:text-[#1C1917] transition-colors p-0.5 rounded hover:bg-[#F5F4EF]">
+<span class="material-symbols-outlined text-sm" data-icon="add">add</span>
+</button>
+</div>
+<!-- Project Rows with tinted folder squares -->
+<div class="flex flex-col gap-0.5 overflow-y-auto custom-scroll pr-1">
+<!-- Active Project: FY24 10-K Cross-exam -->
+<div class="bg-[#E9F2EE] text-[#1F6B52] font-medium text-xs rounded-md px-2 py-1.5 flex items-center justify-between cursor-pointer group">
+<div class="flex items-center min-w-0">
+<div class="w-7 h-7 rounded bg-[#D5E7DF] text-[#1F6B52] flex items-center justify-center mr-2 flex-shrink-0">
+<span class="material-symbols-outlined text-[16px]" data-icon="folder">folder</span>
+</div>
+<span class="truncate font-medium">FY24 10-K Cross-exam</span>
+</div>
+<span class="material-symbols-outlined text-[#1F6B52] text-sm opacity-80 group-hover:opacity-100" data-icon="more_horiz">more_horiz</span>
+</div>
+<!-- Q3 Earnings Calls -->
+<div class="text-[#57534E] hover:bg-[#F5F4EF] rounded-md px-2 py-1.5 flex items-center cursor-pointer transition-colors duration-150 group">
+<div class="w-7 h-7 rounded bg-sky-100 text-sky-700 flex items-center justify-center mr-2 flex-shrink-0">
+<span class="material-symbols-outlined text-[16px]" data-icon="folder">folder</span>
+</div>
+<span class="truncate text-xs">Q3 Earnings Calls</span>
+</div>
+<!-- Credit Risk Policies -->
+<div class="text-[#57534E] hover:bg-[#F5F4EF] rounded-md px-2 py-1.5 flex items-center cursor-pointer transition-colors duration-150 group">
+<div class="w-7 h-7 rounded bg-amber-100/70 text-amber-800 flex items-center justify-center mr-2 flex-shrink-0">
+<span class="material-symbols-outlined text-[16px]" data-icon="folder">folder</span>
+</div>
+<span class="truncate text-xs">Credit Risk Policies</span>
+</div>
+<!-- Basel III Capital Rules -->
+<div class="text-[#57534E] hover:bg-[#F5F4EF] rounded-md px-2 py-1.5 flex items-center cursor-pointer transition-colors duration-150 group">
+<div class="w-7 h-7 rounded bg-rose-100 text-rose-700 flex items-center justify-center mr-2 flex-shrink-0">
+<span class="material-symbols-outlined text-[16px]" data-icon="folder">folder</span>
+</div>
+<span class="truncate text-xs">Basel III Capital Rules</span>
+</div>
+<!-- Web RAG (Preset) -->
+<div class="text-[#57534E] hover:bg-[#F5F4EF] rounded-md px-2 py-1.5 flex items-center cursor-pointer transition-colors duration-150 group">
+<div class="w-7 h-7 rounded bg-[#D5E7DF] text-[#1F6B52] flex items-center justify-center mr-2 flex-shrink-0">
+<span class="material-symbols-outlined text-[16px]" data-icon="language">language</span>
+</div>
+<span class="truncate text-xs">Web RAG</span>
+<span class="bg-[#F5F4EF] text-[#78716C] text-[10px] px-1.5 py-0.5 rounded font-mono ml-auto">preset</span>
+</div>
+</div>
+</div>
+<!-- Sidebar Footer -->
+<div class="flex flex-col gap-2 pt-3 border-t border-[#E7E5E0]">
+<!-- Settings -->
+<a class="text-[#57534E] hover:bg-[#F5F4EF] hover:text-[#1C1917] px-2 py-1.5 rounded-md flex items-center gap-2.5 transition-colors duration-150 text-xs" href="#">
+<span class="material-symbols-outlined text-[18px]" data-icon="settings">settings</span>
+<span>Settings</span>
+</a>
+<!-- Services Health status row -->
+<div class="flex items-center gap-2 px-2 py-1 text-[11px] font-mono text-[#78716C] bg-[#FAF9F5] rounded border border-[#E7E5E0]">
+<div class="flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-600 inline-block"></span>
+<span>Qdrant</span>
+</div>
+<span class="text-[#D1CDC7]">·</span>
+<div class="flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-600 inline-block"></span>
+<span>Redis</span>
+</div>
+<span class="text-[#D1CDC7]">·</span>
+<div class="flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-600 inline-block"></span>
+<span>Ollama</span>
+</div>
+</div>
+<!-- User Profile Card -->
+<div class="flex items-center justify-between p-1.5 rounded-lg hover:bg-[#FAF9F5] transition-colors duration-150 cursor-pointer">
+<div class="flex items-center gap-2.5 min-w-0">
+<div class="w-8 h-8 rounded-full bg-[#E9F2EE] text-[#1F6B52] font-semibold text-xs flex items-center justify-center flex-shrink-0">
+            AK
+          </div>
+<div class="flex flex-col min-w-0">
+<div class="flex items-center gap-1.5">
+<span class="text-xs font-medium text-[#1C1917] leading-tight">Abhishek</span>
+<span class="bg-[#F5F4EF] text-[#57534E] text-[10px] font-mono px-1.5 py-0.2 rounded border border-[#E7E5E0]">Admin</span>
+</div>
+<span class="text-[11px] text-[#78716C] truncate mt-0.5">abhishek@ira.ai</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-[#78716C] text-sm" data-icon="more_vert">more_vert</span>
+</div>
+</div>
+</aside>
+<!-- 2. MAIN CONTENT AREA -->
+<main class="flex-1 flex flex-col h-screen overflow-y-auto bg-[#FBFBF9] custom-scroll">
+<!-- Top Utility & Navigation Header Bar -->
+<header class="flex justify-between items-center w-full px-8 h-14 border-b border-[#E7E5E0] bg-[#FBFBF9] sticky top-0 z-10 backdrop-blur-sm bg-[#FBFBF9]/95">
+<!-- Breadcrumb Navigation -->
+<div class="flex items-center gap-2 text-xs">
+<span class="text-[#78716C]">Projects</span>
+<span class="text-[#A8A29E] font-mono text-[10px]">›</span>
+<span class="text-[#1C1917] font-medium">FY24 10-K Cross-exam</span>
+<span class="bg-[#E9F2EE] text-[#1F6B52] text-[10px] font-mono px-1.5 py-0.5 rounded font-medium border border-[#D1E3DA] ml-1">v2.4-rag</span>
+</div>
+<!-- Trailing Action Buttons -->
+<div class="flex items-center gap-2.5">
+<button class="bg-white border border-[#E7E5E0] hover:bg-[#E9F2EE] hover:border-[#1F6B52]/40 text-[#1C1917] text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors duration-150">
+<span class="material-symbols-outlined text-sm text-[#78716C]" data-icon="share">share</span>
+<span>Share</span>
+</button>
+<button class="bg-white border border-[#E7E5E0] hover:bg-[#E9F2EE] hover:border-[#1F6B52]/40 text-[#1C1917] text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors duration-150">
+<span class="material-symbols-outlined text-sm text-[#78716C]" data-icon="chat_bubble_outline">chat_bubble_outline</span>
+<span>New chat</span>
+</button>
+<button class="bg-[#1F6B52] hover:bg-[#185541] text-white text-xs font-medium px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition-colors duration-150">
+<span class="material-symbols-outlined text-sm" data-icon="add">add</span>
+<span>Add source</span>
+</button>
+</div>
+</header>
+<!-- Inner Scrollable Canvas -->
+<div class="p-8 max-w-7xl w-full mx-auto flex flex-col gap-6">
+<!-- Title & Subtitle Section -->
+<div>
+<h1 class="text-[26px] font-bold text-[#1C1917] tracking-tight leading-tight">FY24 10-K Cross-exam</h1>
+<p class="text-sm text-[#78716C] mt-1">NVIDIA FY24 filings, tables and earnings call — grounded Q&amp;A.</p>
+</div>
+<!-- Tab Navigation Bar -->
+<div class="border-b border-[#E7E5E0] flex gap-6 text-xs font-medium">
+<a class="border-b-2 border-[#1F6B52] text-[#1F6B52] pb-3 px-1 font-semibold flex items-center gap-1" href="#">
+<span>Overview</span>
+</a>
+<a class="text-[#78716C] hover:text-[#1C1917] pb-3 px-1 flex items-center gap-1.5 transition-colors" href="#">
+<span>Sources</span>
+<span class="bg-[#F5F4EF] text-[#57534E] text-[10px] font-mono px-1.5 py-0.2 rounded-full border border-[#E7E5E0]">4</span>
+</a>
+<a class="text-[#78716C] hover:text-[#1C1917] pb-3 px-1 flex items-center gap-1.5 transition-colors" href="#">
+<span>Chat sessions</span>
+<span class="bg-[#F5F4EF] text-[#57534E] text-[10px] font-mono px-1.5 py-0.2 rounded-full border border-[#E7E5E0]">6</span>
+</a>
+<a class="text-[#78716C] hover:text-[#1C1917] pb-3 px-1 transition-colors" href="#">
+<span>Evaluation</span>
+</a>
+<a class="text-[#78716C] hover:text-[#1C1917] pb-3 px-1 transition-colors" href="#">
+<span>Settings</span>
+</a>
+</div>
+<!-- Row of 3 Stat Cards -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+<!-- Stat Card 1 -->
+<div class="bg-white rounded-xl border border-[#E7E5E0] p-5 flex flex-col justify-between hover:border-[#1F6B52]/30 transition-colors duration-150">
+<div class="flex justify-between items-start">
+<span class="text-xs font-medium text-[#78716C]">Indexed sources</span>
+<span class="bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-mono px-2 py-0.5 rounded-full flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+<span>1 indexing</span>
+</span>
+</div>
+<div class="mt-4">
+<span class="text-[32px] font-bold text-[#1C1917] tracking-tight font-headline-lg leading-none">4</span>
+<p class="text-xs text-[#78716C] mt-2 flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[15px] text-[#A8A29E]" data-icon="description">description</span>
+<span>96 pages, 3 formats</span>
+</p>
+</div>
+</div>
+<!-- Stat Card 2 -->
+<div class="bg-white rounded-xl border border-[#E7E5E0] p-5 flex flex-col justify-between hover:border-[#1F6B52]/30 transition-colors duration-150">
+<div class="flex justify-between items-start">
+<span class="text-xs font-medium text-[#78716C]">Chunks</span>
+<span class="bg-[#F5F4EF] text-[#57534E] text-[11px] font-mono px-2 py-0.5 rounded-full border border-[#E7E5E0]">
+              layout · ocr · fast_text
+            </span>
+</div>
+<div class="mt-4">
+<span class="text-[32px] font-bold text-[#1C1917] tracking-tight font-headline-lg leading-none">527</span>
+<p class="text-xs text-[#78716C] mt-2 flex items-center gap-1.5 font-label-md">
+<span class="material-symbols-outlined text-[15px] text-[#A8A29E]" data-icon="data_array">data_array</span>
+<span>Average 380 tokens/chunk</span>
+</p>
+</div>
+</div>
+<!-- Stat Card 3 -->
+<div class="bg-white rounded-xl border border-[#E7E5E0] p-5 flex flex-col justify-between hover:border-[#1F6B52]/30 transition-colors duration-150">
+<div class="flex justify-between items-start">
+<span class="text-xs font-medium text-[#78716C]">Grounded</span>
+<span class="bg-[#E9F2EE] text-[#1F6B52] text-[11px] font-medium font-mono px-2 py-0.5 rounded-full border border-[#CDE3D9]">
+              +4 pts this week
+            </span>
+</div>
+<div class="mt-4">
+<span class="text-[32px] font-bold text-[#1C1917] tracking-tight font-headline-lg leading-none">92%</span>
+<p class="text-xs text-[#78716C] mt-2 flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[15px] text-[#1F6B52]" data-icon="verified">verified</span>
+<span>Last evaluation run across 48 queries</span>
+</p>
+</div>
+</div>
+</div>
+<!-- Two-Column Asymmetric Workspace Bento -->
+<div class="grid grid-cols-12 gap-6">
+<!-- Left Column: Recently added Sources (col-span-7) -->
+<section class="col-span-12 lg:col-span-7 bg-white rounded-xl border border-[#E7E5E0] p-5 flex flex-col justify-between">
+<div>
+<div class="flex items-center justify-between">
+<div>
+<h2 class="text-sm font-semibold text-[#1C1917]">Recently added</h2>
+<p class="text-xs text-[#78716C] mt-0.5">4 documents attached to this project corpus</p>
+</div>
+<a class="text-xs font-medium text-[#1F6B52] hover:underline flex items-center gap-0.5" href="#">
+<span>View all</span>
+<span class="font-mono text-[10px]">›</span>
+</a>
+</div>
+<!-- List of 4 Sources -->
+<div class="mt-4 divide-y divide-[#E7E5E0]/70">
+<!-- Source 1: nvda_10k_fy24.pdf -->
+<div class="py-3 flex items-center justify-between hover:bg-[#FAF9F5] -mx-2 px-2 rounded-lg transition-colors group">
+<div class="flex items-center gap-3 min-w-0">
+<div class="w-8 h-8 rounded-lg bg-[#E9F2EE] text-[#1F6B52] flex items-center justify-center flex-shrink-0 border border-[#D5E7DF]">
+<span class="material-symbols-outlined text-[18px]" data-icon="picture_as_pdf">picture_as_pdf</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="text-xs font-medium text-[#1C1917] truncate group-hover:text-[#1F6B52] transition-colors">nvda_10k_fy24.pdf</span>
+<span class="font-mono text-[11px] text-[#78716C]">PDF · 96 pages · layout</span>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<span class="text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+<span>Indexed</span>
+</span>
+<button class="text-[#78716C] hover:text-[#1C1917] p-1 rounded hover:bg-[#E9F2EE] transition-colors">
+<span class="material-symbols-outlined text-sm" data-icon="more_horiz">more_horiz</span>
+</button>
+</div>
+</div>
+<!-- Source 2: financial_tables_fy24.pdf -->
+<div class="py-3 flex items-center justify-between hover:bg-[#FAF9F5] -mx-2 px-2 rounded-lg transition-colors group">
+<div class="flex items-center gap-3 min-w-0">
+<div class="w-8 h-8 rounded-lg bg-[#E9F2EE] text-[#1F6B52] flex items-center justify-center flex-shrink-0 border border-[#D5E7DF]">
+<span class="material-symbols-outlined text-[18px]" data-icon="table_chart">table_chart</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="text-xs font-medium text-[#1C1917] truncate group-hover:text-[#1F6B52] transition-colors">financial_tables_fy24.pdf</span>
+<span class="font-mono text-[11px] text-[#78716C]">PDF · 18 pages · layout</span>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<span class="text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+<span>Indexed</span>
+</span>
+<button class="text-[#78716C] hover:text-[#1C1917] p-1 rounded hover:bg-[#E9F2EE] transition-colors">
+<span class="material-symbols-outlined text-sm" data-icon="more_horiz">more_horiz</span>
+</button>
+</div>
+</div>
+<!-- Source 3: earnings_call_q4.pdf -->
+<div class="py-3 flex items-center justify-between hover:bg-[#FAF9F5] -mx-2 px-2 rounded-lg transition-colors group">
+<div class="flex items-center gap-3 min-w-0">
+<div class="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center flex-shrink-0 border border-sky-100">
+<span class="material-symbols-outlined text-[18px]" data-icon="mic">mic</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="text-xs font-medium text-[#1C1917] truncate group-hover:text-[#1F6B52] transition-colors">earnings_call_q4.pdf</span>
+<span class="font-mono text-[11px] text-[#78716C]">PDF · 22 pages · fast_text</span>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<span class="text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+<span>Indexed</span>
+</span>
+<button class="text-[#78716C] hover:text-[#1C1917] p-1 rounded hover:bg-[#E9F2EE] transition-colors">
+<span class="material-symbols-outlined text-sm" data-icon="more_horiz">more_horiz</span>
+</button>
+</div>
+</div>
+<!-- Source 4: scanned_board_minutes.pdf -->
+<div class="py-3 flex items-center justify-between hover:bg-[#FAF9F5] -mx-2 px-2 rounded-lg transition-colors group">
+<div class="flex items-center gap-3 min-w-0">
+<div class="w-8 h-8 rounded-lg bg-amber-50 text-amber-800 flex items-center justify-center flex-shrink-0 border border-amber-200/60">
+<span class="material-symbols-outlined text-[18px]" data-icon="document_scanner">document_scanner</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="text-xs font-medium text-[#1C1917] truncate group-hover:text-[#1F6B52] transition-colors">scanned_board_minutes.pdf</span>
+<span class="font-mono text-[11px] text-[#78716C]">PDF · 9 pages · ocr</span>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<span class="text-xs font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-mono flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+<span>Indexing 62%</span>
+</span>
+<button class="text-[#78716C] hover:text-[#1C1917] p-1 rounded hover:bg-[#E9F2EE] transition-colors">
+<span class="material-symbols-outlined text-sm" data-icon="more_horiz">more_horiz</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Bottom Drag-and-drop or upload helper area -->
+<div class="mt-5 border border-dashed border-[#D1CDC7] rounded-xl p-4 flex flex-col items-center justify-center text-center bg-[#FAF9F5]/70 hover:bg-[#FAF9F5] transition-colors cursor-pointer">
+<span class="material-symbols-outlined text-[#78716C] text-2xl" data-icon="upload_file">upload_file</span>
+<div class="mt-2 text-xs text-[#1C1917] font-medium">Drag PDF, DOCX, or Excel files here to parse</div>
+<p class="text-[11px] text-[#78716C] mt-0.5">Support for hybrid table extraction, OCR, and automated citation mapping</p>
+<button class="mt-3 bg-white border border-[#E7E5E0] hover:bg-[#E9F2EE] hover:border-[#1F6B52] text-[#1F6B52] text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors">
+<span class="material-symbols-outlined text-sm" data-icon="add">add</span>
+<span>Upload more files</span>
+</button>
+</div>
+</section>
+<!-- Right Column: Recent Chats & Inference Parameters (col-span-5) -->
+<div class="col-span-12 lg:col-span-5 flex flex-col gap-6">
+<!-- Card 1: Recent Chat Sessions -->
+<section class="bg-white rounded-xl border border-[#E7E5E0] p-5">
+<div class="flex items-center justify-between mb-4">
+<h2 class="text-sm font-semibold text-[#1C1917]">Recent chat sessions</h2>
+<a class="text-xs font-medium text-[#1F6B52] hover:underline flex items-center gap-0.5" href="#">
+<span>All chats</span>
+<span class="font-mono text-[10px]">›</span>
+</a>
+</div>
+<!-- 3 Session Rows -->
+<div class="flex flex-col gap-3">
+<!-- Session 1 -->
+<div class="p-3 rounded-lg border border-[#E7E5E0] bg-[#FAF9F5] hover:bg-[#F5F4EF] transition-colors cursor-pointer">
+<div class="flex items-start gap-2.5">
+<div class="w-6 h-6 rounded-full bg-[#E9F2EE] text-[#1F6B52] font-semibold text-[10px] flex items-center justify-center flex-shrink-0 mt-0.5">
+                    AK
+                  </div>
+<div class="flex flex-col flex-1 min-w-0">
+<p class="text-xs font-medium text-[#1C1917] leading-snug truncate">
+                      How did Datacenter gross margin move in FY24?
+                    </p>
+<div class="flex items-center justify-between mt-2">
+<span class="text-[11px] text-[#78716C]">14 messages · 2h ago</span>
+<span class="bg-[#E9F2EE] text-[#1F6B52] font-mono text-[10px] px-2 py-0.5 rounded border border-[#CDE3D9] flex items-center gap-1">
+<span class="w-1 h-1 rounded-full bg-[#1F6B52]"></span>
+<span>Confident · 3 citations</span>
+</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Session 2 -->
+<div class="p-3 rounded-lg border border-[#E7E5E0] bg-[#FAF9F5] hover:bg-[#F5F4EF] transition-colors cursor-pointer">
+<div class="flex items-start gap-2.5">
+<div class="w-6 h-6 rounded-full bg-[#E9F2EE] text-[#1F6B52] font-semibold text-[10px] flex items-center justify-center flex-shrink-0 mt-0.5">
+                    AK
+                  </div>
+<div class="flex flex-col flex-1 min-w-0">
+<p class="text-xs font-medium text-[#1C1917] leading-snug truncate">
+                      Does operating cash flow reconcile with net income?
+                    </p>
+<div class="flex items-center justify-between mt-2">
+<span class="text-[11px] text-[#78716C]">8 messages · 5h ago</span>
+<span class="bg-[#E9F2EE] text-[#1F6B52] font-mono text-[10px] px-2 py-0.5 rounded border border-[#CDE3D9] flex items-center gap-1">
+<span class="w-1 h-1 rounded-full bg-[#1F6B52]"></span>
+<span>Confident · 2 citations</span>
+</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Session 3 -->
+<div class="p-3 rounded-lg border border-[#E7E5E0] bg-[#FAF9F5] hover:bg-[#F5F4EF] transition-colors cursor-pointer">
+<div class="flex items-start gap-2.5">
+<div class="w-6 h-6 rounded-full bg-[#E9F2EE] text-[#1F6B52] font-semibold text-[10px] flex items-center justify-center flex-shrink-0 mt-0.5">
+                    AK
+                  </div>
+<div class="flex flex-col flex-1 min-w-0">
+<p class="text-xs font-medium text-[#1C1917] leading-snug truncate">
+                      Which supply constraints are listed in risk factors?
+                    </p>
+<div class="flex items-center justify-between mt-2">
+<span class="text-[11px] text-[#78716C]">21 messages · 1d ago</span>
+<span class="bg-amber-50 text-amber-800 border border-amber-200 font-mono text-[10px] px-2 py-0.5 rounded">
+                        Refused — not in sources
+                      </span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Card 2: Retrieval Parameters -->
+<section class="bg-white rounded-xl border border-[#E7E5E0] p-5">
+<div class="flex items-center justify-between">
+<div>
+<h2 class="text-sm font-semibold text-[#1C1917]">Retrieval</h2>
+<p class="text-xs text-[#78716C] mt-0.5">Active inference &amp; reranking parameters</p>
+</div>
+<a class="text-xs font-medium text-[#1F6B52] hover:underline flex items-center gap-0.5" href="#">
+<span>Edit in Settings</span>
+<span class="font-mono text-[10px]">›</span>
+</a>
+</div>
+<!-- Clean Grid of Mono Key-Values in a border-divided box -->
+<div class="mt-4 border border-[#E7E5E0] rounded-lg overflow-hidden bg-[#FAF9F5]">
+<div class="grid grid-cols-2 divide-x divide-y divide-[#E7E5E0] text-xs">
+<!-- model -->
+<div class="p-2.5 flex flex-col gap-0.5">
+<span class="text-[11px] font-mono text-[#78716C]">model</span>
+<span class="font-mono text-xs text-[#1C1917] font-medium">llama3.1:latest</span>
+</div>
+<!-- mode -->
+<div class="p-2.5 flex flex-col gap-0.5">
+<span class="text-[11px] font-mono text-[#78716C]">mode</span>
+<div>
+<span class="font-mono text-xs text-[#1F6B52] font-medium bg-[#E9F2EE] px-1.5 py-0.5 rounded inline-block border border-[#CDE3D9]">Auto (CRAG)</span>
+</div>
+</div>
+<!-- top_k -->
+<div class="p-2.5 flex flex-col gap-0.5">
+<span class="text-[11px] font-mono text-[#78716C]">top_k</span>
+<span class="font-mono text-xs text-[#1C1917] font-medium">6</span>
+</div>
+<!-- temperature -->
+<div class="p-2.5 flex flex-col gap-0.5">
+<span class="text-[11px] font-mono text-[#78716C]">temperature</span>
+<span class="font-mono text-xs text-[#1C1917] font-medium">0.1</span>
+</div>
+<!-- reranker -->
+<div class="p-2.5 flex flex-col gap-0.5">
+<span class="text-[11px] font-mono text-[#78716C]">reranker</span>
+<span class="font-mono text-xs text-[#1C1917] font-medium">FlashRank</span>
+</div>
+<!-- context budget -->
+<div class="p-2.5 flex flex-col gap-0.5">
+<span class="text-[11px] font-mono text-[#78716C]">context budget</span>
+<span class="font-mono text-xs text-[#1C1917] font-medium">3,072 tok</span>
+</div>
+</div>
+</div>
+<!-- Provenance Footer note -->
+<div class="mt-3 flex items-center gap-1.5 text-[11px] text-[#78716C]">
+<span class="material-symbols-outlined text-sm text-[#1F6B52]" data-icon="lock_reset">lock_reset</span>
+<span>Deterministic temperature active for SEC 10-K mathematical consistency.</span>
+</div>
+</section>
+</div>
+</div>
+</div>
+</main>
+</body></html>

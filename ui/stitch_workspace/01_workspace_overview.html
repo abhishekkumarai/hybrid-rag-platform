@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>IRA Workspace - Enterprise Financial AI</title>
+<!-- Google Fonts: DM Sans & JetBrains Mono -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&amp;family=JetBrains+Mono:wght@400;500;600&amp;family=Public+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            canvas: "#FBFBF9",
+            hairline: "#E7E5E0",
+            ink: "#1C1917",
+            secondary: "#57534E",
+            muted: "#78716C",
+            primary: {
+              DEFAULT: "#1F6B52",
+              hover: "#185742",
+              tint: "#E9F2EE"
+            }
+          },
+          borderRadius: {
+            "DEFAULT": "0.5rem",
+            "lg": "1rem",
+            "xl": "1.5rem",
+            "full": "9999px"
+          },
+          fontFamily: {
+            headline: ["DM Sans", "sans-serif"],
+            display: ["DM Sans", "sans-serif"],
+            body: ["DM Sans", "sans-serif"],
+            label: ["Public Sans", "sans-serif"],
+            mono: ["JetBrains Mono", "monospace"]
+          }
+        },
+      },
+    }
+  </script>
+<style>
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background-color: #FBFBF9;
+      color: #1C1917;
+      -webkit-font-smoothing: antialiased;
+    }
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+      font-size: 19px;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      vertical-align: middle;
+    }
+    .mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+  </style>
+</head>
+<body class="bg-[#FBFBF9] text-[#1C1917] h-screen flex overflow-hidden antialiased select-none">
+<!-- ==================== SIDEBAR COMPONENT ==================== -->
+<aside class="w-[260px] h-screen flex-shrink-0 flex flex-col justify-between p-3 bg-white border-r border-[#E7E5E0] z-20">
+<div class="flex flex-col gap-3">
+<!-- Header / Logo -->
+<div class="flex items-center gap-2.5 px-2 py-1">
+<div class="w-8 h-8 rounded-lg bg-[#1F6B52] flex items-center justify-center text-white shadow-sm flex-shrink-0">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">layers</span>
+</div>
+<div class="flex flex-col">
+<span class="font-bold text-lg leading-tight tracking-tight text-[#1C1917]">IRA</span>
+<span class="text-[11px] font-medium text-[#78716C] leading-none">Enterprise Financial AI</span>
+</div>
+</div>
+<!-- Workspace Switcher Card -->
+<div class="rounded-lg border border-[#E7E5E0] p-2 flex items-center justify-between bg-[#FBFBF9]/60 cursor-pointer hover:bg-stone-50 transition-colors">
+<div class="flex items-center gap-2.5 min-w-0">
+<div class="w-7 h-7 rounded-md bg-[#E9F2EE] text-[#1F6B52] font-semibold text-xs flex items-center justify-center flex-shrink-0">
+            EF
+          </div>
+<div class="flex flex-col min-w-0">
+<span class="text-xs font-semibold text-[#1C1917] truncate leading-tight">Enterprise Financial AI</span>
+<span class="text-[10px] text-[#78716C] leading-tight">Workspace · admin</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-[#78716C] text-sm">unfold_more</span>
+</div>
+<!-- Primary Navigation -->
+<nav class="flex flex-col gap-0.5">
+<!-- Overview (Active) -->
+<a class="bg-[#E9F2EE] text-[#1F6B52] font-medium text-xs rounded-lg px-3 py-2 flex items-center gap-2.5 transition-colors" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">dashboard</span>
+<span>Overview</span>
+</a>
+<!-- Library -->
+<a class="text-[#57534E] hover:text-[#1C1917] hover:bg-[#F5F5F2] font-normal text-xs rounded-lg px-3 py-2 flex items-center gap-2.5 transition-colors" href="#">
+<span class="material-symbols-outlined">folder_open</span>
+<span>Library</span>
+</a>
+<!-- Evaluation -->
+<a class="text-[#57534E] hover:text-[#1C1917] hover:bg-[#F5F5F2] font-normal text-xs rounded-lg px-3 py-2 flex items-center gap-2.5 transition-colors" href="#">
+<span class="material-symbols-outlined">fact_check</span>
+<span>Evaluation</span>
+</a>
+<!-- Observability -->
+<a class="text-[#57534E] hover:text-[#1C1917] hover:bg-[#F5F5F2] font-normal text-xs rounded-lg px-3 py-2 flex items-center gap-2.5 transition-colors" href="#">
+<span class="material-symbols-outlined">monitoring</span>
+<span>Observability</span>
+</a>
+</nav>
+<!-- Section: PROJECTS -->
+<div class="mt-2 flex flex-col">
+<div class="flex items-center justify-between px-2 mb-1.5">
+<span class="text-[10px] font-semibold tracking-wider text-[#78716C] uppercase">PROJECTS</span>
+<button class="w-5 h-5 rounded hover:bg-stone-100 flex items-center justify-center text-[#78716C] hover:text-[#1C1917] transition-colors" title="New project">
+<span class="material-symbols-outlined text-sm">add</span>
+</button>
+</div>
+<div class="flex flex-col gap-0.5 overflow-y-auto max-h-[220px]">
+<!-- FY24 10-K Cross-exam -->
+<a class="px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs text-[#57534E] hover:text-[#1C1917] hover:bg-[#F5F5F2] group transition-colors" href="#">
+<div class="flex items-center gap-2 truncate">
+<div class="w-5 h-5 rounded bg-[#E9F2EE] flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-[13px] text-[#1F6B52]">folder</span>
+</div>
+<span class="truncate font-medium text-xs">FY24 10-K Cross-exam</span>
+</div>
+</a>
+<!-- Q3 Earnings Calls -->
+<a class="px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs text-[#57534E] hover:text-[#1C1917] hover:bg-[#F5F5F2] group transition-colors" href="#">
+<div class="flex items-center gap-2 truncate">
+<div class="w-5 h-5 rounded bg-[#E0F2FE] flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-[13px] text-[#0284C7]">folder</span>
+</div>
+<span class="truncate text-xs">Q3 Earnings Calls</span>
+</div>
+</a>
+<!-- Credit Risk Policies -->
+<a class="px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs text-[#57534E] hover:text-[#1C1917] hover:bg-[#F5F5F2] group transition-colors" href="#">
+<div class="flex items-center gap-2 truncate">
+<div class="w-5 h-5 rounded bg-[#FEF3C7] flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-[13px] text-[#D97706]">folder</span>
+</div>
+<span class="truncate text-xs">Credit Risk Policies</span>
+</div>
+</a>
+<!-- Basel III Capital Rules -->
+<a class="px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs text-[#57534E] hover:text-[#1C1917] hover:bg-[#F5F5F2] group transition-colors" href="#">
+<div class="flex items-center gap-2 truncate">
+<div class="w-5 h-5 rounded bg-[#FFE4E6] flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-[13px] text-[#E11D48]">folder</span>
+</div>
+<span class="truncate text-xs">Basel III Capital Rules</span>
+</div>
+</a>
+<!-- Web RAG (Preset) -->
+<a class="px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs text-[#57534E] hover:text-[#1C1917] hover:bg-[#F5F5F2] group transition-colors" href="#">
+<div class="flex items-center gap-2 truncate">
+<div class="w-5 h-5 rounded bg-[#E9F2EE] flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-[13px] text-[#1F6B52]">public</span>
+</div>
+<span class="truncate text-xs">Web RAG</span>
+</div>
+<span class="text-[9px] mono bg-stone-100 text-[#57534E] px-1.5 py-0.2 rounded border border-[#E7E5E0]">preset</span>
+</a>
+</div>
+</div>
+</div>
+<!-- Sidebar Footer Area -->
+<div class="flex flex-col gap-2 pt-2 border-t border-[#E7E5E0]">
+<!-- Settings Link -->
+<a class="text-[#57534E] hover:text-[#1C1917] hover:bg-[#F5F5F2] text-xs rounded-lg px-2.5 py-1.5 flex items-center gap-2 transition-colors" href="#">
+<span class="material-symbols-outlined text-base">settings</span>
+<span>Settings</span>
+</a>
+<!-- Infra Health Pill Bar -->
+<div class="rounded-lg bg-[#FBFBF9] border border-[#E7E5E0] px-2.5 py-2 flex items-center justify-between">
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
+<span class="mono text-[10px] text-[#57534E] tracking-tight">Qdrant · Redis · Ollama</span>
+</div>
+<span class="text-[9px] mono text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded border border-emerald-200">100%</span>
+</div>
+<!-- User Profile Card -->
+<div class="flex items-center justify-between p-1.5 rounded-lg hover:bg-stone-50 transition-colors">
+<div class="flex items-center gap-2 min-w-0">
+<div class="w-7 h-7 rounded-full bg-stone-200 text-[#1C1917] font-semibold text-xs flex items-center justify-center flex-shrink-0 border border-stone-300">
+            AK
+          </div>
+<div class="flex flex-col min-w-0">
+<span class="text-xs font-semibold text-[#1C1917] leading-tight truncate">Abhishek AK</span>
+<span class="text-[10px] text-[#78716C] leading-none truncate">abhishek@ira.ai</span>
+</div>
+</div>
+<span class="text-[9px] font-medium bg-stone-100 text-stone-700 px-1.5 py-0.5 rounded border border-[#E7E5E0]">Admin</span>
+</div>
+</div>
+</aside>
+<!-- ==================== MAIN CONTENT CANVAS ==================== -->
+<main class="flex-1 flex flex-col h-screen overflow-y-auto bg-[#FBFBF9]">
+<!-- Top Bar Component -->
+<header class="h-14 border-b border-[#E7E5E0] bg-white flex items-center justify-between px-8 flex-shrink-0 sticky top-0 z-10">
+<!-- Left: Breadcrumbs & Context -->
+<div class="flex items-center gap-2 text-xs">
+<span class="text-[#78716C]">Workspace</span>
+<span class="text-[#78716C] text-[10px]">/</span>
+<span class="font-medium text-[#1C1917]">Enterprise Financial AI</span>
+<span class="ml-2 px-2 py-0.5 bg-stone-100 text-[#57534E] text-[10px] mono rounded border border-[#E7E5E0]">RAG v2.4</span>
+</div>
+<!-- Right Actions -->
+<div class="flex items-center gap-2.5">
+<button class="bg-white border border-[#E7E5E0] hover:bg-stone-50 text-[#1C1917] text-xs font-medium rounded-lg px-3 py-1.5 transition-colors flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[16px] text-[#78716C]">tune</span>
+<span>Web RAG preset</span>
+</button>
+<button class="bg-[#1F6B52] hover:bg-[#185742] text-white text-xs font-medium rounded-lg px-3.5 py-1.5 flex items-center gap-1.5 shadow-sm transition-all active:scale-[0.98]">
+<span class="material-symbols-outlined text-[16px]">add</span>
+<span>New project</span>
+</button>
+</div>
+</header>
+<!-- Page Body Container -->
+<div class="p-8 max-w-[1400px] w-full mx-auto flex flex-col gap-6">
+<!-- Page Title & Subtitle Banner -->
+<div class="flex items-start justify-between">
+<div>
+<h1 class="text-2xl font-bold text-[#1C1917] tracking-tight">Enterprise Financial AI</h1>
+<p class="text-sm text-[#78716C] mt-0.5">Grounded answers over your filings, policies and calls.</p>
+</div>
+<div class="flex items-center gap-2">
+<span class="text-xs text-[#78716C]">Vector Storage:</span>
+<span class="mono text-xs font-medium text-[#1C1917] bg-white px-2 py-1 rounded border border-[#E7E5E0]">4.9k chunks</span>
+</div>
+</div>
+<!-- 4 Stat Cards Grid -->
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+<!-- Stat 1 -->
+<div class="bg-white p-4 rounded-xl border border-[#E7E5E0] flex items-center justify-between shadow-sm">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-[#E9F2EE] flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-[#1F6B52]">folder_open</span>
+</div>
+<div>
+<span class="text-xs text-[#78716C] font-medium block">Projects</span>
+<span class="text-xl font-bold text-[#1C1917] leading-tight">6 Active</span>
+</div>
+</div>
+<span class="text-[10px] mono font-medium bg-[#E9F2EE] text-[#1F6B52] px-2 py-0.5 rounded-full border border-[#1F6B52]/20">All live</span>
+</div>
+<!-- Stat 2 -->
+<div class="bg-white p-4 rounded-xl border border-[#E7E5E0] flex items-center justify-between shadow-sm">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-[#E9F2EE] flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-[#1F6B52]">description</span>
+</div>
+<div>
+<span class="text-xs text-[#78716C] font-medium block">Documents</span>
+<span class="text-xl font-bold text-[#1C1917] leading-tight">38 Filings</span>
+</div>
+</div>
+<span class="text-[10px] mono text-[#57534E] bg-stone-100 px-2 py-0.5 rounded border border-[#E7E5E0]">4,912 chunks</span>
+</div>
+<!-- Stat 3 -->
+<div class="bg-white p-4 rounded-xl border border-[#E7E5E0] flex items-center justify-between shadow-sm">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-[#E9F2EE] flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-[#1F6B52]">chat_bubble_outline</span>
+</div>
+<div>
+<span class="text-xs text-[#78716C] font-medium block">Questions asked</span>
+<span class="text-xl font-bold text-[#1C1917] leading-tight">214 Queries</span>
+</div>
+</div>
+<span class="text-[10px] font-medium bg-[#E9F2EE] text-[#1F6B52] px-2 py-0.5 rounded-full">+31 this week</span>
+</div>
+<!-- Stat 4 -->
+<div class="bg-white p-4 rounded-xl border border-[#E7E5E0] flex items-center justify-between shadow-sm">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-[#E9F2EE] flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-[#1F6B52]">verified</span>
+</div>
+<div>
+<span class="text-xs text-[#78716C] font-medium block">Groundedness</span>
+<span class="text-xl font-bold text-[#1C1917] leading-tight">91% Score</span>
+</div>
+</div>
+<span class="text-[10px] mono text-[#78716C] bg-stone-100 px-2 py-0.5 rounded border border-[#E7E5E0]">eval: 0.94</span>
+</div>
+</div>
+<!-- Main Layout Split (Projects List + Right Info Column) -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+<!-- ==================== LEFT COLUMN: PROJECTS LIST (8 cols) ==================== -->
+<div class="lg:col-span-8 flex flex-col gap-3">
+<!-- Projects Section Toolbar -->
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<h2 class="text-base font-semibold text-[#1C1917]">Projects</h2>
+<!-- Segmented Control Tabs -->
+<div class="flex p-0.5 bg-stone-200/60 rounded-lg border border-[#E7E5E0] text-xs font-medium">
+<button class="px-2.5 py-1 rounded-md bg-white text-[#1C1917] shadow-xs">All</button>
+<button class="px-2.5 py-1 rounded-md text-[#78716C] hover:text-[#1C1917] transition-colors">Mine</button>
+<button class="px-2.5 py-1 rounded-md text-[#78716C] hover:text-[#1C1917] transition-colors">Forked</button>
+</div>
+</div>
+<!-- Search Filter -->
+<div class="relative w-64">
+<span class="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400 text-sm">search</span>
+<input class="w-full bg-white border border-[#E7E5E0] rounded-lg pl-8 pr-3 py-1.5 text-xs text-[#1C1917] placeholder:text-stone-400 focus:outline-none focus:border-[#1F6B52] transition-colors" placeholder="Filter projects..." type="text"/>
+</div>
+</div>
+<!-- Project List Card Container -->
+<div class="bg-white rounded-xl border border-[#E7E5E0] divide-y divide-[#E7E5E0] shadow-sm overflow-hidden">
+<!-- Row 1: FY24 10-K Cross-exam -->
+<div class="px-4 py-3.5 flex items-center justify-between hover:bg-[#FBFBF9] transition-colors group cursor-pointer">
+<div class="flex items-center gap-3.5 min-w-0">
+<div class="w-8 h-8 rounded-lg bg-[#E9F2EE] flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-[#1F6B52] text-lg">folder</span>
+</div>
+<div class="flex flex-col min-w-0">
+<div class="flex items-center gap-2">
+<span class="font-semibold text-xs text-[#1C1917] hover:text-[#1F6B52] transition-colors">FY24 10-K Cross-exam</span>
+<span class="mono text-[10px] bg-stone-100 text-stone-700 px-1.5 py-0.2 rounded border border-[#E7E5E0]">llama3.1:latest</span>
+<span class="text-[10px] font-medium bg-[#E9F2EE] text-[#1F6B52] px-1.5 py-0.2 rounded">Auto</span>
+</div>
+<p class="text-xs text-[#78716C] truncate mt-0.5">NVIDIA FY24 filings, tables and earnings call Q&amp;A</p>
+</div>
+</div>
+<div class="flex items-center gap-5 flex-shrink-0 ml-4">
+<div class="text-right hidden sm:block">
+<span class="mono text-[11px] text-[#57534E] block">4 sources · 6 chats</span>
+<span class="text-[11px] text-[#78716C] flex items-center justify-end gap-1">
+<span class="material-symbols-outlined text-xs">link</span> 1 share link
+                  </span>
+</div>
+<span class="text-xs text-[#78716C] w-12 text-right">2h ago</span>
+<button class="w-6 h-6 rounded flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100">
+<span class="material-symbols-outlined text-base">more_horiz</span>
+</button>
+</div>
+</div>
+<!-- Row 2: Q3 Earnings Calls -->
+<div class="px-4 py-3.5 flex items-center justify-between hover:bg-[#FBFBF9] transition-colors group cursor-pointer">
+<div class="flex items-center gap-3.5 min-w-0">
+<div class="w-8 h-8 rounded-lg bg-[#E0F2FE] flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-[#0284C7] text-lg">folder</span>
+</div>
+<div class="flex flex-col min-w-0">
+<div class="flex items-center gap-2">
+<span class="font-semibold text-xs text-[#1C1917] hover:text-[#1F6B52] transition-colors">Q3 Earnings Calls</span>
+<span class="mono text-[10px] bg-stone-100 text-stone-700 px-1.5 py-0.2 rounded border border-[#E7E5E0]">llama3.2:3b</span>
+<span class="text-[10px] font-medium bg-sky-50 text-sky-700 px-1.5 py-0.2 rounded">Agentic</span>
+</div>
+<p class="text-xs text-[#78716C] truncate mt-0.5">Big tech transcripts, capex and forward commentary</p>
+</div>
+</div>
+<div class="flex items-center gap-5 flex-shrink-0 ml-4">
+<div class="text-right hidden sm:block">
+<span class="mono text-[11px] text-[#57534E] block">7 sources · 12 chats</span>
+<span class="text-[11px] text-[#78716C]">—</span>
+</div>
+<span class="text-xs text-[#78716C] w-12 text-right">5h ago</span>
+<button class="w-6 h-6 rounded flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100">
+<span class="material-symbols-outlined text-base">more_horiz</span>
+</button>
+</div>
+</div>
+<!-- Row 3: Credit Risk Policies -->
+<div class="px-4 py-3.5 flex items-center justify-between hover:bg-[#FBFBF9] transition-colors group cursor-pointer">
+<div class="flex items-center gap-3.5 min-w-0">
+<div class="w-8 h-8 rounded-lg bg-[#FEF3C7] flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-[#D97706] text-lg">folder</span>
+</div>
+<div class="flex flex-col min-w-0">
+<div class="flex items-center gap-2">
+<span class="font-semibold text-xs text-[#1C1917] hover:text-[#1F6B52] transition-colors">Credit Risk Policies</span>
+<span class="mono text-[10px] bg-stone-100 text-stone-700 px-1.5 py-0.2 rounded border border-[#E7E5E0]">llama3.1:latest</span>
+<span class="text-[10px] font-medium bg-amber-50 text-amber-700 px-1.5 py-0.2 rounded">Graph</span>
+</div>
+<p class="text-xs text-[#78716C] truncate mt-0.5">Underwriting guidelines, exceptions, and rating tiers</p>
+</div>
+</div>
+<div class="flex items-center gap-5 flex-shrink-0 ml-4">
+<div class="text-right hidden sm:block">
+<span class="mono text-[11px] text-[#57534E] block">11 sources · 4 chats</span>
+<span class="text-[11px] text-[#78716C]">—</span>
+</div>
+<span class="text-xs text-[#78716C] w-12 text-right">1d ago</span>
+<button class="w-6 h-6 rounded flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100">
+<span class="material-symbols-outlined text-base">more_horiz</span>
+</button>
+</div>
+</div>
+<!-- Row 4: Basel III Capital Rules -->
+<div class="px-4 py-3.5 flex items-center justify-between hover:bg-[#FBFBF9] transition-colors group cursor-pointer">
+<div class="flex items-center gap-3.5 min-w-0">
+<div class="w-8 h-8 rounded-lg bg-[#FFE4E6] flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-[#E11D48] text-lg">folder</span>
+</div>
+<div class="flex flex-col min-w-0">
+<div class="flex items-center gap-2">
+<span class="font-semibold text-xs text-[#1C1917] hover:text-[#1F6B52] transition-colors">Basel III Capital Rules</span>
+<span class="mono text-[10px] bg-stone-100 text-stone-700 px-1.5 py-0.2 rounded border border-[#E7E5E0]">llama3.1:latest</span>
+<span class="text-[10px] font-medium bg-[#E9F2EE] text-[#1F6B52] px-1.5 py-0.2 rounded">Auto</span>
+</div>
+<p class="text-xs text-[#78716C] truncate mt-0.5">Tier 1 ratios, risk-weighted assets, and liquidity coverage</p>
+</div>
+</div>
+<div class="flex items-center gap-5 flex-shrink-0 ml-4">
+<div class="text-right hidden sm:block">
+<span class="mono text-[11px] text-[#57534E] block">9 sources · 3 chats</span>
+<span class="text-[11px] text-[#78716C] flex items-center justify-end gap-1">
+<span class="material-symbols-outlined text-xs">link</span> 2 share links
+                  </span>
+</div>
+<span class="text-xs text-[#78716C] w-12 text-right">2d ago</span>
+<button class="w-6 h-6 rounded flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100">
+<span class="material-symbols-outlined text-base">more_horiz</span>
+</button>
+</div>
+</div>
+<!-- Row 5: Web RAG (Preset) -->
+<div class="px-4 py-3.5 flex items-center justify-between hover:bg-[#FBFBF9] transition-colors group cursor-pointer">
+<div class="flex items-center gap-3.5 min-w-0">
+<div class="w-8 h-8 rounded-lg bg-[#E9F2EE] flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-[#1F6B52] text-lg">public</span>
+</div>
+<div class="flex flex-col min-w-0">
+<div class="flex items-center gap-2">
+<span class="font-semibold text-xs text-[#1C1917] hover:text-[#1F6B52] transition-colors">Web RAG</span>
+<span class="text-[9px] mono bg-stone-100 text-[#57534E] px-1.5 py-0.2 rounded border border-[#E7E5E0]">preset</span>
+<span class="mono text-[10px] bg-stone-100 text-stone-700 px-1.5 py-0.2 rounded border border-[#E7E5E0]">llama3.2:3b</span>
+<span class="text-[10px] font-medium bg-stone-100 text-stone-700 px-1.5 py-0.2 rounded">Direct</span>
+</div>
+<p class="text-xs text-[#78716C] truncate mt-0.5">Instant indexing and verification over live web URLs</p>
+</div>
+</div>
+<div class="flex items-center gap-5 flex-shrink-0 ml-4">
+<div class="text-right hidden sm:block">
+<span class="mono text-[11px] text-[#57534E] block">5 sources · 2 chats</span>
+<span class="text-[11px] text-[#78716C]">—</span>
+</div>
+<span class="text-xs text-[#78716C] w-12 text-right">3d ago</span>
+<button class="w-6 h-6 rounded flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100">
+<span class="material-symbols-outlined text-base">more_horiz</span>
+</button>
+</div>
+</div>
+<!-- Row 6: Vendor Contracts (Forked) -->
+<div class="px-4 py-3.5 flex items-center justify-between hover:bg-[#FBFBF9] transition-colors group cursor-pointer">
+<div class="flex items-center gap-3.5 min-w-0">
+<div class="w-8 h-8 rounded-lg bg-stone-100 flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-stone-600 text-lg">folder_shared</span>
+</div>
+<div class="flex flex-col min-w-0">
+<div class="flex items-center gap-2">
+<span class="font-semibold text-xs text-[#1C1917] hover:text-[#1F6B52] transition-colors">Vendor Contracts</span>
+<span class="text-[9px] mono bg-stone-100 text-stone-600 px-1.5 py-0.2 rounded border border-[#E7E5E0] flex items-center gap-0.5">
+<span class="material-symbols-outlined text-[10px]">fork_right</span> forked
+                    </span>
+<span class="mono text-[10px] bg-stone-100 text-stone-700 px-1.5 py-0.2 rounded border border-[#E7E5E0]">llama3.1:latest</span>
+<span class="text-[10px] font-medium bg-[#E9F2EE] text-[#1F6B52] px-1.5 py-0.2 rounded">Auto</span>
+</div>
+<p class="text-xs text-[#78716C] italic truncate mt-0.5">Forked from a shared chat</p>
+</div>
+</div>
+<div class="flex items-center gap-5 flex-shrink-0 ml-4">
+<div class="text-right hidden sm:block">
+<span class="mono text-[11px] text-[#57534E] block">2 sources · 1 chat</span>
+<span class="text-[11px] text-[#78716C]">—</span>
+</div>
+<span class="text-xs text-[#78716C] w-12 text-right">4d ago</span>
+<button class="w-6 h-6 rounded flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100">
+<span class="material-symbols-outlined text-base">more_horiz</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Bottom Micro-tip -->
+<div class="flex items-center justify-between text-xs text-[#78716C] px-1 py-1">
+<span class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-stone-400 text-xs">info</span>
+<span>All RAG queries cite passage doc_ids and token-level offsets.</span>
+</span>
+<span class="mono text-[11px]">Embedding: text-embedding-3-small</span>
+</div>
+</div>
+<!-- ==================== RIGHT COLUMN: ACTIVITY & SERVICES (4 cols) ==================== -->
+<div class="lg:col-span-4 flex flex-col gap-4">
+<!-- Recent Activity Card -->
+<div class="bg-white rounded-xl border border-[#E7E5E0] p-4 shadow-sm flex flex-col gap-3">
+<div class="flex items-center justify-between border-b border-[#E7E5E0] pb-2.5">
+<h3 class="font-semibold text-xs text-[#1C1917]">Recent activity</h3>
+<a class="text-[#1F6B52] hover:text-[#185742] text-xs font-medium" href="#">View all</a>
+</div>
+<div class="flex flex-col gap-3">
+<!-- Item 1 -->
+<div class="flex flex-col gap-1">
+<div class="flex items-start gap-2">
+<div class="w-5 h-5 rounded-full bg-stone-200 text-stone-800 text-[10px] font-semibold flex items-center justify-center flex-shrink-0 mt-0.5">
+                    AK
+                  </div>
+<div class="flex flex-col min-w-0">
+<p class="font-medium text-xs text-[#1C1917] leading-snug">What is the FY24 Datacenter gross margin?</p>
+<span class="text-[11px] text-[#78716C] mt-0.5">Asked in FY24 10-K Cross-exam · 12 min ago</span>
+<div>
+<span class="bg-[#E9F2EE] text-[#1F6B52] text-[10px] font-medium px-2 py-0.5 rounded inline-block mt-1">
+                        Answered from 2 sources
+                      </span>
+</div>
+</div>
+</div>
+</div>
+<!-- Item 2 -->
+<div class="flex flex-col gap-1 pt-2 border-t border-stone-100">
+<div class="flex items-start gap-2">
+<div class="w-5 h-5 rounded-full bg-[#E9F2EE] text-[#1F6B52] text-[10px] font-semibold flex items-center justify-center flex-shrink-0 mt-0.5">
+                    EF
+                  </div>
+<div class="flex flex-col min-w-0">
+<p class="font-medium text-xs text-[#1C1917] leading-snug">Minimum CET1 ratio under Basel III?</p>
+<span class="text-[11px] text-[#78716C] mt-0.5">Asked in Basel III Capital Rules · 1h ago</span>
+<div>
+<span class="bg-[#E9F2EE] text-[#1F6B52] text-[10px] font-medium px-2 py-0.5 rounded inline-block mt-1">
+                        Answered from 1 source
+                      </span>
+</div>
+</div>
+</div>
+</div>
+<!-- Item 3 -->
+<div class="flex flex-col gap-1 pt-2 border-t border-stone-100">
+<div class="flex items-start gap-2">
+<div class="w-5 h-5 rounded-full bg-stone-200 text-stone-800 text-[10px] font-semibold flex items-center justify-center flex-shrink-0 mt-0.5">
+                    AK
+                  </div>
+<div class="flex flex-col min-w-0">
+<p class="font-medium text-xs text-[#1C1917] leading-snug">FY25 guidance?</p>
+<span class="text-[11px] text-[#78716C] mt-0.5">Asked in FY24 10-K Cross-exam · 3h ago</span>
+<div>
+<span class="bg-rose-50 text-rose-700 text-[10px] font-medium px-2 py-0.5 rounded inline-block mt-1 border border-rose-200">
+                        Refused — not in sources
+                      </span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Services & Infra Card -->
+<div class="bg-white rounded-xl border border-[#E7E5E0] p-4 shadow-sm flex flex-col gap-3">
+<div class="flex items-center justify-between border-b border-[#E7E5E0] pb-2.5">
+<h3 class="font-semibold text-xs text-[#1C1917]">Infrastructure &amp; Models</h3>
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-emerald-600"></span>
+<span class="text-[11px] text-[#1F6B52] font-medium">Healthy</span>
+</div>
+</div>
+<!-- Live Services Stack -->
+<div class="flex flex-col gap-2">
+<div class="flex items-center justify-between text-xs">
+<div class="flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+<span class="text-[#1C1917] font-medium">Qdrant Vector DB</span>
+</div>
+<span class="mono text-[10px] text-[#57534E]">v1.9.0 · 4,912 vectors</span>
+</div>
+<div class="flex items-center justify-between text-xs">
+<div class="flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+<span class="text-[#1C1917] font-medium">Redis Cache</span>
+</div>
+<span class="mono text-[10px] text-[#57534E]">up · 0.2ms latency</span>
+</div>
+<div class="flex items-center justify-between text-xs">
+<div class="flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+<span class="text-[#1C1917] font-medium">Ollama Engine</span>
+</div>
+<span class="mono text-[10px] text-[#57534E]">local runner</span>
+</div>
+</div>
+<!-- VRAM Usage Bar -->
+<div class="pt-2 border-t border-[#E7E5E0] flex flex-col">
+<div class="flex items-center justify-between text-xs">
+<span class="mono text-[11px] font-medium text-[#1C1917]">VRAM 4.1 / 6.0 GB</span>
+<span class="mono text-[10px] text-[#78716C]">68%</span>
+</div>
+<div class="w-full bg-stone-100 rounded-full h-1.5 mt-1.5 overflow-hidden">
+<div class="bg-[#1F6B52] h-1.5 rounded-full" style="width: 68%;"></div>
+</div>
+<span class="text-[10px] text-[#78716C] mt-1 mono">llama3.1:latest loaded (3.8 GB)</span>
+</div>
+</div>
+<!-- Document Chunking Spec Chip / Note -->
+<div class="bg-[#F5F5F2] border border-[#E7E5E0] rounded-xl p-3 flex items-start gap-2.5">
+<span class="material-symbols-outlined text-[#1F6B52] text-sm mt-0.5">fact_check</span>
+<div class="flex flex-col">
+<span class="text-xs font-semibold text-[#1C1917]">Zero-hallucination constraint</span>
+<p class="text-[11px] text-[#78716C] leading-normal mt-0.5">
+                Every numeric answer must correlate to a raw bounding box or audited filing markdown cell. Unmatched questions will be strictly refused.
+              </p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>

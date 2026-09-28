@@ -62,8 +62,14 @@ python -m pytest tests/unit -q -k "rrf or rerank"
 
 Lint: `python -m ruff check .` (line-length 100; `E501`/`E402` ignored).
 
-`tests/unit` (77 tests) mocks Qdrant, Redis and Ollama and runs with no infrastructure. `tests/integration`
-and `tests/eval` require live Qdrant + Ollama.
+`tests/unit` mocks Qdrant, Redis and Ollama and runs with no infrastructure. `tests/integration`
+and `tests/eval` require live Qdrant + Ollama (`tests/integration/test_identity_postgres.py` needs the migrated
+auth database instead, and skips without it).
+
+Unit tests run signed in: `tests/unit/conftest.py` gives every test a fresh `InMemoryIdentityStore`, overrides
+the gateway's `optional_user` dependency with an admin `TEST_USER`, and disables the CSRF header check. Chat tests
+need a project that can read a document — use the `make_project("doc_id")` fixture (a project with no readable
+documents refuses every turn). Tests of auth itself request the `real_auth` fixture to drop the overrides.
 
 `run.ps1` help text still advertises "37 pytest tests" — stale, ignore it.
 
@@ -112,6 +118,35 @@ in `configs/default.yaml` (served to the UI at `/api/v1/prompts/default`). Overs
 **Document identity.** `doc_id` is `{filename_stem_lowercased}_{sha256(content)[:8]}` — content-addressed,
 so re-ingesting an identical file is a no-op and an edited file gets a new id. The scheduler dedups on this.
 
+**Accounts and isolation (IRA-32).** Every route is private by default: `auth_gate` (an app-level dependency in
+`services/gateway/api.py`) requires a signed-in user except on `/`, `/s/{token}`, `/api/v1/health`,
+`/api/v1/auth/*` and `/api/v1/public/*`. Handlers take the user through `Depends(current_user)` /
+`Depends(require_admin)`, and project routes through `Depends(owned_session)`, which reports another user's
+project as a 404. Login is a random token in the HttpOnly `ri_auth` cookie; state-changing requests must also
+send `X-RI-Client: web` (or a same-origin `Origin`). Identity data — users, login sessions, document ownership
+(`user_documents`), shares and read-only grants (`doc_grants`) — lives in Postgres behind
+`services/identity/store.py`; projects and messages stay in Redis, stamped with `ChatSession.owner_id`.
+- **The indexes are shared; access is not.** Identical uploads share one content-addressed doc_id (one ownership
+  row per uploader). A user may read what they own, what a live share granted them, and the public web corpus
+  (`services/identity/access.py::accessible_doc_ids`). Every scope handed to retrieval, the graph or file
+  serving is `resolve_scope(files, accessible)` — exact doc_ids, never a raw filename, so the loose
+  stem-matching in `doc_scope.py` can't reach another user's `report_<hash>`.
+- **An empty scope refuses, it never widens.** `ChatTurnRequest.doc_ids == []` refuses without retrieving
+  (`NO_DOCUMENTS_REFUSAL`); only `None` is unscoped, reserved for internal callers with no project. Never
+  reintroduce `session.files or None` — that searched every user's documents.
+- **Only the first uploader of a doc_id may re-index it** (`/api/v1/index`): blocks come from the client, so a
+  later uploader of the same content could otherwise rewrite someone else's chunks.
+- Cross-project views (`/metrics`, `/feedback/summary`, `/ragops/dataset` without `session_id`) and operator
+  endpoints (HNSW rebuild, DLQ, web sync, benchmark eval) are admin-only.
+
+**Share links (IRA-35).** `services/sharing/service.py` snapshots a project's messages (internal `metadata`
+stripped) at a public `/s/<token>` URL; only the token's sha256 is stored. The snapshot's `doc_ids` are the
+sharer's *owned* (or public) documents only — granted ones aren't re-published — and citations to anything else
+are dropped. Viewers get citation previews through `/api/v1/public/shares/{token}/preview`, limited to those
+docs. Forking copies the history into a new project the caller owns (so `build_conversation_context` continues
+from it) and inserts `doc_grants`. Revoking kills the URL and its grants; forks keep their copied history but can
+no longer retrieve the documents.
+
 **Token budget.** Generation targets ~4,972 tokens inside an 8K Ollama window (≈3,072 for context passages,
 top-6 × 512). This is a hard constraint of the 6 GB VRAM target, not a soft preference — widening context
 defaults will push the model into CPU swap.
@@ -134,6 +169,19 @@ all `127.0.0.1`, which is wrong inside a container, and compose supplies service
 `docker-compose.yml` still defines no `neo4j` service — the override now exists so one can be pointed at
 (local or external), but until it is, `neo4j_uri` stays `bolt://127.0.0.1:7687` inside a container (its own
 loopback), which fails and falls back to a per-process, non-persistent in-memory graph (see Gotchas).
+
+**Auth database.** Run `python -m services.identity.migrate` to create/upgrade the identity tables
+(`migrations/*.sql`, tracked in `schema_migrations`) in `auth.database` (default `rag_db`, override with
+`RAG_AUTH_DB`). This deliberately does not use `storage.postgres_db`: that honors `POSTGRES_DB`, which this
+machine exports system-wide as `trackmyrupee`. Accounts: `python -m services.identity.cli create-admin <email>`
+(password prompted, or `RAG_NEW_PASSWORD`); regular users can sign up in the UI unless `auth.allow_signup` is
+false. "Try demo" on the sign-in card (`POST /api/v1/auth/demo`, IRA-38) creates a throwaway guest (`is_demo`,
+`guest-…@demo.invalid`, random never-shown password, login of `auth.demo_session_hours`, capped per IP by
+`auth.demo_max_per_hour`) — a normal isolated user, never admin; turn it off with `auth.allow_demo: false`. Guest
+accounts and their projects are not purged automatically yet. `python -m services.identity.migrate --adopt-legacy <admin-email>` hands pre-accounts projects and indexed
+documents to that admin — until it runs, those are invisible to everyone. It is idempotent; re-run it after
+dropping files straight into `data/documents/` (reconciler-indexed files have no uploader). The gateway falls
+back to an in-memory identity store, loudly logged, when Postgres is down or unmigrated.
 
 **Postgres is host-installed, not a `docker-compose` service** (migrated 2026-09-15). This machine already
 runs a native PostgreSQL 16 service on `127.0.0.1:5432` (shared with unrelated local projects), database
@@ -206,3 +254,10 @@ UI directives are in [`AGENTS.md`](AGENTS.md). Match the existing dark zinc/obsi
 `ChatSession` (`/api/v1/sessions`, `session_id`): its `files` are the project's documents, `parameters` its
 settings, and telemetry/feedback/eval are keyed by its `session_id`. JS identifiers and `localStorage` keys
 still say `workspace` (`ri_workspace_model_*`) — keep them, renaming would drop saved per-project state.
+
+**Signed-in client (IRA-36).** `ui/index.html` wraps `window.fetch` once so every same-origin call sends the auth
+cookie and `X-RI-Client`, and a 401 opens the sign-in overlay (`#authGate`) — plain `fetch(...)` calls need no
+changes. A `/s/<token>` URL (`SHARE_TOKEN`) renders the chat page read-only (`body.shared-view`), with inspector
+previews/figures pointed at the public share endpoints. Chat text and citation fields can be another user's
+content there: template them through `escapeHtmlText` / `htmlSafeCitation`, and never build inline event
+handlers from them.

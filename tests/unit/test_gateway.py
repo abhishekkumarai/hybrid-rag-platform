@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from contracts.retrieval import Candidate, Citation, RetrieveResponse
 from services.gateway.api import app
+from tests.unit.conftest import own_documents
 
 client = TestClient(app)
 
@@ -28,7 +29,8 @@ def test_gateway_root_html():
 
 
 @patch("services.gateway.api.get_services")
-def test_gateway_retrieve(mock_get_services):
+def test_gateway_retrieve(mock_get_services, identity):
+    own_documents(identity, "doc_1")
     mock_ingestion = MagicMock()
     mock_indexing = MagicMock()
     mock_retrieval = MagicMock()
@@ -75,7 +77,7 @@ def test_gateway_retrieve(mock_get_services):
 
 @patch("services.gateway.api.requests.post")
 @patch("services.gateway.api.get_services")
-def test_gateway_chat_sync(mock_get_services, mock_requests_post):
+def test_gateway_chat_sync(mock_get_services, mock_requests_post, make_project):
     mock_ingestion = MagicMock()
     mock_indexing = MagicMock()
     mock_retrieval = MagicMock()
@@ -117,6 +119,7 @@ def test_gateway_chat_sync(mock_get_services, mock_requests_post):
         "top_rerank": 2,
         "stream": False,
         "model": "llama3.2:3b",
+        "session_id": make_project("arch_doc").id,
     }
     response = client.post("/api/v1/chat", json=chat_payload)
     assert response.status_code == 200
@@ -168,10 +171,11 @@ def test_gateway_metrics_endpoint():
     assert "services" in metrics
 
 
-def test_gateway_feedback_endpoints():
+def test_gateway_feedback_endpoints(make_project):
+    sid_1, sid_2 = make_project().id, make_project().id
     # 1. Record thumbs up feedback
     req_up = {
-        "session_id": "sess_gw_1",
+        "session_id": sid_1,
         "query_text": "What is the dense latency?",
         "response_text": "The latency is 18.5 ms.",
         "citations": [],
@@ -186,7 +190,7 @@ def test_gateway_feedback_endpoints():
 
     # 2. Record thumbs down feedback with citations to mine hard negatives
     req_down = {
-        "session_id": "sess_gw_2",
+        "session_id": sid_2,
         "query_text": "What is the token budget?",
         "response_text": "The budget is 10000 tokens.",
         "citations": [
@@ -219,7 +223,7 @@ def test_gateway_feedback_endpoints():
 @patch("services.gateway.api.requests.post")
 @patch("services.gateway.api.get_agentic_coordinator")
 @patch("services.gateway.api.get_services")
-def test_gateway_chat_agentic_sync(mock_get_services, mock_get_coordinator, mock_requests_post):
+def test_gateway_chat_agentic_sync(mock_get_services, mock_get_coordinator, mock_requests_post, make_project):
     from contracts.agent import (
         AgenticRunResult,
         AgentStep,
@@ -280,6 +284,7 @@ def test_gateway_chat_agentic_sync(mock_get_services, mock_get_coordinator, mock
         "query": "Compare X and Y",
         "stream": False,
         "mode": "agentic",
+        "session_id": make_project("arch_doc").id,
     }
     response = client.post("/api/v1/chat", json=payload)
     assert response.status_code == 200
@@ -338,7 +343,9 @@ def test_gateway_compact():
     assert data["chunks"][0]["doc_id"] == "doc1"
 
 
-def test_gateway_session_scoped_lifecycle():
+def test_gateway_session_scoped_lifecycle(identity):
+    # Files are named by upload filename and stored as the exact doc_ids they resolve to (IRA-34).
+    own_documents(identity, "quantum_gates_0a1b2c3d", "qubits_4e5f6a7b")
     # 1. Create Session with Scoped Parameters & Files
     create_payload = {
         "title": "Quantum Research",
@@ -360,19 +367,19 @@ def test_gateway_session_scoped_lifecycle():
     assert session_data["system_prompt"] == "You are a quantum computing specialist."
     assert session_data["parameters"]["model"] == "qwen2.5:7b"
     assert session_data["parameters"]["temperature"] == 0.3
-    assert session_data["files"] == ["quantum_gates.pdf"]
+    assert session_data["files"] == ["quantum_gates_0a1b2c3d"]
 
     # 2. Attach Files
     attach_res = client.post(f"/api/v1/sessions/{sess_id}/files", json={"files": ["qubits.pdf"]})
     assert attach_res.status_code == 200
-    assert "qubits.pdf" in attach_res.json()["files"]
-    assert "quantum_gates.pdf" in attach_res.json()["files"]
+    assert "qubits_4e5f6a7b" in attach_res.json()["files"]
+    assert "quantum_gates_0a1b2c3d" in attach_res.json()["files"]
 
     # 3. Detach File
-    detach_res = client.delete(f"/api/v1/sessions/{sess_id}/files/quantum_gates.pdf")
+    detach_res = client.delete(f"/api/v1/sessions/{sess_id}/files/quantum_gates_0a1b2c3d")
     assert detach_res.status_code == 200
-    assert "quantum_gates.pdf" not in detach_res.json()["files"]
-    assert "qubits.pdf" in detach_res.json()["files"]
+    assert "quantum_gates_0a1b2c3d" not in detach_res.json()["files"]
+    assert "qubits_4e5f6a7b" in detach_res.json()["files"]
 
     # 4. Patch Session Parameters
     patch_res = client.patch(
@@ -474,7 +481,7 @@ def _sse_events(body: str) -> list[str]:
 
 @patch("services.gateway.api.requests.post")
 @patch("services.gateway.api.get_services")
-def test_stream_chat_emits_eval_event_for_answered_turn(mock_get_services, mock_requests_post):
+def test_stream_chat_emits_eval_event_for_answered_turn(mock_get_services, mock_requests_post, make_project):
     """IRA-14: an answered streaming turn carries an `eval` event with its online scores."""
     mock_get_services.return_value = (MagicMock(), MagicMock(), _stream_retrieval_mock())
     resp = MagicMock(status_code=200)
@@ -484,7 +491,7 @@ def test_stream_chat_emits_eval_event_for_answered_turn(mock_get_services, mock_
     ]
     mock_requests_post.return_value = resp
 
-    r = client.post("/api/v1/chat", json={"query": "What GPU is used?", "stream": True, "mode": "direct"})
+    r = client.post("/api/v1/chat", json={"query": "What GPU is used?", "stream": True, "mode": "direct", "session_id": make_project("arch_doc").id})
     events = _sse_events(r.text)
     assert "eval" in events
     payload = next(line for line in r.text.splitlines() if line.startswith("data: ") and '"groundedness"' in line)
@@ -493,12 +500,12 @@ def test_stream_chat_emits_eval_event_for_answered_turn(mock_get_services, mock_
 
 @patch("services.gateway.api.requests.post")
 @patch("services.gateway.api.get_services")
-def test_stream_chat_skips_eval_when_generation_fails(mock_get_services, mock_requests_post):
+def test_stream_chat_skips_eval_when_generation_fails(mock_get_services, mock_requests_post, make_project):
     """A failed generation (Ollama down) is not an answered turn and must not be scored."""
     mock_get_services.return_value = (MagicMock(), MagicMock(), _stream_retrieval_mock())
     mock_requests_post.side_effect = ConnectionError("ollama unreachable")
 
-    r = client.post("/api/v1/chat", json={"query": "What GPU is used?", "stream": True, "mode": "direct"})
+    r = client.post("/api/v1/chat", json={"query": "What GPU is used?", "stream": True, "mode": "direct", "session_id": make_project("arch_doc").id})
     events = _sse_events(r.text)
     assert "error" in events and "done" in events
     assert "eval" not in events
