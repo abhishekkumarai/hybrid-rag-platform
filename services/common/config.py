@@ -55,6 +55,9 @@ class IngestionConfig(BaseModel):
     text_coverage_threshold: float = 0.60
     image_ratio_threshold: float = 0.65
     gutter_gap_threshold_pt: float = 18.0
+    url_max_bytes: int = 20_000_000
+    url_timeout_s: float = 20.0
+    url_max_redirects: int = 5
 
 
 class ChunkingConfig(BaseModel):

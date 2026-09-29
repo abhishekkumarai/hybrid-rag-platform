@@ -27,6 +27,53 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   _LibraryScope _scope = _LibraryScope.all;
   bool _uploading = false;
   bool _syncing = false;
+  final _urlController = TextEditingController();
+
+  @override
+  void dispose() {
+    _urlController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _addUrl() async {
+    var url = _urlController.text.trim();
+    if (url.isEmpty) return;
+    if (!url.contains('://')) url = 'https://$url';
+    final parsed = Uri.tryParse(url);
+    if (parsed == null ||
+        !(parsed.scheme == 'http' || parsed.scheme == 'https') ||
+        parsed.host.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid http(s) URL.')),
+      );
+      return;
+    }
+    setState(() => _uploading = true);
+    try {
+      final client = ref.read(userApiClientProvider);
+      final ingestJson = await client.post(
+        '/api/v1/ingest/url',
+        body: {'url': url},
+      ) as Map<String, dynamic>;
+      if (ingestJson['error'] != null) {
+        throw ApiException(422, '${ingestJson['error']}');
+      }
+      await client.post(
+        '/api/v1/index',
+        body: {'doc_id': ingestJson['doc_id'], 'blocks': ingestJson['blocks']},
+      );
+      _urlController.clear();
+      ref.invalidate(documentsProvider);
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not add URL: ${e.detail}')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -66,21 +113,38 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                               : const Icon(Symbols.sync, size: 18),
                           label: const Text('Sync web sources'),
                         ),
-                        const SizedBox(width: 8),
                       ],
-                      FilledButton.icon(
-                        onPressed: () => ref
-                            .read(workspaceActionsProvider)
-                            .openWebRagPreset(),
-                        icon: const Icon(Symbols.public, size: 18),
-                        label: const Text('Open Web RAG project'),
-                      ),
                     ],
                   ),
                 ],
               ),
               const SizedBox(height: 20),
               _UploadDropzone(uploading: _uploading, onPick: _pickAndUpload),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _urlController,
+                      enabled: !_uploading,
+                      keyboardType: TextInputType.url,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        prefixIcon: Icon(Symbols.public, size: 18),
+                        labelText: 'Or add a web page / PDF URL',
+                        hintText: 'https://example.com/article',
+                      ),
+                      onSubmitted: (_) => _addUrl(),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  FilledButton.icon(
+                    onPressed: _uploading ? null : _addUrl,
+                    icon: const Icon(Symbols.add_link, size: 18),
+                    label: const Text('Add URL'),
+                  ),
+                ],
+              ),
               const SizedBox(height: 24),
               SectionHeader(
                 title: 'Documents',
@@ -144,9 +208,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     if (bytes == null) return;
     setState(() => _uploading = true);
     try {
-      final client = ref.read(apiClientProvider);
+      final client = ref.read(userApiClientProvider);
       final ingestJson =
           await client.ingestFile(bytes, file.name) as Map<String, dynamic>;
+      if (ingestJson['error'] != null) {
+        throw ApiException(422, '${ingestJson['error']}');
+      }
       await client.post(
         '/api/v1/index',
         body: {'doc_id': ingestJson['doc_id'], 'blocks': ingestJson['blocks']},
@@ -154,7 +221,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       ref.invalidate(documentsProvider);
     } on ApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: ${e.detail}')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Upload failed: ${e.detail}')));
       }
     } finally {
       if (mounted) setState(() => _uploading = false);
@@ -168,7 +237,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       ref.invalidate(documentsProvider);
     } on ApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Sync failed: ${e.detail}')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Sync failed: ${e.detail}')));
       }
     } finally {
       if (mounted) setState(() => _syncing = false);

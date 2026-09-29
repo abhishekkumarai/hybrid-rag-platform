@@ -114,9 +114,9 @@ class ObservabilityScreen extends ConsumerWidget {
                   height: 96,
                   child: Center(child: CircularProgressIndicator()),
                 ),
-                error: (e, _) => const Text(
-                  'Could not reach the gateway for metrics.',
-                  style: TextStyle(color: EvergreenColors.caption),
+                error: (e, _) => Text(
+                  'Could not load metrics: ${e is ApiException ? e.detail : e}',
+                  style: const TextStyle(color: EvergreenColors.caption),
                 ),
               ),
               const SizedBox(height: 28),

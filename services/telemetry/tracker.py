@@ -5,6 +5,7 @@ from __future__ import annotations
 import collections
 import threading
 import time
+from collections.abc import Collection
 from typing import Any
 
 import requests
@@ -99,6 +100,27 @@ class TelemetryTracker:
             records = list(self._history)
         return records[-limit:][::-1]
 
+    def _session_records(self, session_id: str, redis_host: str, redis_port: int) -> list[QueryTelemetry]:
+        """One session's records from memory, falling back to its Redis list. Caller holds `_mu`."""
+        records = [r for r in self._history if r.session_id == session_id]
+        if records or not (redis_host and redis_port):
+            return records
+        try:
+            import redis
+
+            r_client = redis.Redis(host=redis_host, port=redis_port, socket_timeout=0.5, decode_responses=True)
+            for item in r_client.lrange(f"rag:telemetry:session:{session_id}", 0, 49):
+                try:
+                    rec = QueryTelemetry.model_validate_json(item)
+                except Exception:
+                    continue
+                records.append(rec)
+                if rec not in self._history:
+                    self._history.append(rec)
+        except Exception:
+            pass
+        return records
+
     def get_system_metrics(
         self,
         qdrant_host: str = "127.0.0.1",
@@ -107,33 +129,19 @@ class TelemetryTracker:
         redis_port: int = 6379,
         bm25_store: Any = None,
         session_id: str | None = None,
+        session_ids: Collection[str] | None = None,
     ) -> SystemMetrics:
-        """Aggregates rolling averages and inspects live microservice states, optionally scoped to a session."""
+        """Aggregates rolling averages and inspects live microservice states. Query telemetry covers one
+        session, a set of sessions, or (both None) every session."""
+        scope = {session_id} if session_id else (None if session_ids is None else set(session_ids))
         with self._mu:
-            if session_id:
-                records = [r for r in self._history if r.session_id == session_id]
+            if scope is not None:
+                records = []
+                for sid in scope:
+                    records.extend(self._session_records(sid, redis_host, redis_port))
+                records.sort(key=lambda r: r.timestamp)
                 total_q = len(records)
                 total_ref = sum(1 for r in records if r.refused)
-                # If memory has no records for this session, query Redis
-                if not records and redis_host and redis_port:
-                    try:
-                        import redis
-
-                        r_client = redis.Redis(host=redis_host, port=redis_port, socket_timeout=0.5, decode_responses=True)
-                        raw_sess_records = r_client.lrange(f"rag:telemetry:session:{session_id}", 0, 49)
-                        if raw_sess_records:
-                            for item in raw_sess_records:
-                                try:
-                                    rec = QueryTelemetry.model_validate_json(item)
-                                    records.append(rec)
-                                    if rec not in self._history:
-                                        self._history.append(rec)
-                                except Exception:
-                                    pass
-                            total_q = len(records)
-                            total_ref = sum(1 for r in records if r.refused)
-                    except Exception:
-                        pass
             else:
                 if not self._history and redis_host and redis_port:
                     self._sync_with_redis(redis_host, redis_port)

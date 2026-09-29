@@ -25,6 +25,10 @@ ingestion:
   text_coverage_threshold: 0.60
   image_ratio_threshold: 0.65
   gutter_gap_threshold_pt: 18.0
+  # "Add source → Web": a fetched page is capped in size/time and must resolve to a public address.
+  url_max_bytes: 20000000
+  url_timeout_s: 20.0
+  url_max_redirects: 5
 
 chunking:
   max_tokens: 512

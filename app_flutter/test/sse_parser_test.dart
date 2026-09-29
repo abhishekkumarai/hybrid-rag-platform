@@ -62,6 +62,18 @@ void main() {
       expect(done.citations.single.bbox, [1.0, 2.0, 3.0, 4.0]);
     });
 
+    test('a multi-byte character split across chunks is not corrupted', () {
+      final parser = SseParser();
+      final bytes = frame('token', {'token': '• costs €12,000 📑'});
+      final events = <ChatEvent>[];
+      // Split inside the 3-byte '•' and again inside the 4-byte emoji.
+      final cuts = [bytes.indexOf(0xE2) + 1, bytes.lastIndexOf(0xF0) + 2];
+      events.addAll(parser.addChunk(bytes.sublist(0, cuts[0])));
+      events.addAll(parser.addChunk(bytes.sublist(cuts[0], cuts[1])));
+      events.addAll(parser.addChunk(bytes.sublist(cuts[1])));
+      expect((events.single as TokenEvent).token, '• costs €12,000 📑');
+    });
+
     test('parses an error event', () {
       final parser = SseParser();
       final events = parser.addChunk(frame('error', {'error': 'boom'}));

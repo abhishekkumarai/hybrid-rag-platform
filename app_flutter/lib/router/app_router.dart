@@ -17,6 +17,7 @@ import '../screens/project/chat/chat_sessions_screen.dart';
 import '../screens/ragops/ragops_screen.dart';
 import '../screens/settings/settings_screen.dart';
 import '../screens/shared/shared_chat_screen.dart';
+import '../screens/home/no_workspace_home_screen.dart';
 import '../screens/signin/signin_screen.dart';
 import '../screens/workspace/workspace_members_screen.dart';
 import '../screens/workspace/workspace_overview_screen.dart';
@@ -31,21 +32,41 @@ GoRouter buildRouter(WidgetRef ref) {
   return GoRouter(
     initialLocation: '/signin',
     refreshListenable: authListenable,
-    redirect: (context, state) {
+    redirect: (context, state) async {
       final authState = ref.read(authProvider);
       final signedIn = authState is AuthSignedIn;
       final goingToSignIn = state.matchedLocation == '/signin';
       final isShareView = state.matchedLocation.startsWith('/s/');
       if (isShareView) return null; // public, never gated
       if (authState is AuthUnknown) return null; // wait for the session check
-      if (!signedIn && !goingToSignIn) return '/signin';
-      if (signedIn && goingToSignIn) return '/';
+      if (!signedIn && !goingToSignIn) {
+        // Remember where the user was headed so signing in (or a reload with a live session)
+        // lands back there instead of on the workspace root.
+        final from = state.uri.toString();
+        return from == '/' ? '/signin' : '/signin?from=${Uri.encodeComponent(from)}';
+      }
+      if (signedIn && goingToSignIn) {
+        final from = state.uri.queryParameters['from'];
+        // Same-app paths only — never an absolute or protocol-relative URL (open redirect).
+        final safe = from != null && from.startsWith('/') && !from.startsWith('//');
+        return safe ? from : '/';
+      }
+      if (signedIn) return _workspaceAccessRedirect(ref, state.matchedLocation);
       return null;
     },
     routes: [
       GoRoute(
         path: '/signin',
         builder: (context, state) => const SignInScreen(),
+      ),
+      GoRoute(
+        path: '/home',
+        // Only for accounts with no workspace yet; anyone else goes to their default workspace.
+        redirect: (context, state) async {
+          final target = await _defaultWorkspaceRedirect(ref);
+          return target == '/home' ? null : target;
+        },
+        builder: (context, state) => const NoWorkspaceHomeScreen(),
       ),
       GoRoute(
         path: '/s/:token',
@@ -163,12 +184,28 @@ GoRouter buildRouter(WidgetRef ref) {
 GoRouterRedirect _requireWorkspace(WidgetRef ref) =>
     (context, state) => null;
 
+/// Any `/w/<id>/…` URL for a workspace the signed-in user can't access (a stale bookmark, another
+/// account's URL left behind after switching users) goes to their own default workspace instead of
+/// rendering a "Failed to load workspace" page.
+Future<String?> _workspaceAccessRedirect(WidgetRef ref, String location) async {
+  final ws = RegExp(r'^/w/([^/]+)').firstMatch(location)?.group(1);
+  if (ws == null || ws == 'default' || ws == 'ws_default') return null;
+  try {
+    final workspaces = await ref.read(workspacesProvider.future);
+    if (workspaces.isEmpty) return '/home';
+    if (workspaces.any((w) => w.id == ws)) return null;
+    return '/w/${workspaces.first.id}';
+  } catch (_) {
+    return null;
+  }
+}
+
 /// Resolves `/` to the caller's actual default (oldest owned) workspace, matching
 /// `_default_workspace_id` in `services/gateway/api.py`.
 Future<String?> _defaultWorkspaceRedirect(WidgetRef ref) async {
   try {
     final workspaces = await ref.read(workspacesProvider.future);
-    if (workspaces.isEmpty) return null;
+    if (workspaces.isEmpty) return '/home';
     return '/w/${workspaces.first.id}';
   } catch (_) {
     return null;

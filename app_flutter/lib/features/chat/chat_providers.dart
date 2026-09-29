@@ -5,6 +5,7 @@ import '../../api/auth_provider.dart';
 import '../../api/models/feedback.dart';
 import '../../api/models/session.dart';
 import '../../api/models/share.dart';
+import '../workspace/workspace_providers.dart';
 import 'chat_state.dart';
 
 class ChatConversationKey {
@@ -94,21 +95,24 @@ class ChatController extends StateNotifier<ChatConversationState> {
     await _client.patch('/api/v1/sessions/$sessionId/conversations/$conversationId', body: {'title': title});
   }
 
-  Future<void> deleteConversation() async {
-    await _client.delete('/api/v1/sessions/$sessionId/conversations/$conversationId');
+  /// False when the backend refuses — it never deletes a project's last remaining thread.
+  Future<bool> deleteConversation() async {
+    final json = await _client.delete('/api/v1/sessions/$sessionId/conversations/$conversationId');
+    return json is Map && json['deleted'] == true;
   }
 }
 
 final chatControllerProvider =
     StateNotifierProvider.family<ChatController, ChatConversationState, ChatConversationKey>((ref, key) {
-  final controller = ChatController(ref.watch(apiClientProvider), key.sessionId, key.conversationId);
+  final controller = ChatController(ref.watch(userApiClientProvider), key.sessionId, key.conversationId);
   controller.loadHistory();
   return controller;
 });
 
 class ChatActions {
-  ChatActions(this._client);
+  ChatActions(this._client, [this._ref]);
   final ApiClient _client;
+  final Ref? _ref;
 
   Future<FeedbackRecord> submitFeedback({
     required String sessionId,
@@ -136,8 +140,10 @@ class ChatActions {
       'title': '${source.title} (forked)',
       'files': source.files,
       'system_prompt': source.systemPrompt,
+      'parameters': source.parameters.toJson(),
       'workspace_id': source.workspaceId,
     }) as Map<String, dynamic>;
+    _ref?.read(projectsRefreshProvider.notifier).state++;
     return (json['id'] ?? json['session']?['id']) as String;
   }
 
@@ -156,18 +162,18 @@ class ChatActions {
   }
 }
 
-final chatActionsProvider = Provider<ChatActions>((ref) => ChatActions(ref.watch(apiClientProvider)));
+final chatActionsProvider = Provider<ChatActions>((ref) => ChatActions(ref.watch(userApiClientProvider), ref));
 
 // --- Public shared view (/s/:token) — no auth required ---
 
 final sharedChatProvider = FutureProvider.family<ShareSnapshot, String>((ref, token) async {
-  final client = ref.watch(apiClientProvider);
+  final client = ref.watch(userApiClientProvider);
   final json = await client.get('/api/v1/public/shares/$token') as Map<String, dynamic>;
   return ShareSnapshot.fromJson(json);
 });
 
 final forkSharedChatProvider = Provider<Future<String> Function(String token)>((ref) {
-  final client = ref.watch(apiClientProvider);
+  final client = ref.watch(userApiClientProvider);
   return (token) async {
     final json = await client.post('/api/v1/public/shares/$token/fork') as Map<String, dynamic>;
     return json['session_id'] as String;

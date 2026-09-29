@@ -57,6 +57,14 @@ class IngestRequest(BaseModel):
     doc_id: str | None = Field(default=None, description="Optional custom document ID")
 
 
+class UrlIngestRequest(BaseModel):
+    """Request payload for ingesting a public web page (or a PDF served over HTTP) as a document."""
+    url: str = Field(min_length=1, max_length=2048, description="http(s) URL of a publicly reachable page")
+    route: Literal["fast_text", "layout", "ocr", "paddleocr"] | None = Field(
+        default=None, description="Optional parser override, as for file uploads"
+    )
+
+
 class IngestResponse(BaseModel):
     """Response payload returned by IngestionService.parse."""
     doc_id: str = Field(description="Unique document identifier")

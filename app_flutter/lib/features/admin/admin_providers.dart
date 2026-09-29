@@ -6,25 +6,24 @@ import '../../api/models/feedback.dart';
 import '../../api/models/graph.dart';
 import '../../api/models/metrics.dart';
 
-/// Global (all-projects) feedback/satisfaction summary — admin-only per `_require_scope` in
-/// `services/gateway/api.py` when `session_id` is omitted.
+/// Feedback summary over every project the caller can see — the gateway scopes it (all projects
+/// for an admin, the caller's own otherwise).
 final ragopsSummaryProvider = FutureProvider<RAGOpsSummary>((ref) async {
-  final client = ref.watch(apiClientProvider);
-  final json =
-      await client.get('/api/v1/feedback/summary') as Map<String, dynamic>;
+  final client = ref.watch(userApiClientProvider);
+  final json = await client.get('/api/v1/feedback/summary') as Map<String, dynamic>;
   return RAGOpsSummary.fromJson(json);
 });
 
 final ragopsDatasetProvider = FutureProvider<List<Map<String, dynamic>>>((
   ref,
 ) async {
-  final client = ref.watch(apiClientProvider);
+  final client = ref.watch(userApiClientProvider);
   final json = await client.get('/api/v1/ragops/dataset') as List<dynamic>;
   return json.cast<Map<String, dynamic>>();
 });
 
 final hnswStatusProvider = FutureProvider<HnswStatusResponse>((ref) async {
-  final client = ref.watch(apiClientProvider);
+  final client = ref.watch(userApiClientProvider);
   final json = await client.get('/api/v1/admin/hnsw') as Map<String, dynamic>;
   return HnswStatusResponse.fromJson(json);
 });
@@ -32,24 +31,24 @@ final hnswStatusProvider = FutureProvider<HnswStatusResponse>((ref) async {
 final globalEvalReportProvider = FutureProvider<Map<String, dynamic>>((
   ref,
 ) async {
-  final client = ref.watch(apiClientProvider);
+  final client = ref.watch(userApiClientProvider);
   return await client.get('/api/v1/eval/report') as Map<String, dynamic>;
 });
 
 final queueStatsProvider = FutureProvider<Map<String, int>>((ref) async {
-  final client = ref.watch(apiClientProvider);
+  final client = ref.watch(userApiClientProvider);
   final json = await client.get('/api/v1/queue/stats') as Map<String, dynamic>;
   return json.map((k, v) => MapEntry(k, (v as num).toInt()));
 });
 
 final dlqListProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
-  final client = ref.watch(apiClientProvider);
+  final client = ref.watch(userApiClientProvider);
   final json = await client.get('/api/v1/queue/dlq') as List<dynamic>;
   return json.cast<Map<String, dynamic>>();
 });
 
 final graphStatsProvider = FutureProvider<GraphStats>((ref) async {
-  final client = ref.watch(apiClientProvider);
+  final client = ref.watch(userApiClientProvider);
   final json = await client.get('/api/v1/graph/stats') as Map<String, dynamic>;
   return GraphStats.fromJson(json);
 });
@@ -111,5 +110,5 @@ class AdminActions {
 }
 
 final adminActionsProvider = Provider<AdminActions>(
-  (ref) => AdminActions(ref.watch(apiClientProvider), ref),
+  (ref) => AdminActions(ref.watch(userApiClientProvider), ref),
 );

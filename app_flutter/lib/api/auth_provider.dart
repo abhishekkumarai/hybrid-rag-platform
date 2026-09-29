@@ -76,8 +76,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> logout() async {
     try {
       await _client.post('/api/v1/auth/logout');
-    } on ApiException {
-      // Already signed out server-side; fall through to local clear.
+    } catch (_) {
+      // Already signed out server-side, or the gateway is unreachable — sign out locally anyway.
     }
     await clear();
   }
@@ -94,3 +94,21 @@ class AuthNotifier extends StateNotifier<AuthState> {
 final StateNotifierProvider<AuthNotifier, AuthState> authProvider = StateNotifierProvider<AuthNotifier, AuthState>(
   (ref) => AuthNotifier(ref.watch(apiClientProvider), ref.watch(authStorageProvider)),
 );
+
+/// The signed-in user's id, or null while signed out / still checking.
+final currentUserIdProvider = Provider<String?>((ref) {
+  final auth = ref.watch(authProvider);
+  return auth is AuthSignedIn ? auth.user.id : null;
+});
+
+/// The client every data provider uses. It is a new instance per signed-in user, so signing out
+/// or switching accounts rebuilds every provider that watches it — nothing cached for one user
+/// (projects, documents, metrics…) can be shown to the next. [authProvider] keeps using
+/// [apiClientProvider] to avoid a dependency cycle.
+final userApiClientProvider = Provider<ApiClient>((ref) {
+  ref.watch(currentUserIdProvider);
+  final client = ApiClient(baseUrl: ref.watch(serverUrlProvider), authStorage: ref.watch(authStorageProvider));
+  client.onUnauthorized = () => ref.read(authProvider.notifier).clear();
+  ref.onDispose(client.close);
+  return client;
+});

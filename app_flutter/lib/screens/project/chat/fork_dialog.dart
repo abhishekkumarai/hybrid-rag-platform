@@ -22,9 +22,10 @@ Future<void> showForkDialog(BuildContext context, WidgetRef ref, {required Strin
         OutlinedButton(
           onPressed: () async {
             Navigator.of(dialogContext).pop();
-            final conversation = await ref.read(apiClientProvider).post(
+            final conversation = await ref.read(userApiClientProvider).post(
               '/api/v1/sessions/$sessionId/conversations',
             ) as Map<String, dynamic>;
+            ref.invalidate(projectConversationsProvider(sessionId));
             if (context.mounted) {
               context.go('/w/$workspaceId/p/$sessionId/chats/${conversation['id']}');
             }

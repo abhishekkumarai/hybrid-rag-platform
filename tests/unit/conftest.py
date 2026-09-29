@@ -18,6 +18,8 @@ def identity(monkeypatch):
     store = InMemoryIdentityStore()
     store.users[TEST_USER.id] = TEST_USER
     store.password_hashes[TEST_USER.id] = ""
+    # Accounts start with no workspace; the signed-in test user has made their first one.
+    store.create_workspace(name="Test Workspace", owner_id=TEST_USER.id)
     monkeypatch.setattr(api, "_identity_store", store)
     monkeypatch.setattr(api, "_public_doc_ids", lambda: set())
     api.app.dependency_overrides[api.optional_user] = lambda: TEST_USER

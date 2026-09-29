@@ -11,8 +11,13 @@ import 'models/chat_event.dart';
 class SseParser {
   final StringBuffer _buffer = StringBuffer();
 
+  // Stateful: a multi-byte character (•, €, emoji) split across two network chunks is held until
+  // its remaining bytes arrive, instead of each half decoding to U+FFFD.
+  late final ByteConversionSink _decoder =
+      const Utf8Decoder(allowMalformed: true).startChunkedConversion(StringConversionSink.fromStringSink(_buffer));
+
   List<ChatEvent> addChunk(List<int> bytes) {
-    _buffer.write(utf8.decode(bytes, allowMalformed: true));
+    _decoder.add(bytes);
     return _drainCompleteFrames();
   }
 

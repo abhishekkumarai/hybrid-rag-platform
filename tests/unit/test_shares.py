@@ -27,6 +27,8 @@ def as_user(user: User | None) -> None:
 def _users(identity):
     identity.users[ANA.id] = ANA
     identity.users[BEN.id] = BEN
+    identity.create_workspace(name="Ana's", owner_id=ANA.id)
+    identity.create_workspace(name="Ben's", owner_id=BEN.id)
     own_documents(identity, ANA_DOC, user=ANA)
 
 

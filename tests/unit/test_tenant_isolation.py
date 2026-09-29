@@ -28,6 +28,8 @@ ANA_DOC = "report_1a2b3c4d"
 def _two_users(identity):
     identity.users[ANA.id] = ANA
     identity.users[BEN.id] = BEN
+    identity.create_workspace(name="Ana's", owner_id=ANA.id)
+    identity.create_workspace(name="Ben's", owner_id=BEN.id)
     own_documents(identity, ANA_DOC, user=ANA)
 
 
@@ -152,11 +154,37 @@ def test_only_an_owner_indexes_and_only_the_first_owner_reindexes(mock_services,
     indexing.chunk_and_index.assert_not_called()
 
 
-def test_global_observability_views_are_admin_only():
-    as_user(BEN)
-    assert client.get("/api/v1/metrics").status_code == 403
-    assert client.get("/api/v1/feedback/summary").status_code == 403
-    assert client.get("/api/v1/ragops/dataset").status_code == 403
+def test_unscoped_metrics_cover_only_the_callers_projects(ana_project):
+    from contracts.metrics import QueryTelemetry
+
+    ben_sid = client.post("/api/v1/sessions", json={"title": "Ben's"}).json()["id"]
+    tracker = api.telemetry_tracker
+    ana_q = QueryTelemetry(query_id="q_ana", session_id=ana_project, query_text="ana secret")
+    ben_q = QueryTelemetry(query_id="q_ben", session_id=ben_sid, query_text="ben question")
+    tracker.record_query(ana_q)
+    tracker.record_query(ben_q)
+    try:
+        resp = client.get("/api/v1/metrics")
+        assert resp.status_code == 200
+        texts = [t["query_text"] for t in resp.json()["recent_telemetry"]]
+        assert "ben question" in texts
+        assert "ana secret" not in texts
+        assert resp.json()["total_queries"] == 1
+    finally:
+        tracker._history.remove(ana_q)
+        tracker._history.remove(ben_q)
+
+
+def test_unscoped_ragops_views_cover_only_the_callers_projects(ana_project):
+    ben_sid = client.post("/api/v1/sessions", json={"title": "Ben's"}).json()["id"]
+    with patch.object(api, "ragops_store") as store:
+        store.get_summary.return_value = api.RAGOpsSummary()
+        store.export_training_dataset.return_value = []
+        assert client.get("/api/v1/feedback/summary").status_code == 200
+        assert client.get("/api/v1/ragops/dataset").status_code == 200
+    assert store.get_summary.call_args.kwargs["session_ids"] == {ben_sid}
+    assert store.export_training_dataset.call_args.kwargs["session_ids"] == {ben_sid}
+    assert ana_project not in store.get_summary.call_args.kwargs["session_ids"]
 
 
 def test_graph_traversal_hides_entities_from_out_of_scope_documents():

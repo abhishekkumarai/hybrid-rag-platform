@@ -10,51 +10,6 @@ import '../../widgets/section_header.dart';
 import '../../widgets/stat_card.dart';
 import 'project_tab_shell.dart';
 
-ProjectEvalSummary _defaultSummary(String projectId) => ProjectEvalSummary(
-      sessionId: projectId,
-      turns: 24,
-      answered: 23,
-      refusalRate: 0.042,
-      meanGroundedness: 0.94,
-      meanCitationValidity: 0.98,
-      meanContextRelevance: 0.89,
-      trend: List.generate(
-        18,
-        (i) => TurnEvalPoint(
-          queryId: 'q_$i',
-          queryText: 'Question $i',
-          eval: RetrievalEvalScores(
-            groundedness: 0.88 + (i % 5) * 0.02,
-            contextRelevance: 0.85 + (i % 4) * 0.03,
-            citationValidity: 1.0,
-          ),
-        ),
-      ),
-      weakest: const [
-        TurnEvalPoint(
-          queryId: 'w_1',
-          queryText: 'What are the unstated Capex expectations for FY26?',
-          eval: RetrievalEvalScores(groundedness: 0.72, contextRelevance: 0.68),
-        ),
-        TurnEvalPoint(
-          queryId: 'w_2',
-          queryText: 'Detail competitor pricing strategies from footnotes',
-          eval: RetrievalEvalScores(groundedness: 0.78, contextRelevance: 0.71),
-        ),
-      ],
-    );
-
-ProjectEvalRun _defaultRun(String projectId) => ProjectEvalRun(
-      sessionId: projectId,
-      startedAt: DateTime.now().millisecondsSinceEpoch / 1000 - 3600,
-      durationMs: 412,
-      numQuestions: 15,
-      hitRateAt1: 0.8667,
-      hitRateAt3: 1.0,
-      mrr: 0.9233,
-      ndcgAt3: 0.9540,
-    );
-
 /// Project Evaluation tab: summary, trend, weakest turns, last run, and run golden set.
 class ProjectEvaluationScreen extends ConsumerStatefulWidget {
   const ProjectEvaluationScreen({
@@ -137,39 +92,41 @@ class _ProjectEvaluationScreenState
             const SizedBox(height: 12),
             summaryAsync.when(
               data: (summary) => _buildSummaryCards(summary),
-              loading: () =>
-                  _buildSummaryCards(_defaultSummary(widget.projectId)),
-              error: (e, _) =>
-                  _buildSummaryCards(_defaultSummary(widget.projectId)),
+              loading: () => const LinearProgressIndicator(),
+              error: (e, _) => EmptyState(message: 'Could not load evaluation summary: $e'),
             ),
             const SizedBox(height: 28),
             const SectionHeader(title: 'Groundedness trend (turn-by-turn)'),
             const SizedBox(height: 12),
             summaryAsync.when(
-              data: (summary) => _buildTrendChart(summary),
-              loading: () => _buildTrendChart(_defaultSummary(widget.projectId)),
-              error: (e, _) =>
-                  _buildTrendChart(_defaultSummary(widget.projectId)),
+              data: (summary) => summary.trend.isEmpty
+                  ? const EmptyState(message: 'No scored chat turns yet.', icon: Symbols.analytics)
+                  : _buildTrendChart(summary),
+              loading: () => const SizedBox.shrink(),
+              error: (e, _) => const SizedBox.shrink(),
             ),
             const SizedBox(height: 28),
             const SectionHeader(title: 'Weakest query turns'),
             const SizedBox(height: 12),
             summaryAsync.when(
-              data: (summary) => _buildWeakestTurns(summary),
-              loading: () =>
-                  _buildWeakestTurns(_defaultSummary(widget.projectId)),
-              error: (e, _) =>
-                  _buildWeakestTurns(_defaultSummary(widget.projectId)),
+              data: (summary) => summary.weakest.isEmpty
+                  ? const EmptyState(message: 'No weak turns to show.')
+                  : _buildWeakestTurns(summary),
+              loading: () => const SizedBox.shrink(),
+              error: (e, _) => const SizedBox.shrink(),
             ),
             const SizedBox(height: 28),
             const SectionHeader(title: 'Last golden-set benchmark run'),
             const SizedBox(height: 12),
             lastRunAsync.when(
-              data: (run) => _buildGoldenRunCards(
-                  run ?? _defaultRun(widget.projectId)),
-              loading: () => _buildGoldenRunCards(_defaultRun(widget.projectId)),
-              error: (e, _) =>
-                  _buildGoldenRunCards(_defaultRun(widget.projectId)),
+              data: (run) => run == null
+                  ? const EmptyState(
+                      message: 'No golden-set run yet. Use "Run golden set" above.',
+                      icon: Symbols.play_arrow,
+                    )
+                  : _buildGoldenRunCards(run),
+              loading: () => const LinearProgressIndicator(),
+              error: (e, _) => EmptyState(message: 'Could not load last run: $e'),
             ),
           ],
         ),
@@ -186,7 +143,7 @@ class _ProjectEvaluationScreenState
           width: 200,
           child: StatCard(
             label: 'Total Turns',
-            value: '${summary.turns > 0 ? summary.turns : 24}',
+            value: '${summary.turns}',
             icon: Symbols.chat_bubble,
             tint: EvergreenColors.folderSky,
             tintIcon: EvergreenColors.folderSkyIcon,
@@ -211,7 +168,7 @@ class _ProjectEvaluationScreenState
           width: 200,
           child: StatCard(
             label: 'Mean groundedness',
-            value: (summary.meanGroundedness ?? 0.94).toStringAsFixed(2),
+            value: summary.meanGroundedness?.toStringAsFixed(2) ?? '—',
             icon: Symbols.science,
             tint: EvergreenColors.folderSage,
             tintIcon: EvergreenColors.primary,
@@ -221,7 +178,7 @@ class _ProjectEvaluationScreenState
           width: 200,
           child: StatCard(
             label: 'Citation validity',
-            value: (summary.meanCitationValidity ?? 0.98).toStringAsFixed(2),
+            value: summary.meanCitationValidity?.toStringAsFixed(2) ?? '—',
             icon: Symbols.link,
             tint: EvergreenColors.folderSand,
             tintIcon: EvergreenColors.folderSandIcon,
@@ -232,9 +189,7 @@ class _ProjectEvaluationScreenState
   }
 
   Widget _buildTrendChart(ProjectEvalSummary summary) {
-    final trend = summary.trend.isNotEmpty
-        ? summary.trend
-        : _defaultSummary(widget.projectId).trend;
+    final trend = summary.trend;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -298,9 +253,7 @@ class _ProjectEvaluationScreenState
   }
 
   Widget _buildWeakestTurns(ProjectEvalSummary summary) {
-    final weakest = summary.weakest.isNotEmpty
-        ? summary.weakest
-        : _defaultSummary(widget.projectId).weakest;
+    final weakest = summary.weakest;
     return Container(
       decoration: BoxDecoration(
         color: EvergreenColors.surface,

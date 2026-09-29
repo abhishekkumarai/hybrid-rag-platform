@@ -15,8 +15,11 @@ def client(real_auth):
     return TestClient(api.app)
 
 
-def _signup(client, email="ana@example.com", password="correct horse"):
-    return client.post("/api/v1/auth/signup", json={"email": email, "password": password}, headers=H)
+def _signup(client, email="ana@example.com", password="correct horse", workspace=True):
+    r = client.post("/api/v1/auth/signup", json={"email": email, "password": password}, headers=H)
+    if workspace and r.status_code == 200:  # accounts start with no workspace (created from the home page)
+        client.post("/api/v1/workspaces", json={"name": "Mine"}, headers=H)
+    return r
 
 
 def test_password_hash_round_trip():
@@ -106,7 +109,6 @@ def test_admin_endpoints_refuse_regular_users(client):
     assert client.post("/api/v1/web/sync", json={}, headers=H).status_code == 403
     assert client.post("/api/v1/eval/run", headers=H).status_code == 403
     assert client.get("/api/v1/queue/dlq").status_code == 403
-    assert client.get("/api/v1/metrics").status_code == 403
 
 
 def test_try_demo_signs_in_an_isolated_short_lived_guest(client, identity):
@@ -117,6 +119,8 @@ def test_try_demo_signs_in_an_isolated_short_lived_guest(client, identity):
     assert guest["is_demo"] is True and guest["is_admin"] is False
     assert f"Max-Age={api.settings.auth.demo_session_hours * 3600}" in r.headers["set-cookie"]
     assert client.get("/api/v1/auth/me").json()["user"]["id"] == guest["id"]
+    assert client.get("/api/v1/workspaces").json()["workspaces"] == []
+    client.post("/api/v1/workspaces", json={"name": "Guest"}, headers=H)
     sid = client.post("/api/v1/sessions", json={"title": "guest one"}, headers=H).json()["id"]
 
     other = TestClient(api.app)
@@ -124,7 +128,8 @@ def test_try_demo_signs_in_an_isolated_short_lived_guest(client, identity):
     assert other_guest["id"] != guest["id"]
     assert other.get(f"/api/v1/sessions/{sid}").status_code == 404
     assert other.get("/api/v1/sessions").json()["sessions"] == []
-    assert other.get("/api/v1/metrics").status_code == 403
+    other_metrics = other.get("/api/v1/metrics").json()
+    assert other_metrics["total_queries"] == 0 and other_metrics["recent_telemetry"] == []
 
 
 def test_try_demo_can_be_disabled_and_is_rate_limited(client, monkeypatch):

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
+import '../../api/api_client.dart';
 import '../../api/auth_provider.dart';
 import '../../features/admin/admin_providers.dart';
 import '../../features/project/project_providers.dart';
@@ -55,40 +56,52 @@ class _ModelsTuningScreenState extends ConsumerState<ModelsTuningScreen> {
               const SizedBox(height: 20),
               const SectionHeader(title: 'Chat models'),
               modelsAsync.when(
-                data: (list) => Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(EvergreenRadii.panel),
-                    border: Border.all(color: EvergreenColors.border),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: Material(
-                    color: EvergreenColors.surface,
-                    child: Column(
-                      children: [
-                        for (final m in list.models)
-                          ListTile(
-                            leading: Icon(
-                              Symbols.smart_toy,
-                              color: m.isDefault
-                                  ? EvergreenColors.primary
-                                  : EvergreenColors.metadata,
-                              size: 18,
-                            ),
-                            title: Text(m.name, style: monoStyle(fontSize: 13)),
-                            trailing: m.isDefault
-                                ? const Text(
-                                    'default',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: EvergreenColors.primary,
-                                    ),
-                                  )
-                                : null,
+                data: (list) => list.models.isEmpty
+                    ? EmptyState(
+                        message: list.ollamaAlive
+                            ? 'No chat models installed in Ollama. Pull one, e.g. `ollama pull llama3.2:3b`.'
+                            : 'Ollama is unreachable, so no models can be listed.',
+                        icon: Symbols.smart_toy,
+                      )
+                    : Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(
+                            EvergreenRadii.panel,
                           ),
-                      ],
-                    ),
-                  ),
-                ),
+                          border: Border.all(color: EvergreenColors.border),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Material(
+                          color: EvergreenColors.surface,
+                          child: Column(
+                            children: [
+                              for (final m in list.models)
+                                ListTile(
+                                  leading: Icon(
+                                    Symbols.smart_toy,
+                                    color: m.isDefault
+                                        ? EvergreenColors.primary
+                                        : EvergreenColors.metadata,
+                                    size: 18,
+                                  ),
+                                  title: Text(
+                                    m.name,
+                                    style: monoStyle(fontSize: 13),
+                                  ),
+                                  trailing: m.isDefault
+                                      ? const Text(
+                                          'default',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: EvergreenColors.primary,
+                                          ),
+                                        )
+                                      : null,
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
                 loading: () => const LinearProgressIndicator(),
                 error: (e, _) => const Text(
                   'Ollama unreachable.',
@@ -104,6 +117,18 @@ class _ModelsTuningScreenState extends ConsumerState<ModelsTuningScreen> {
                   final ratio = total > 0
                       ? (used / total).clamp(0, 1).toDouble()
                       : 0.0;
+                  final rawName = gpu['gpu_name'] as String?;
+                  final gpuName =
+                      (rawName == null ||
+                          rawName.toLowerCase().startsWith('unknown'))
+                      ? null
+                      : rawName;
+                  final loaded = [
+                    for (final m
+                        in (gpu['models'] as List<dynamic>? ?? const []))
+                      if (m is Map && m['name'] != null)
+                        '${m['name']}${m['size_vram_gb'] != null ? ' (${m['size_vram_gb']} GB)' : ''}',
+                  ];
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -122,12 +147,23 @@ class _ModelsTuningScreenState extends ConsumerState<ModelsTuningScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${used.toStringAsFixed(0)} / ${total.toStringAsFixed(0)} MB VRAM (${gpu['gpu_name'] ?? 'GPU'})',
+                        '${used.toStringAsFixed(0)} / ${total.toStringAsFixed(0)} MB VRAM'
+                        '${gpuName != null ? ' ($gpuName)' : ''}',
                         style: const TextStyle(
                           fontSize: 12,
                           color: EvergreenColors.metadata,
                         ),
                       ),
+                      if (loaded.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Loaded now: ${loaded.join(', ')}',
+                          style: monoStyle(
+                            fontSize: 11,
+                            color: EvergreenColors.metadata,
+                          ),
+                        ),
+                      ],
                     ],
                   );
                 },
@@ -135,7 +171,18 @@ class _ModelsTuningScreenState extends ConsumerState<ModelsTuningScreen> {
                 error: (e, _) => const SizedBox.shrink(),
               ),
               const SizedBox(height: 28),
-              const SectionHeader(title: 'Qdrant HNSW index'),
+              SectionHeader(
+                title: 'Qdrant HNSW index',
+                action: IconButton(
+                  tooltip: 'Refresh status',
+                  icon: const Icon(
+                    Symbols.refresh,
+                    size: 18,
+                    color: EvergreenColors.metadata,
+                  ),
+                  onPressed: () => ref.invalidate(hnswStatusProvider),
+                ),
+              ),
               hnswAsync.when(
                 data: (status) => Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -230,14 +277,46 @@ class _ModelsTuningScreenState extends ConsumerState<ModelsTuningScreen> {
   }
 
   Future<void> _rebuild() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rebuild the vector index?'),
+        content: Text(
+          'Applies m=$_hnswM, ef_construct=$_hnswEfConstruct to the shared collection and re-indexes '
+          'every document for all users. Search quality may dip until it finishes.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Rebuild'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
     setState(() => _rebuilding = true);
     try {
       await ref
           .read(adminActionsProvider)
           .rebuildHnsw(hnswM: _hnswM, hnswEfConstruct: _hnswEfConstruct);
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Rebuild triggered.')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Rebuild started. Refresh the status to follow progress.',
+            ),
+          ),
+        );
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Rebuild failed: ${e.detail}')));
       }
     } finally {
       if (mounted) setState(() => _rebuilding = false);

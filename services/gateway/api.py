@@ -22,7 +22,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from contracts.chat import ChatTurnRequest
 from contracts.chunk import IndexResponse
 from contracts.compactor import CompactedContext, CompactorRequest
-from contracts.document import Block, IngestRequest, IngestResponse
+from contracts.document import Block, IngestRequest, IngestResponse, UrlIngestRequest
 from contracts.feedback import FeedbackRecord, FeedbackRequest, RAGOpsSummary
 from contracts.graph import GraphExtractionResult, GraphRAGResponse, GraphSearchQuery
 from contracts.identity import (
@@ -89,6 +89,7 @@ from services.identity.store import DuplicateEmailError, IdentityStore, build_id
 from services.indexing.service import IndexingService
 from services.indexing.web_indexer import WebRAGIndexer
 from services.ingestion.service import IngestionService
+from services.ingestion.url_source import UrlSourceError, url_to_pdf
 from services.ingestion.visualizer import render_page_with_bbox, resolve_document_path
 from services.retrieval.agentic import AgenticCoordinator
 from services.retrieval.compactor import ContextCompactor
@@ -187,14 +188,11 @@ def _user_workspace_ids(user: User) -> set[str]:
 
 
 def _default_workspace_id(user: User) -> str | None:
-    """The workspace a new project should be stamped with: the user's oldest owned workspace (their
-    personal one, created at signup/CLI account creation) — or, defensively, a freshly created one
-    for an account that predates IRA-46 and hasn't been through the migration backfill yet."""
+    """The user's oldest owned workspace, or None. Workspaces are never created implicitly — a new
+    account starts with none and creates its first one from the client's home page."""
     store = get_identity_store()
     workspaces = [w for w in store.list_workspaces_for_user(user.id) if w.owner_id == user.id]
-    if workspaces:
-        return workspaces[0].id
-    return store.create_workspace(name=f"{user.display_name or user.email}'s Workspace", owner_id=user.id).id
+    return workspaces[0].id if workspaces else None
 
 
 def workspace_session(session_id: str, user: User = Depends(current_user)) -> ChatSession:
@@ -457,7 +455,6 @@ def signup(req: SignupRequest) -> JSONResponse:
         )
     except DuplicateEmailError:
         raise HTTPException(status_code=409, detail="An account with this email already exists")
-    get_identity_store().create_workspace(name=f"{user.display_name or user.email}'s Workspace", owner_id=user.id)
     logger.info(f"Signup: created user '{user.id}'")
     return _start_login(user)
 
@@ -481,7 +478,6 @@ def start_demo(request: Request) -> JSONResponse:
         display_name="Guest",
         is_demo=True,
     )
-    get_identity_store().create_workspace(name="Guest Workspace", owner_id=user.id)
     logger.info(f"Demo: created guest '{user.id}'")
     return _start_login(user, ttl_s=settings.auth.demo_session_hours * 3600)
 
@@ -894,22 +890,49 @@ def ingest_file(
 
     The per-user directory keeps two users' same-named files apart; the reconciler only watches the
     top level of data/documents/, so uploads here aren't indexed twice."""
-    upload_dir = Path("data/documents") / user.id
-    upload_dir.mkdir(parents=True, exist_ok=True)
     safe_filename = Path(file.filename or "uploaded_document.pdf").name or "uploaded_document.pdf"
-    file_path = _safe_join(upload_dir, safe_filename)
-
+    file_path = _user_upload_path(user, safe_filename)
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
+    res = _parse_owned_upload(file_path, safe_filename, route, user)
+    logger.info(f"API Ingest: uploaded '{file.filename}' -> {len(res.blocks)} blocks ({res.profile.route})")
+    return res
 
+
+@app.post("/api/v1/ingest/url", response_model=IngestResponse)
+def ingest_url(req: UrlIngestRequest, user: User = Depends(current_user)) -> IngestResponse:
+    """Fetches a public web page (or PDF link), converts it to a PDF and ingests it exactly like an
+    upload — same doc_id scheme, ownership, preview and citations. Index it with /api/v1/index."""
+    cfg = settings.ingestion
+    try:
+        filename, pdf_bytes = url_to_pdf(
+            req.url.strip(), max_bytes=cfg.url_max_bytes, timeout_s=cfg.url_timeout_s,
+            max_redirects=cfg.url_max_redirects,
+        )
+    except UrlSourceError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    file_path = _user_upload_path(user, filename)
+    file_path.write_bytes(pdf_bytes)
+    res = _parse_owned_upload(file_path, filename, req.route, user)
+    logger.info(f"API Ingest URL: '{req.url}' -> {filename}: {len(res.blocks)} blocks ({res.profile.route})")
+    return res
+
+
+def _user_upload_path(user: User, filename: str) -> Path:
+    upload_dir = Path("data/documents") / user.id
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    return _safe_join(upload_dir, filename)
+
+
+def _parse_owned_upload(file_path: Path, filename: str, route: str | None, user: User) -> IngestResponse:
+    """Parses a file saved under the caller's upload dir and records them as an owner of its doc_id."""
     ingestion, _, _ = get_services()
     profile_override = route if route in ("fast_text", "layout", "ocr", "paddleocr") else None
     res = ingestion.parse(IngestRequest(file_path=str(file_path), profile_override=profile_override))
     if not res.error:
         get_identity_store().add_document(
-            OwnedDocument(user_id=user.id, doc_id=res.doc_id, filename=safe_filename, path=str(file_path))
+            OwnedDocument(user_id=user.id, doc_id=res.doc_id, filename=filename, path=str(file_path))
         )
-    logger.info(f"API Ingest: uploaded '{file.filename}' -> {len(res.blocks)} blocks ({res.profile.route})")
     return res
 
 
@@ -956,6 +979,8 @@ def create_session(req: CreateSessionRequest | None = None, user: User = Depends
     if requested_ws in ("", "default", "ws_default"):
         requested_ws = None
     workspace_id = requested_ws or _default_workspace_id(user)
+    if workspace_id is None:
+        raise HTTPException(status_code=422, detail="Create a workspace first, then add projects to it")
     if workspace_id not in _user_workspace_ids(user):
         raise HTTPException(status_code=404, detail=f"Workspace '{workspace_id}' not found")
     if req:
@@ -1335,9 +1360,10 @@ def create_or_sync_preset_web_project(
 
 @app.get("/api/v1/metrics", response_model=SystemMetrics)
 def get_metrics(session_id: str | None = None, user: User = Depends(current_user)) -> SystemMetrics:
-    """Returns real-time pipeline telemetry, latency breakdown, and microservice status for one of the
-    caller's projects; the all-projects view (no `session_id`) is admin-only."""
-    _require_scope(session_id, user)
+    """Returns pipeline telemetry, latency breakdown, and microservice status. Query telemetry covers
+    one project, or with no `session_id` every project the caller can see (all for an admin, their
+    own otherwise)."""
+    scope = _user_session_scope(session_id, user)
     _, indexing, _ = get_services()
     return telemetry_tracker.get_system_metrics(
         qdrant_host=settings.storage.qdrant_host,
@@ -1345,7 +1371,7 @@ def get_metrics(session_id: str | None = None, user: User = Depends(current_user
         redis_host=settings.storage.redis_host,
         redis_port=settings.storage.redis_port,
         bm25_store=indexing.bm25,
-        session_id=session_id,
+        session_ids=scope,
     )
 
 
@@ -1437,19 +1463,30 @@ def _require_scope(session_id: str | None, user: User) -> None:
         raise HTTPException(status_code=403, detail="Choose a project: the all-projects view is admin-only")
 
 
+def _user_session_scope(session_id: str | None, user: User) -> set[str] | None:
+    """Sessions a metrics/RAGOps view may read: one owned project, or — with no `session_id` — every
+    project for an admin (None) and only the caller's own projects for anyone else. The unscoped view
+    holds other users' queries and document passages, so it is filtered, never widened."""
+    if session_id:
+        _require_scope(session_id, user)
+        return {session_id}
+    if user.is_admin:
+        return None
+    return {s.id for s in session_manager.list_sessions(owner_id=user.id)}
+
+
 @app.get("/api/v1/feedback/summary", response_model=RAGOpsSummary)
 def get_feedback_summary(session_id: str | None = None, user: User = Depends(current_user)) -> RAGOpsSummary:
-    """Returns aggregated continuous evaluation metrics and active learning counts for one project
-    (all projects: admin only)."""
-    _require_scope(session_id, user)
-    return ragops_store.get_summary(session_id=session_id)
+    """Returns feedback and active-learning counts for one project, or for all the caller can see
+    (every project for an admin, their own projects otherwise)."""
+    return ragops_store.get_summary(session_ids=_user_session_scope(session_id, user))
 
 
 @app.get("/api/v1/ragops/dataset")
 def export_ragops_dataset(session_id: str | None = None, user: User = Depends(current_user)) -> list[dict[str, Any]]:
-    """Exports mined contrastive hard-negative triplets for one project (all projects: admin only)."""
-    _require_scope(session_id, user)
-    return ragops_store.export_training_dataset(session_id=session_id)
+    """Exports mined hard-negative triplets for one project, or for all the caller can see
+    (every project for an admin, their own projects otherwise)."""
+    return ragops_store.export_training_dataset(session_ids=_user_session_scope(session_id, user))
 
 
 # --- GraphRAG Endpoints (Phase 13) ---
@@ -1915,17 +1952,22 @@ def legacy_index_page() -> str:
     return _legacy_html()
 
 
+def _client_page() -> HTMLResponse:
+    html = _flutter_html() if settings.ui.client == "flutter" else _legacy_html()
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/s/{token}", response_class=HTMLResponse)
-def shared_chat_page(token: str) -> str:
+def shared_chat_page(token: str) -> HTMLResponse:
     """Share URLs open the same client the rest of the app uses, which renders them read-only."""
-    return _flutter_html() if settings.ui.client == "flutter" else _legacy_html()
+    return _client_page()
 
 
 @app.get("/", response_class=HTMLResponse)
-def index_page() -> str:
+def index_page() -> HTMLResponse:
     """Serves the interactive RAG client — `ui.client` selects Flutter (IRA-47+) or the legacy
     single-page client, defaulting to legacy until the Flutter rewrite's parity checklist passes."""
-    return _flutter_html() if settings.ui.client == "flutter" else _legacy_html()
+    return _client_page()
 
 
 class _SpaStaticFiles(StaticFiles):
@@ -1935,11 +1977,16 @@ class _SpaStaticFiles(StaticFiles):
 
     async def get_response(self, path: str, scope):  # type: ignore[override]
         try:
-            return await super().get_response(path, scope)
+            response = await super().get_response(path, scope)
         except StarletteHTTPException as exc:
-            if exc.status_code == 404:
-                return await super().get_response("index.html", scope)
-            raise
+            if exc.status_code != 404:
+                raise
+            response = await super().get_response("index.html", scope)
+        # Flutter's bundle names (main.dart.js, flutter_bootstrap.js) aren't content-hashed, so without
+        # this browsers heuristically cache them and keep running the previous build after a deploy.
+        # no-cache still allows caching; it just revalidates via ETag (a cheap 304 when unchanged).
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
 
 # Mounted last, after every /api, /docs and /data route above — Starlette matches routes in

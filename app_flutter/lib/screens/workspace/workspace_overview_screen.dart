@@ -6,8 +6,8 @@ import 'package:material_symbols_icons/symbols.dart';
 import '../../api/auth_provider.dart';
 import '../../api/models/metrics.dart';
 import '../../api/models/session.dart';
+import '../../features/project/project_providers.dart';
 import '../../features/workspace/workspace_providers.dart';
-import '../../mock_data.dart';
 import '../../theme/evergreen_theme.dart';
 import '../../widgets/create_project_dialog.dart';
 
@@ -44,13 +44,35 @@ class _WorkspaceOverviewScreenState
     final projectsAsync = ref.watch(workspaceProjectsProvider(widget.workspaceId));
     final metricsAsync = ref.watch(workspaceMetricsProvider(null));
 
-    // When backend projects or metrics are loading or errored, gracefully default to wireframe mock data
-    final projects = projectsAsync.valueOrNull ?? mockProjects;
-
-    final metrics = metricsAsync.valueOrNull ?? mockSystemMetrics;
+    final projects = projectsAsync.valueOrNull ?? const <ChatSession>[];
+    final metrics = metricsAsync.valueOrNull;
+    final isLoading = projectsAsync.isLoading && !projectsAsync.hasValue;
+    final workspaceName = ref
+            .watch(workspacesProvider)
+            .valueOrNull
+            ?.where((w) => w.id == widget.workspaceId)
+            .firstOrNull
+            ?.name ??
+        'Workspace';
 
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isDesktop = screenWidth >= 1100;
+
+    if (isLoading) {
+      return const Scaffold(
+        backgroundColor: EvergreenColors.canvas,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (projectsAsync.hasError) {
+      return Scaffold(
+        backgroundColor: EvergreenColors.canvas,
+        body: Center(
+          child: Text('Failed to load workspace: ${projectsAsync.error}',
+              style: const TextStyle(color: EvergreenColors.refused)),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: EvergreenColors.canvas,
@@ -74,7 +96,7 @@ class _WorkspaceOverviewScreenState
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Enterprise Financial AI',
+                            workspaceName,
                             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                                   fontWeight: FontWeight.w700,
                                   color: EvergreenColors.ink,
@@ -83,7 +105,7 @@ class _WorkspaceOverviewScreenState
                           ),
                           const SizedBox(height: 4),
                           const Text(
-                            'Grounded answers over your filings, policies and calls.',
+                            'Grounded, cited answers over this workspace\'s documents.',
                             style: TextStyle(
                               fontSize: 14,
                               color: EvergreenColors.metadata,
@@ -111,7 +133,7 @@ class _WorkspaceOverviewScreenState
                                   style: TextStyle(fontSize: 12, color: EvergreenColors.metadata),
                                 ),
                                 Text(
-                                  '4.9k chunks',
+                                  metrics == null ? '—' : '${metrics.qdrantPoints} chunks',
                                   style: monoStyle(
                                     fontSize: 12,
                                     weight: FontWeight.w600,
@@ -119,22 +141,6 @@ class _WorkspaceOverviewScreenState
                                   ),
                                 ),
                               ],
-                            ),
-                          ),
-                          OutlinedButton.icon(
-                            onPressed: () async {
-                              final result = await ref.read(workspaceActionsProvider).openWebRagPreset();
-                              final sessionId = result['session_id'] as String;
-                              if (context.mounted) {
-                                context.go('/w/${widget.workspaceId}/p/$sessionId/overview');
-                              }
-                            },
-                            icon: const Icon(Symbols.tune, size: 16, color: EvergreenColors.metadata),
-                            label: const Text('Web RAG preset'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: EvergreenColors.ink,
-                              side: const BorderSide(color: EvergreenColors.border),
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                             ),
                           ),
                           FilledButton.icon(
@@ -153,7 +159,11 @@ class _WorkspaceOverviewScreenState
                   SizedBox(height: isDesktop ? 16 : 8),
 
                   // 4 Stat Cards Grid (from 01_workspace_overview.html)
-                  _FourStatCardsGrid(projects: projects, metrics: metrics),
+                  _FourStatCardsGrid(
+                    projects: projects,
+                    metrics: metrics,
+                    documentCount: ref.watch(documentsProvider).valueOrNull?.length,
+                  ),
                   SizedBox(height: isDesktop ? 16 : 8),
 
                   // 2-Column Split: Projects List on Left, Recent Activity & Infra on Right
@@ -234,7 +244,7 @@ class _WorkspaceOverviewScreenState
                 ),
                 if (_selected.isNotEmpty)
                   TextButton.icon(
-                    onPressed: () => setState(() => _selected.clear()),
+                    onPressed: () => _deleteSelected(context),
                     icon: const Icon(Symbols.delete, size: 16, color: EvergreenColors.refused),
                     label: Text(
                       'Delete ${_selected.length}',
@@ -350,7 +360,7 @@ class _WorkspaceOverviewScreenState
               ],
             ),
             Text(
-              'Embedding: text-embedding-3-small',
+              'Embedding: bge-m3',
               style: monoStyle(fontSize: 11, color: EvergreenColors.metadata),
             ),
           ],
@@ -359,7 +369,7 @@ class _WorkspaceOverviewScreenState
     );
   }
 
-  Widget _buildRightInfoColumn(BuildContext context, SystemMetrics metrics) {
+  Widget _buildRightInfoColumn(BuildContext context, SystemMetrics? metrics) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -397,9 +407,16 @@ class _WorkspaceOverviewScreenState
               ),
               const Divider(height: 20, color: EvergreenColors.border),
               Builder(builder: (context) {
-                final telemetry = metrics.recentTelemetry.isNotEmpty
-                    ? metrics.recentTelemetry
-                    : mockSystemMetrics.recentTelemetry;
+                final telemetry = metrics?.recentTelemetry ?? const [];
+                if (telemetry.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Text(
+                      'No queries yet.',
+                      style: TextStyle(fontSize: 12, color: EvergreenColors.metadata),
+                    ),
+                  );
+                }
                 return Column(
                   children: [
                     for (var i = 0; i < telemetry.length; i++) ...[
@@ -433,7 +450,19 @@ class _WorkspaceOverviewScreenState
         const SizedBox(height: 16),
 
         // Infrastructure & Models Card
-        Container(
+        Builder(builder: (context) {
+          final health = ref.watch(serviceHealthProvider).valueOrNull;
+          final gpu = ref.watch(gpuStatusProvider).valueOrNull;
+          final models = ref.watch(modelsProvider).valueOrNull;
+          final allHealthy = health != null && health.qdrantAlive && health.redisAlive && health.ollamaAlive;
+          final usedMb = (gpu?['used_vram_mb'] as num?)?.toDouble();
+          final totalMb = (gpu?['total_vram_mb'] as num?)?.toDouble();
+          final vramRatio = (usedMb != null && totalMb != null && totalMb > 0)
+              ? (usedMb / totalMb).clamp(0.0, 1.0).toDouble()
+              : null;
+          String state(bool? alive) => alive == null ? 'unknown' : (alive ? 'up' : 'down');
+          final defaultModel = models?.defaultModel ?? '';
+          return Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: EvergreenColors.surface,
@@ -459,18 +488,18 @@ class _WorkspaceOverviewScreenState
                       Container(
                         width: 6,
                         height: 6,
-                        decoration: const BoxDecoration(
-                          color: EvergreenColors.confident,
+                        decoration: BoxDecoration(
+                          color: allHealthy ? EvergreenColors.confident : EvergreenColors.refused,
                           shape: BoxShape.circle,
                         ),
                       ),
                       const SizedBox(width: 4),
-                      const Text(
-                        'Healthy',
+                      Text(
+                        health == null ? 'Checking…' : (allHealthy ? 'Healthy' : 'Degraded'),
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
-                          color: EvergreenColors.primary,
+                          color: allHealthy ? EvergreenColors.primary : EvergreenColors.refused,
                         ),
                       ),
                     ],
@@ -480,17 +509,24 @@ class _WorkspaceOverviewScreenState
               const Divider(height: 20, color: EvergreenColors.border),
               _InfraItem(
                 title: 'Qdrant Vector DB',
-                detail: 'v1.9.0 · 4,912 vectors',
+                detail: metrics == null
+                    ? state(health?.qdrantAlive)
+                    : '${state(health?.qdrantAlive)} · ${metrics.qdrantPoints} vectors',
+                healthy: health?.qdrantAlive ?? false,
               ),
               const SizedBox(height: 8),
               _InfraItem(
                 title: 'Redis Cache',
-                detail: 'up · 0.2ms latency',
+                detail: metrics == null
+                    ? state(health?.redisAlive)
+                    : '${state(health?.redisAlive)} · queue ${metrics.redisQueueDepth}',
+                healthy: health?.redisAlive ?? false,
               ),
               const SizedBox(height: 8),
               _InfraItem(
                 title: 'Ollama Engine',
-                detail: 'local runner',
+                detail: '${state(health?.ollamaAlive)} · ${models?.models.length ?? 0} models',
+                healthy: health?.ollamaAlive ?? false,
               ),
               const SizedBox(height: 14),
               const Divider(height: 1, color: EvergreenColors.border),
@@ -499,7 +535,9 @@ class _WorkspaceOverviewScreenState
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'VRAM 4.1 / 6.0 GB',
+                    vramRatio == null
+                        ? 'VRAM —'
+                        : 'VRAM ${(usedMb! / 1024).toStringAsFixed(1)} / ${(totalMb! / 1024).toStringAsFixed(1)} GB',
                     style: monoStyle(
                       fontSize: 11,
                       weight: FontWeight.w600,
@@ -507,7 +545,7 @@ class _WorkspaceOverviewScreenState
                     ),
                   ),
                   Text(
-                    '68%',
+                    vramRatio == null ? '' : '${(vramRatio * 100).round()}%',
                     style: monoStyle(fontSize: 10, color: EvergreenColors.metadata),
                   ),
                 ],
@@ -516,7 +554,7 @@ class _WorkspaceOverviewScreenState
               ClipRRect(
                 borderRadius: BorderRadius.circular(999),
                 child: LinearProgressIndicator(
-                  value: 0.68,
+                  value: vramRatio ?? 0,
                   minHeight: 6,
                   backgroundColor: const Color(0xFFF5F5F4),
                   valueColor: const AlwaysStoppedAnimation<Color>(EvergreenColors.primary),
@@ -524,12 +562,13 @@ class _WorkspaceOverviewScreenState
               ),
               const SizedBox(height: 6),
               Text(
-                'llama3.1:latest loaded (3.8 GB)',
+                defaultModel.isEmpty ? 'No chat model available' : 'Default model: $defaultModel',
                 style: monoStyle(fontSize: 10, color: EvergreenColors.metadata),
               ),
             ],
           ),
-        ),
+          );
+        }),
         const SizedBox(height: 16),
 
         // Zero-hallucination constraint card
@@ -576,6 +615,29 @@ class _WorkspaceOverviewScreenState
     );
   }
 
+  Future<void> _deleteSelected(BuildContext context) async {
+    final count = _selected.length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Delete $count project${count == 1 ? '' : 's'}?'),
+        content: const Text('This permanently removes their chat history. This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: EvergreenColors.refused),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final ids = List<String>.from(_selected);
+    await ref.read(workspaceActionsProvider).deleteProjects(ids);
+    if (mounted) setState(() => _selected.clear());
+  }
+
   List<ChatSession> _applyFilter(List<ChatSession> projects, String? currentUserId) {
     Iterable<ChatSession> result = switch (_filter) {
       _ProjectFilter.all => projects,
@@ -595,12 +657,18 @@ class _WorkspaceOverviewScreenState
 }
 
 class _FourStatCardsGrid extends StatelessWidget {
-  const _FourStatCardsGrid({required this.projects, required this.metrics});
+  const _FourStatCardsGrid({required this.projects, required this.metrics, required this.documentCount});
   final List<ChatSession> projects;
-  final SystemMetrics metrics;
+  final SystemMetrics? metrics;
+  final int? documentCount;
 
   @override
   Widget build(BuildContext context) {
+    final m = metrics;
+    final totalQueries = m?.totalQueries ?? 0;
+    final answered = totalQueries - (m?.totalRefusals ?? 0);
+    final groundedPct = totalQueries > 0 ? (answered * 100 / totalQueries).round() : null;
+    final sourced = projects.where((p) => p.files.isNotEmpty).length;
     return LayoutBuilder(
       builder: (context, constraints) {
         final count = constraints.maxWidth >= 1000 ? 4 : (constraints.maxWidth >= 480 ? 2 : 1);
@@ -616,7 +684,7 @@ class _FourStatCardsGrid extends StatelessWidget {
                 icon: Symbols.folder_open,
                 label: 'Projects',
                 value: '${projects.length} Active',
-                chipLabel: 'All live',
+                chipLabel: '$sourced with sources',
                 chipColor: EvergreenColors.primary,
                 chipBg: EvergreenColors.primaryTint,
               ),
@@ -626,8 +694,8 @@ class _FourStatCardsGrid extends StatelessWidget {
               child: _StatCardItem(
                 icon: Symbols.description,
                 label: 'Documents',
-                value: '38 Filings',
-                chipLabel: '${metrics.qdrantPoints} chunks',
+                value: documentCount == null ? '—' : '$documentCount Files',
+                chipLabel: m == null ? '— chunks' : '${m.qdrantPoints} chunks',
                 chipColor: EvergreenColors.inkSecondary,
                 chipBg: const Color(0xFFF5F5F4),
                 isMono: true,
@@ -638,8 +706,8 @@ class _FourStatCardsGrid extends StatelessWidget {
               child: _StatCardItem(
                 icon: Symbols.chat_bubble_outline,
                 label: 'Questions asked',
-                value: '214 Queries',
-                chipLabel: '+31 this week',
+                value: m == null ? '—' : '$totalQueries Queries',
+                chipLabel: m == null ? 'no data' : '${m.totalRefusals} refused',
                 chipColor: EvergreenColors.primary,
                 chipBg: EvergreenColors.primaryTint,
               ),
@@ -649,8 +717,8 @@ class _FourStatCardsGrid extends StatelessWidget {
               child: _StatCardItem(
                 icon: Symbols.verified,
                 label: 'Groundedness',
-                value: '91% Score',
-                chipLabel: 'eval: 0.94',
+                value: groundedPct == null ? '—' : '$groundedPct% Score',
+                chipLabel: groundedPct == null ? 'no queries' : 'answered rate',
                 chipColor: EvergreenColors.metadata,
                 chipBg: const Color(0xFFF5F5F4),
                 isMono: true,
@@ -772,19 +840,9 @@ class _ProjectListRow extends StatelessWidget {
     final isWebRag = project.title.toLowerCase().contains('web');
     final isForked = project.forkedFrom != null;
 
-    final descriptions = [
-      'NVIDIA FY24 filings, tables and earnings call Q&A',
-      'Big tech transcripts, capex and forward commentary',
-      'Underwriting guidelines, exceptions, and rating tiers',
-      'Tier 1 ratios, risk-weighted assets, and liquidity coverage',
-      'Instant indexing and verification over live web URLs',
-      'Forked from a shared chat',
-    ];
     final String description;
     if (project.systemPrompt != null && project.systemPrompt!.isNotEmpty) {
       description = project.systemPrompt!;
-    } else if (mockProjects.any((m) => m.id == project.id)) {
-      description = descriptions[index % descriptions.length];
     } else {
       description = project.files.isNotEmpty
           ? '${project.files.length} sources attached · Ready for query'
@@ -808,8 +866,7 @@ class _ProjectListRow extends StatelessWidget {
         timeAgo = '${diff ~/ 86400}d ago';
       }
     } else {
-      final timesAgo = ['2h ago', '5h ago', '1d ago', '2d ago', '3d ago', '4d ago'];
-      timeAgo = timesAgo[index % timesAgo.length];
+      timeAgo = '—';
     }
 
     final rawMode = project.parameters.retrievalMode;
@@ -926,7 +983,10 @@ class _ProjectListRow extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    description,
+                    // System prompts can run to paragraphs; the row only needs a preview.
+                    description.replaceAll(RegExp(r'\s+'), ' ').trim(),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 12, color: EvergreenColors.metadata),
                   ),
                 ],
@@ -1054,9 +1114,10 @@ class _ActivityItem extends StatelessWidget {
 }
 
 class _InfraItem extends StatelessWidget {
-  const _InfraItem({required this.title, required this.detail});
+  const _InfraItem({required this.title, required this.detail, required this.healthy});
   final String title;
   final String detail;
+  final bool healthy;
 
   @override
   Widget build(BuildContext context) {
@@ -1068,8 +1129,8 @@ class _InfraItem extends StatelessWidget {
             Container(
               width: 5,
               height: 5,
-              decoration: const BoxDecoration(
-                color: EvergreenColors.confident,
+              decoration: BoxDecoration(
+                color: healthy ? EvergreenColors.confident : EvergreenColors.refused,
                 shape: BoxShape.circle,
               ),
             ),

@@ -12,38 +12,38 @@ final _projectRefreshProvider = StateProvider.family<int, String>((ref, sessionI
 
 final projectProvider = FutureProvider.family<ChatSession, String>((ref, sessionId) async {
   ref.watch(_projectRefreshProvider(sessionId));
-  final client = ref.watch(apiClientProvider);
+  final client = ref.watch(userApiClientProvider);
   final json = await client.get('/api/v1/sessions/$sessionId') as Map<String, dynamic>;
   return ChatSession.fromJson(json['session'] as Map<String, dynamic>);
 });
 
 final projectEvalSummaryProvider = FutureProvider.family<ProjectEvalSummary, String>((ref, sessionId) async {
-  final client = ref.watch(apiClientProvider);
+  final client = ref.watch(userApiClientProvider);
   final json = await client.get('/api/v1/sessions/$sessionId/eval/summary') as Map<String, dynamic>;
   return ProjectEvalSummary.fromJson(json);
 });
 
 final projectEvalLastRunProvider = FutureProvider.family<ProjectEvalRun?, String>((ref, sessionId) async {
-  final client = ref.watch(apiClientProvider);
+  final client = ref.watch(userApiClientProvider);
   final json = await client.get('/api/v1/sessions/$sessionId/eval/run');
   if (json == null) return null;
   return ProjectEvalRun.fromJson(json as Map<String, dynamic>);
 });
 
 final projectConversationsProvider = FutureProvider.family<List<Conversation>, String>((ref, sessionId) async {
-  final client = ref.watch(apiClientProvider);
+  final client = ref.watch(userApiClientProvider);
   final json = await client.get('/api/v1/sessions/$sessionId/conversations') as Map<String, dynamic>;
   return (json['conversations'] as List<dynamic>).map((e) => Conversation.fromJson(e as Map<String, dynamic>)).toList();
 });
 
 final modelsProvider = FutureProvider<ModelListResponse>((ref) async {
-  final client = ref.watch(apiClientProvider);
+  final client = ref.watch(userApiClientProvider);
   final json = await client.get('/api/v1/models') as Map<String, dynamic>;
   return ModelListResponse.fromJson(json);
 });
 
 final gpuStatusProvider = FutureProvider<Map<String, dynamic>>((ref) async {
-  final client = ref.watch(apiClientProvider);
+  final client = ref.watch(userApiClientProvider);
   return await client.get('/api/v1/hardware/gpu') as Map<String, dynamic>;
 });
 
@@ -86,13 +86,44 @@ class ProjectActions {
     _ref.invalidate(documentsProvider);
   }
 
+  /// Web source: the gateway fetches the URL, converts it to a PDF, then it's indexed and attached
+  /// exactly like an uploaded file.
+  Future<void> ingestUrlIndexAndAttach(
+    String sessionId,
+    String url, {
+    String? route,
+    void Function(String stage)? onStage,
+  }) async {
+    onStage?.call('Fetching and parsing the page…');
+    final ingestJson = await _client.post('/api/v1/ingest/url', body: {
+      'url': url,
+      'route': ?route,
+    }) as Map<String, dynamic>;
+    final ingested = IngestResponse.fromJson(ingestJson);
+    if (ingested.error != null) {
+      throw ApiException(422, ingested.error!);
+    }
+    onStage?.call('Indexing ${ingested.blocks.length} blocks…');
+    await _client.post('/api/v1/index', body: {'doc_id': ingested.docId, 'blocks': ingested.blocks});
+    onStage?.call('Attaching to project…');
+    await attachFiles(sessionId, [ingested.docId]);
+    _ref.invalidate(documentsProvider);
+  }
+
   Future<void> updateSettings(String sessionId, Map<String, dynamic> patch) async {
     await _client.patch('/api/v1/sessions/$sessionId', body: patch);
     _touch(sessionId);
   }
 
+  Future<String> newConversation(String sessionId) async {
+    final json = await _client.post('/api/v1/sessions/$sessionId/conversations') as Map<String, dynamic>;
+    _ref.invalidate(projectConversationsProvider(sessionId));
+    return json['id'] as String;
+  }
+
   Future<void> deleteProject(String sessionId) async {
     await _client.delete('/api/v1/sessions/$sessionId');
+    _ref.read(projectsRefreshProvider.notifier).state++;
   }
 
   Future<ProjectEvalRun> runEval(String sessionId, {bool rebuild = false}) async {
@@ -104,4 +135,4 @@ class ProjectActions {
   }
 }
 
-final projectActionsProvider = Provider<ProjectActions>((ref) => ProjectActions(ref.watch(apiClientProvider), ref));
+final projectActionsProvider = Provider<ProjectActions>((ref) => ProjectActions(ref.watch(userApiClientProvider), ref));

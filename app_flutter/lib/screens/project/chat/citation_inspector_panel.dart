@@ -9,7 +9,7 @@ import '../../../api/models/retrieval.dart';
 import '../../../theme/evergreen_theme.dart';
 
 final _previewBytesProvider = FutureProvider.family<Uint8List, Citation>((ref, citation) async {
-  final client = ref.watch(apiClientProvider);
+  final client = ref.watch(userApiClientProvider);
   if (citation.isFigure && citation.imagePath != null) {
     final name = citation.imagePath!.split('/').last;
     return client.getBytes('/api/v1/figures/$name');

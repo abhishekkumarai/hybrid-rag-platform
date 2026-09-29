@@ -77,9 +77,11 @@ ChatTurn reduceChatEvent(ChatTurn turn, ChatEvent event) {
   return switch (event) {
     TokenEvent(:final token) => turn.copyWith(answer: turn.answer + token, streaming: true),
     ChatErrorEvent(:final error) => turn.copyWith(error: error, streaming: false),
-    DoneEvent(:final refused, :final answer, :final citations, :final topScore, :final mode, :final subQueries, :final error) =>
+    DoneEvent(:final refused, :final answer, :final rawAnswer, :final citations, :final topScore, :final mode, :final subQueries, :final error) =>
       turn.copyWith(
-        answer: answer ?? turn.answer,
+        // `answer` is pre-formatted for the legacy HTML client (a markdown "Verified Sources" block
+        // with raw bboxes); this client renders citations as chips, so it wants the model's own text.
+        answer: (rawAnswer != null && rawAnswer.isNotEmpty) ? rawAnswer : (answer ?? turn.answer),
         citations: citations,
         refused: refused,
         streaming: false,

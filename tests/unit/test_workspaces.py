@@ -209,7 +209,8 @@ def test_admin_cannot_self_escalate_to_owner_and_delete_workspace(identity):
     assert client.delete(f"/api/v1/workspaces/{ws.id}").json()["deleted"] is True
 
 
-def test_signup_and_demo_each_get_a_personal_workspace(identity, monkeypatch):
+def test_signup_and_demo_start_without_a_workspace(identity, monkeypatch):
+    """Workspaces are never auto-created; the client's home page asks the user to create one."""
     from services.gateway import api
 
     monkeypatch.setattr(api.settings.auth, "allow_signup", True)
@@ -218,10 +219,25 @@ def test_signup_and_demo_each_get_a_personal_workspace(identity, monkeypatch):
     )
     assert resp.status_code == 200
     new_user = identity.get_user_by_email("fresh@example.com")
-    assert len(identity.list_workspaces_for_user(new_user.id)) == 1
+    assert identity.list_workspaces_for_user(new_user.id) == []
 
     monkeypatch.setattr(api.settings.auth, "allow_demo", True)
     demo_resp = client.post("/api/v1/auth/demo")
     assert demo_resp.status_code == 200
     demo_user_id = demo_resp.json()["user"]["id"]
-    assert len(identity.list_workspaces_for_user(demo_user_id)) == 1
+    assert identity.list_workspaces_for_user(demo_user_id) == []
+
+
+def test_a_project_needs_a_workspace_until_one_is_created(identity):
+    from services.gateway import api
+
+    loner = User(id="usr_loner", email="loner@example.com")
+    identity.users[loner.id] = loner
+    api.app.dependency_overrides[api.optional_user] = lambda: loner
+    assert client.get("/api/v1/workspaces").json()["workspaces"] == []
+    refused = client.post("/api/v1/sessions", json={"title": "p"})
+    assert refused.status_code == 422 and "workspace" in refused.json()["detail"].lower()
+
+    ws = client.post("/api/v1/workspaces", json={"name": "First"}).json()
+    created = client.post("/api/v1/sessions", json={"title": "p"})
+    assert created.status_code == 200 and created.json()["workspace_id"] == ws["id"]

@@ -36,9 +36,9 @@ class ProjectTabShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final projectAsync = ref.watch(projectProvider(projectId));
-    final title = projectAsync.value?.title ?? 'Project';
-    final sourcesCount = projectAsync.value?.files.length;
-    final chatCount = ref.watch(projectConversationsProvider(projectId)).value?.length;
+    final title = projectAsync.valueOrNull?.title ?? 'Project';
+    final sourcesCount = projectAsync.valueOrNull?.files.length;
+    final chatCount = ref.watch(projectConversationsProvider(projectId)).valueOrNull?.length;
 
     return Scaffold(
       backgroundColor: EvergreenColors.canvas,
@@ -71,7 +71,10 @@ class ProjectTabShell extends ConsumerWidget {
                           ),
                           const SizedBox(width: 8),
                           OutlinedButton.icon(
-                            onPressed: () => context.go('/w/$workspaceId/p/$projectId/chats/default'),
+                            onPressed: () async {
+                              final id = await ref.read(projectActionsProvider).newConversation(projectId);
+                              if (context.mounted) context.go('/w/$workspaceId/p/$projectId/chats/$id');
+                            },
                             icon: const Icon(Symbols.add, size: 16),
                             label: const Text('New chat'),
                           ),

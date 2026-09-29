@@ -94,7 +94,7 @@ class RagOpsScreen extends ConsumerWidget {
                   child: Center(child: CircularProgressIndicator()),
                 ),
                 error: (e, _) => const Text(
-                  'Could not load feedback summary (admin access required for the all-projects view).',
+                  'Could not load feedback summary.',
                   style: TextStyle(color: EvergreenColors.caption),
                 ),
               ),
@@ -102,9 +102,9 @@ class RagOpsScreen extends ConsumerWidget {
               SectionHeader(
                 title: 'Hard-negative training dataset',
                 action: TextButton.icon(
-                  onPressed: datasetAsync.value == null
+                  onPressed: datasetAsync.valueOrNull == null
                       ? null
-                      : () => _copyDataset(context, datasetAsync.value!),
+                      : () => _copyDataset(context, datasetAsync.valueOrNull!),
                   icon: const Icon(Symbols.download, size: 16),
                   label: const Text('Export JSON'),
                 ),

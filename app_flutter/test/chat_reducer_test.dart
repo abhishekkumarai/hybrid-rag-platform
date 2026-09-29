@@ -39,6 +39,21 @@ void main() {
       expect(turn.answerState, AnswerState.ambiguous);
     });
 
+    test('done keeps the model text, not the legacy sources-formatted answer', () {
+      var turn = const ChatTurn(id: 't1', query: 'q', answer: '• A100', streaming: true);
+      turn = reduceChatEvent(
+        turn,
+        const DoneEvent(answer: '• A100\n\n---\n### 📑 Verified Sources & Provenance:\n1. [doc: Page 1, (72.0, 88.2)]', rawAnswer: '• A100'),
+      );
+      expect(turn.answer, '• A100');
+    });
+
+    test('done falls back to answer when raw_answer is empty (refusals)', () {
+      var turn = const ChatTurn(id: 't1', query: 'q', streaming: true);
+      turn = reduceChatEvent(turn, const DoneEvent(refused: true, answer: 'The documents do not contain this.', rawAnswer: ''));
+      expect(turn.answer, 'The documents do not contain this.');
+    });
+
     test('error event surfaces the error and stops streaming', () {
       var turn = const ChatTurn(id: 't1', query: 'q', streaming: true);
       turn = reduceChatEvent(turn, const ChatErrorEvent(error: 'model unavailable'));

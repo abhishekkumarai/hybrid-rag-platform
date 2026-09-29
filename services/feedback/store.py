@@ -2,6 +2,7 @@
 
 import json
 import uuid
+from collections.abc import Collection
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -164,8 +165,18 @@ class RAGOpsStore:
         logger.info(f"Mined hard negative {sample_id} from source '{source}' for query='{query_text[:40]}'")
         return sample
 
-    def get_summary(self, session_id: str | None = None) -> RAGOpsSummary:
-        """Aggregates continuous evaluation metrics and feedback counters, optionally scoped to a session."""
+    @staticmethod
+    def _scope(session_id: str | None, session_ids: Collection[str] | None) -> set[str] | None:
+        """None means every session; otherwise the exact set of sessions to include."""
+        if session_id:
+            return {session_id}
+        return None if session_ids is None else set(session_ids)
+
+    def get_summary(
+        self, session_id: str | None = None, session_ids: Collection[str] | None = None
+    ) -> RAGOpsSummary:
+        """Aggregates feedback counters over one session, a set of sessions, or (both None) all of them."""
+        scope = self._scope(session_id, session_ids)
         total = 0
         up = 0
         down = 0
@@ -178,7 +189,7 @@ class RAGOpsStore:
                         line = line.strip()
                         if line:
                             data = json.loads(line)
-                            if session_id and data.get("session_id") != session_id:
+                            if scope is not None and data.get("session_id") not in scope:
                                 continue
                             total += 1
                             if data.get("rating") == "thumbs_up":
@@ -195,11 +206,7 @@ class RAGOpsStore:
                     for line in f:
                         line = line.strip()
                         if line:
-                            if session_id:
-                                rec = json.loads(line)
-                                if rec.get("session_id") == session_id:
-                                    hn_count += 1
-                            else:
+                            if scope is None or json.loads(line).get("session_id") in scope:
                                 hn_count += 1
             except Exception:
                 pass
@@ -214,8 +221,11 @@ class RAGOpsStore:
             hard_negatives_count=hn_count,
         )
 
-    def export_training_dataset(self, session_id: str | None = None) -> list[dict[str, Any]]:
-        """Exports mined contrastive samples in standardized format, optionally scoped to a session."""
+    def export_training_dataset(
+        self, session_id: str | None = None, session_ids: Collection[str] | None = None
+    ) -> list[dict[str, Any]]:
+        """Exports mined contrastive samples for one session, a set of sessions, or (both None) all."""
+        scope = self._scope(session_id, session_ids)
         dataset: list[dict[str, Any]] = []
         if not self.hard_negatives_file.exists():
             return dataset
@@ -226,7 +236,7 @@ class RAGOpsStore:
                     line = line.strip()
                     if line:
                         rec = json.loads(line)
-                        if session_id and rec.get("session_id") != session_id:
+                        if scope is not None and rec.get("session_id") not in scope:
                             continue
                         dataset.append({
                             "query": rec.get("query_text"),

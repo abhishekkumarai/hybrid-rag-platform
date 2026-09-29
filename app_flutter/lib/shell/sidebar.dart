@@ -5,7 +5,6 @@ import 'package:material_symbols_icons/symbols.dart';
 
 import '../api/auth_provider.dart';
 import '../features/workspace/workspace_providers.dart';
-import '../mock_data.dart';
 import '../theme/evergreen_theme.dart';
 import '../widgets/create_project_dialog.dart';
 import '../widgets/workspace_switcher_sheet.dart';
@@ -56,84 +55,95 @@ class AppSidebar extends ConsumerWidget {
     return Container(
       width: 260,
       color: EvergreenColors.surface,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          return Scrollbar(
-            child: SingleChildScrollView(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                child: IntrinsicHeight(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _Logo(),
-                      const Divider(height: 1, color: EvergreenColors.border),
-                      _WorkspaceSwitcher(workspaceId: workspaceId),
-                      const SizedBox(height: 8),
-                      for (final item in _navItems)
-                        _NavTile(
-                          label: item.label,
-                          icon: item.icon,
-                          selected: location == '/w/$workspaceId${item.suffix}',
-                          onTap: () => context.go('/w/$workspaceId${item.suffix}'),
-                        ),
-                      const Divider(
-                        height: 17,
-                        indent: 12,
-                        endIndent: 12,
-                        color: EvergreenColors.border,
+      // Nav + projects scroll; the footer (health, Settings, account + sign out) stays pinned so it
+      // is reachable on short windows without scrolling the sidebar.
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: Scrollbar(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _Logo(),
+                    const Divider(height: 1, color: EvergreenColors.border),
+                    _WorkspaceSwitcher(workspaceId: workspaceId),
+                    const SizedBox(height: 8),
+                    for (final item in _navItems)
+                      _NavTile(
+                        label: item.label,
+                        icon: item.icon,
+                        selected: location == '/w/$workspaceId${item.suffix}',
+                        onTap: () =>
+                            context.go('/w/$workspaceId${item.suffix}'),
                       ),
-                      for (final item in _moreNavItems)
-                        _NavTile(
-                          label: item.label,
-                          icon: item.icon,
-                          selected: location == '/w/$workspaceId${item.suffix}',
-                          onTap: () => context.go('/w/$workspaceId${item.suffix}'),
-                        ),
-                      const SizedBox(height: 16),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                'PROJECTS',
-                                style: monoStyle(
-                                  fontSize: 11,
-                                  color: EvergreenColors.metadata,
-                                ).copyWith(letterSpacing: 1.0),
+                    const Divider(
+                      height: 17,
+                      indent: 12,
+                      endIndent: 12,
+                      color: EvergreenColors.border,
+                    ),
+                    for (final item in _moreNavItems)
+                      _NavTile(
+                        label: item.label,
+                        icon: item.icon,
+                        selected: location == '/w/$workspaceId${item.suffix}',
+                        onTap: () =>
+                            context.go('/w/$workspaceId${item.suffix}'),
+                      ),
+                    const SizedBox(height: 16),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'PROJECTS',
+                              style: monoStyle(
+                                fontSize: 11,
+                                color: EvergreenColors.metadata,
+                              ).copyWith(letterSpacing: 1.0),
+                            ),
+                          ),
+                          InkWell(
+                            borderRadius: BorderRadius.circular(
+                              EvergreenRadii.control,
+                            ),
+                            onTap: () =>
+                                createProjectDialog(context, ref, workspaceId),
+                            child: const Padding(
+                              padding: EdgeInsets.all(2),
+                              child: Icon(
+                                Symbols.add,
+                                size: 16,
+                                color: EvergreenColors.metadata,
                               ),
                             ),
-                            InkWell(
-                              borderRadius: BorderRadius.circular(EvergreenRadii.control),
-                              onTap: () => createProjectDialog(context, ref, workspaceId),
-                              child: const Padding(
-                                padding: EdgeInsets.all(2),
-                                child: Icon(Symbols.add, size: 16, color: EvergreenColors.metadata),
-                              ),
-                            ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 4),
-                      _ProjectsList(workspaceId: workspaceId),
-                      const SizedBox(height: 32),
-                      const Spacer(),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 12),
-                        child: Divider(height: 1, color: EvergreenColors.border),
-                      ),
-                      const SizedBox(height: 14),
-                      const _ServiceHealthRow(),
-                      const SizedBox(height: 8),
-                      _FooterUserCard(email: auth is AuthSignedIn ? auth.user.email : ''),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 4),
+                    _ProjectsList(workspaceId: workspaceId),
+                    const SizedBox(height: 16),
+                  ],
                 ),
               ),
             ),
-          );
-        },
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12),
+            child: Divider(height: 1, color: EvergreenColors.border),
+          ),
+          const SizedBox(height: 14),
+          const _ServiceHealthRow(),
+          const SizedBox(height: 8),
+          _FooterUserCard(
+            email: auth is AuthSignedIn ? auth.user.email : '',
+            isDemo: auth is AuthSignedIn && auth.user.isDemo,
+          ),
+        ],
       ),
     );
   }
@@ -181,8 +191,14 @@ class _WorkspaceSwitcher extends ConsumerWidget {
 
     final auth = ref.watch(authProvider);
     final userId = auth is AuthSignedIn ? auth.user.id : null;
-    final members = ref.watch(workspaceMembersProvider(workspaceId)).valueOrNull;
-    final myRole = members?.where((m) => m.user.id == userId).firstOrNull?.member.role;
+    final members = ref
+        .watch(workspaceMembersProvider(workspaceId))
+        .valueOrNull;
+    final myRole = members
+        ?.where((m) => m.user.id == userId)
+        .firstOrNull
+        ?.member
+        .role;
     final subtitle = myRole == null ? 'Workspace' : 'Workspace · $myRole';
 
     return Padding(
@@ -197,10 +213,16 @@ class _WorkspaceSwitcher extends ConsumerWidget {
                 borderRadius: const BorderRadius.horizontal(
                   left: Radius.circular(EvergreenRadii.control),
                 ),
-                onTap: () =>
-                    showWorkspaceSwitcher(context, ref, currentWorkspaceId: workspaceId),
+                onTap: () => showWorkspaceSwitcher(
+                  context,
+                  ref,
+                  currentWorkspaceId: workspaceId,
+                ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
                   child: Row(
                     children: [
                       Container(
@@ -208,7 +230,9 @@ class _WorkspaceSwitcher extends ConsumerWidget {
                         height: 28,
                         decoration: BoxDecoration(
                           color: EvergreenColors.primaryTint,
-                          borderRadius: BorderRadius.circular(EvergreenRadii.control),
+                          borderRadius: BorderRadius.circular(
+                            EvergreenRadii.control,
+                          ),
                         ),
                         alignment: Alignment.center,
                         child: Text(
@@ -228,7 +252,9 @@ class _WorkspaceSwitcher extends ConsumerWidget {
                             Text(
                               name,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontWeight: FontWeight.w600),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                             Text(
                               subtitle,
@@ -252,7 +278,11 @@ class _WorkspaceSwitcher extends ConsumerWidget {
               ),
             ),
             IconButton(
-              icon: const Icon(Symbols.add, size: 16, color: EvergreenColors.metadata),
+              icon: const Icon(
+                Symbols.add,
+                size: 16,
+                color: EvergreenColors.metadata,
+              ),
               tooltip: 'Create workspace',
               visualDensity: VisualDensity.compact,
               padding: EdgeInsets.zero,
@@ -329,8 +359,22 @@ class _ProjectsList extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final projectsAsync = ref.watch(workspaceProjectsProvider(workspaceId));
-    final live = projectsAsync.valueOrNull;
-    final list = live ?? mockProjects;
+    if (projectsAsync.isLoading && !projectsAsync.hasValue) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        child: LinearProgressIndicator(minHeight: 2),
+      );
+    }
+    if (projectsAsync.hasError && !projectsAsync.hasValue) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        child: Text(
+          'Could not load projects',
+          style: TextStyle(fontSize: 12, color: EvergreenColors.refused),
+        ),
+      );
+    }
+    final list = projectsAsync.valueOrNull ?? const [];
     if (list.isEmpty) {
       return const Padding(
         padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -349,11 +393,8 @@ class _ProjectsList extends ConsumerWidget {
           _ProjectTile(
             title: project.title,
             tint: _folderTints[index % _folderTints.length],
-            selected: location.startsWith(
-              '/w/$workspaceId/p/${project.id}',
-            ),
-            onTap: () =>
-                context.go('/w/$workspaceId/p/${project.id}/overview'),
+            selected: location.startsWith('/w/$workspaceId/p/${project.id}'),
+            onTap: () => context.go('/w/$workspaceId/p/${project.id}/overview'),
           ),
       ],
     );
@@ -402,7 +443,10 @@ class _ProjectTile extends StatelessWidget {
                     width: 6,
                     height: 6,
                     margin: const EdgeInsets.only(right: 6),
-                    decoration: const BoxDecoration(color: EvergreenColors.primary, shape: BoxShape.circle),
+                    decoration: const BoxDecoration(
+                      color: EvergreenColors.primary,
+                      shape: BoxShape.circle,
+                    ),
                   ),
                 Expanded(
                   child: Text(
@@ -457,7 +501,9 @@ class _ServiceHealthRow extends ConsumerWidget {
               decoration: BoxDecoration(
                 color: isFullyHealthy
                     ? EvergreenColors.confident
-                    : (aliveCount > 0 ? EvergreenColors.ambiguous : EvergreenColors.refused),
+                    : (aliveCount > 0
+                          ? EvergreenColors.ambiguous
+                          : EvergreenColors.refused),
                 shape: BoxShape.circle,
               ),
             ),
@@ -475,7 +521,9 @@ class _ServiceHealthRow extends ConsumerWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
               decoration: BoxDecoration(
-                color: isFullyHealthy ? EvergreenColors.confidentTint : EvergreenColors.canvas,
+                color: isFullyHealthy
+                    ? EvergreenColors.confidentTint
+                    : EvergreenColors.canvas,
                 borderRadius: BorderRadius.circular(4),
                 border: Border.all(
                   color: isFullyHealthy
@@ -488,7 +536,9 @@ class _ServiceHealthRow extends ConsumerWidget {
                 style: monoStyle(
                   fontSize: 9,
                   weight: FontWeight.w600,
-                  color: isFullyHealthy ? EvergreenColors.confident : EvergreenColors.metadata,
+                  color: isFullyHealthy
+                      ? EvergreenColors.confident
+                      : EvergreenColors.metadata,
                 ),
               ),
             ),
@@ -499,12 +549,43 @@ class _ServiceHealthRow extends ConsumerWidget {
   }
 }
 
-class _FooterUserCard extends StatelessWidget {
-  const _FooterUserCard({required this.email});
+class _FooterUserCard extends ConsumerWidget {
+  const _FooterUserCard({required this.email, required this.isDemo});
   final String email;
+  final bool isDemo;
+
+  Future<void> _signOut(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Sign out?'),
+        content: Text(
+          isDemo
+              ? 'This is a guest account. After signing out you won\'t be able to sign back in to it, '
+                    'and its projects will no longer be reachable.'
+              : 'You can sign back in with your email and password.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Sign out'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    // A deliberate sign-out must not carry this account's location (`?from=`) to the next sign-in.
+    final router = GoRouter.of(context);
+    await ref.read(authProvider.notifier).logout();
+    router.go('/signin');
+  }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final initials = email.isNotEmpty ? email[0].toUpperCase() : 'U';
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
@@ -572,6 +653,16 @@ class _FooterUserCard extends StatelessWidget {
                       color: EvergreenColors.inkSecondary,
                     ),
                   ),
+                ),
+                IconButton(
+                  tooltip: 'Sign out',
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(
+                    Symbols.logout,
+                    size: 16,
+                    color: EvergreenColors.metadata,
+                  ),
+                  onPressed: () => _signOut(context, ref),
                 ),
               ],
             ),

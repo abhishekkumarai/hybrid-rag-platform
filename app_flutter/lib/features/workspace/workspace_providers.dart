@@ -9,27 +9,31 @@ import '../../api/models/session.dart';
 
 /// The current workspace id, driven by the router's `:ws` path segment (see `AppShell`). Screens
 /// read this instead of re-parsing the route themselves.
-final currentWorkspaceIdProvider = StateProvider<String>((ref) => 'default');
+final currentWorkspaceIdProvider = StateProvider<String>((ref) {
+  ref.watch(currentUserIdProvider); // a new user starts in their own default workspace
+  return 'default';
+});
 
 final workspacesProvider = FutureProvider<List<Workspace>>((ref) async {
-  final client = ref.watch(apiClientProvider);
+  final client = ref.watch(userApiClientProvider);
   final json = await client.get('/api/v1/workspaces') as Map<String, dynamic>;
   return (json['workspaces'] as List<dynamic>).map((e) => Workspace.fromJson(e as Map<String, dynamic>)).toList();
 });
 
-/// Projects (ChatSessions) visible in a workspace. `refreshProjectsProvider` bumps its
-/// dependents after a create/delete without a full app restart.
-final _projectsRefreshProvider = StateProvider<int>((ref) => 0);
+/// Projects (ChatSessions) visible in a workspace. Bumping this invalidates every workspace's
+/// project list without a full app restart — used after any create/delete, including deletes
+/// triggered from outside `WorkspaceActions` (see `ProjectActions.deleteProject`).
+final projectsRefreshProvider = StateProvider<int>((ref) => 0);
 
 final workspaceProjectsProvider = FutureProvider.family<List<ChatSession>, String>((ref, workspaceId) async {
-  ref.watch(_projectsRefreshProvider);
-  final client = ref.watch(apiClientProvider);
+  ref.watch(projectsRefreshProvider);
+  final client = ref.watch(userApiClientProvider);
   final json = await client.get('/api/v1/sessions', query: {'workspace_id': workspaceId}) as Map<String, dynamic>;
   return (json['sessions'] as List<dynamic>).map((e) => ChatSession.fromJson(e as Map<String, dynamic>)).toList();
 });
 
 final workspaceMembersProvider = FutureProvider.family<List<WorkspaceMemberEntry>, String>((ref, workspaceId) async {
-  final client = ref.watch(apiClientProvider);
+  final client = ref.watch(userApiClientProvider);
   final json = await client.get('/api/v1/workspaces/$workspaceId/members') as Map<String, dynamic>;
   return (json['members'] as List<dynamic>)
       .map((e) => WorkspaceMemberEntry.fromJson(e as Map<String, dynamic>))
@@ -37,7 +41,7 @@ final workspaceMembersProvider = FutureProvider.family<List<WorkspaceMemberEntry
 });
 
 final workspaceMetricsProvider = FutureProvider.family<SystemMetrics, String?>((ref, sessionId) async {
-  final client = ref.watch(apiClientProvider);
+  final client = ref.watch(userApiClientProvider);
   final json = await client.get('/api/v1/metrics', query: sessionId == null ? null : {'session_id': sessionId})
       as Map<String, dynamic>;
   return SystemMetrics.fromJson(json);
@@ -46,13 +50,13 @@ final workspaceMetricsProvider = FutureProvider.family<SystemMetrics, String?>((
 /// Sidebar footer service-health dots (DESIGN-evergreen.md) — `/api/v1/health` is public, so this
 /// works for non-admin users too, unlike `workspaceMetricsProvider(null)`'s admin-only cross-project view.
 final serviceHealthProvider = FutureProvider<ServiceHealth>((ref) async {
-  final client = ref.watch(apiClientProvider);
+  final client = ref.watch(userApiClientProvider);
   final json = await client.get('/api/v1/health') as Map<String, dynamic>;
   return ServiceHealth.fromJson(json);
 });
 
 final documentsProvider = FutureProvider<List<DocumentInfo>>((ref) async {
-  final client = ref.watch(apiClientProvider);
+  final client = ref.watch(userApiClientProvider);
   final json = await client.get('/api/v1/documents') as Map<String, dynamic>;
   return (json['documents'] as List<dynamic>).map((e) => DocumentInfo.fromJson(e as Map<String, dynamic>)).toList();
 });
@@ -88,7 +92,7 @@ class WorkspaceActions {
       },
     }) as Map<String, dynamic>;
     final session = ChatSession.fromJson(json);
-    _ref.read(_projectsRefreshProvider.notifier).state++;
+    _ref.read(projectsRefreshProvider.notifier).state++;
     _ref.invalidate(workspaceProjectsProvider(workspaceId));
     if (session.workspaceId != null && session.workspaceId != workspaceId) {
       _ref.invalidate(workspaceProjectsProvider(session.workspaceId!));
@@ -98,20 +102,14 @@ class WorkspaceActions {
 
   Future<void> deleteProject(String sessionId) async {
     await _client.delete('/api/v1/sessions/$sessionId');
-    _ref.read(_projectsRefreshProvider.notifier).state++;
+    _ref.read(projectsRefreshProvider.notifier).state++;
   }
 
   Future<void> deleteProjects(Iterable<String> sessionIds) async {
     for (final id in sessionIds) {
       await _client.delete('/api/v1/sessions/$id');
     }
-    _ref.read(_projectsRefreshProvider.notifier).state++;
-  }
-
-  Future<Map<String, dynamic>> openWebRagPreset() async {
-    final json = await _client.post('/api/v1/web/preset-project') as Map<String, dynamic>;
-    _ref.read(_projectsRefreshProvider.notifier).state++;
-    return json;
+    _ref.read(projectsRefreshProvider.notifier).state++;
   }
 
   Future<void> addMember(String workspaceId, String email, String role) async {
@@ -131,5 +129,5 @@ class WorkspaceActions {
 }
 
 final workspaceActionsProvider = Provider<WorkspaceActions>(
-  (ref) => WorkspaceActions(ref.watch(apiClientProvider), ref),
+  (ref) => WorkspaceActions(ref.watch(userApiClientProvider), ref),
 );

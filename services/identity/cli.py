@@ -39,7 +39,6 @@ def main(argv: list[str] | None = None) -> int:
     except DuplicateEmailError:
         print(f"An account for {args.email} already exists.", file=sys.stderr)
         return 1
-    store.create_workspace(name=f"{user.display_name or user.email}'s Workspace", owner_id=user.id)
     print(f"Created {'admin' if user.is_admin else 'user'} {user.email} ({user.id})")
     return 0
 
