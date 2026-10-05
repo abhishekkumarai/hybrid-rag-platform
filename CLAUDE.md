@@ -95,6 +95,14 @@ image ratio, column count and table score, then `IngestionService.parse()` dispa
 parsers: `fast_text` (PyMuPDF), `layout` (Docling, for tables/multi-column), `ocr` (RapidOCR, for scans).
 Thresholds live in `configs/default.yaml` under `ingestion:`, not in code.
 
+**Add-a-source jobs (IRA-60).** The Flutter client adds sources through `POST /api/v1/ingest/jobs` (file) and
+`/ingest/jobs/url`, which return a job at once; `services/ingestion/jobs.py` runs parse → `_index_owned` →
+`_attach_to_session` on a 2-thread pool inside the gateway (not Temporal) and records each stage in the Redis
+hash `rag:ingest_jobs`. Clients poll `GET /api/v1/ingest/jobs?session_id=`; progress therefore survives tab
+changes and reloads. A job left `running` by a previous gateway process is reported failed (`runner_id`
+mismatch). The synchronous `/api/v1/ingest` + `/index` routes remain for the legacy web UI and scripts.
+Restart the `rag_gateway` container after code changes — uvicorn does not reload the bind-mounted source.
+
 **Retrieval layering.** `RetrievalService.retrieve()` is the plain hybrid path. Above it:
 `AgenticCoordinator.run_plan()` decomposes into sub-queries, runs a retrieval per hop, and grades each hop
 through `CRAGEvaluator` (`CONFIDENT` / `AMBIGUOUS` / `REFUSE`) — `AMBIGUOUS` triggers query reformulation

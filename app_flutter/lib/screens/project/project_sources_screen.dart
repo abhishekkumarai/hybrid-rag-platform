@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
-import '../../api/api_client.dart';
 import '../../api/models/document.dart';
+import '../../api/models/ingest_job.dart';
 import '../../features/project/project_providers.dart';
 import '../../features/workspace/workspace_providers.dart';
 import '../../theme/evergreen_theme.dart';
@@ -37,8 +37,6 @@ enum _SourceKind { file, web }
 
 class _ProjectSourcesScreenState extends ConsumerState<ProjectSourcesScreen> {
   String? _routeOverride;
-  bool _uploading = false;
-  String? _progressLabel;
   _SourceKind _kind = _SourceKind.file;
   final _urlController = TextEditingController();
 
@@ -61,36 +59,21 @@ class _ProjectSourcesScreenState extends ConsumerState<ProjectSourcesScreen> {
       );
       return;
     }
-    setState(() {
-      _uploading = true;
-      _progressLabel = 'Fetching and parsing the page…';
-    });
-    try {
-      await ref
-          .read(projectActionsProvider)
-          .ingestUrlIndexAndAttach(
-            widget.projectId,
-            url,
-            onStage: (stage) {
-              if (mounted) setState(() => _progressLabel = stage);
-            },
-          );
-      _urlController.clear();
-    } on ApiException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not add URL: ${e.detail}')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _uploading = false);
-    }
+    _urlController.clear();
+    await ref
+        .read(ingestJobsProvider(widget.projectId).notifier)
+        .submitUrl(url);
   }
 
   @override
   Widget build(BuildContext context) {
     final projectAsync = ref.watch(projectProvider(widget.projectId));
     final documentsAsync = ref.watch(documentsProvider);
+    // Owned by the app, not this screen: leaving the tab and coming back shows the same progress.
+    final jobs = ref
+        .watch(ingestJobsProvider(widget.projectId))
+        .where((j) => !j.isDone)
+        .toList();
 
     return ProjectTabShell(
       workspaceId: widget.workspaceId,
@@ -133,9 +116,8 @@ class _ProjectSourcesScreenState extends ConsumerState<ProjectSourcesScreen> {
                           ),
                         ],
                         selected: {_kind},
-                        onSelectionChanged: _uploading
-                            ? null
-                            : (s) => setState(() => _kind = s.first),
+                        onSelectionChanged: (s) =>
+                            setState(() => _kind = s.first),
                         showSelectedIcon: false,
                       ),
                     ],
@@ -167,7 +149,7 @@ class _ProjectSourcesScreenState extends ConsumerState<ProjectSourcesScreen> {
                         ),
                         const SizedBox(width: 12),
                         FilledButton.icon(
-                          onPressed: _uploading ? null : _pickAndUpload,
+                          onPressed: _pickAndUpload,
                           icon: const Icon(Symbols.cloud_upload, size: 18),
                           label: const Text('Choose file'),
                         ),
@@ -179,7 +161,6 @@ class _ProjectSourcesScreenState extends ConsumerState<ProjectSourcesScreen> {
                         Expanded(
                           child: TextField(
                             controller: _urlController,
-                            enabled: !_uploading,
                             keyboardType: TextInputType.url,
                             decoration: const InputDecoration(
                               labelText: 'Web page or PDF URL',
@@ -190,30 +171,19 @@ class _ProjectSourcesScreenState extends ConsumerState<ProjectSourcesScreen> {
                         ),
                         const SizedBox(width: 12),
                         FilledButton.icon(
-                          onPressed: _uploading ? null : _addUrl,
+                          onPressed: _addUrl,
                           icon: const Icon(Symbols.add_link, size: 18),
                           label: const Text('Add URL'),
                         ),
                       ],
                     ),
-                  if (_uploading) ...[
+                  for (final job in jobs) ...[
                     const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          _progressLabel ?? 'Working…',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: EvergreenColors.metadata,
-                          ),
-                        ),
-                      ],
+                    _JobRow(
+                      job: job,
+                      onDismiss: () => ref
+                          .read(ingestJobsProvider(widget.projectId).notifier)
+                          .dismiss(job),
                     ),
                   ],
                 ],
@@ -310,31 +280,69 @@ class _ProjectSourcesScreenState extends ConsumerState<ProjectSourcesScreen> {
     final bytes = file.bytes;
     if (bytes == null) return;
 
-    setState(() {
-      _uploading = true;
-      _progressLabel = 'Uploading and parsing…';
-    });
-    try {
-      await ref
-          .read(projectActionsProvider)
-          .uploadIngestIndexAndAttach(
-            widget.projectId,
-            bytes,
-            file.name,
-            route: _routeOverride,
-            onStage: (stage) {
-              if (mounted) setState(() => _progressLabel = stage);
-            },
-          );
-    } on ApiException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Upload failed: ${e.detail}')));
-      }
-    } finally {
-      if (mounted) setState(() => _uploading = false);
-    }
+    await ref
+        .read(ingestJobsProvider(widget.projectId).notifier)
+        .submitUpload(bytes, file.name, route: _routeOverride);
+  }
+}
+
+class _JobRow extends StatelessWidget {
+  const _JobRow({required this.job, required this.onDismiss});
+  final IngestJob job;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final failed = job.isFailed;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: failed
+              ? const Icon(
+                  Symbols.error,
+                  size: 16,
+                  color: EvergreenColors.refused,
+                )
+              : const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                job.source,
+                overflow: TextOverflow.ellipsis,
+                style: monoStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                failed ? (job.error ?? 'Failed') : '${job.stage}…',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: failed
+                      ? EvergreenColors.refused
+                      : EvergreenColors.metadata,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (failed)
+          IconButton(
+            tooltip: 'Dismiss',
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Symbols.close, size: 16),
+            onPressed: onDismiss,
+          ),
+      ],
+    );
   }
 }
 

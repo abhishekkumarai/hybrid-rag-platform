@@ -5,8 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
+import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -40,6 +41,7 @@ from contracts.identity import (
     WorkspaceListResponse,
     WorkspaceMemberResponse,
 )
+from contracts.ingest_job import IngestJob, IngestJobListResponse, IngestJobUrlRequest
 from contracts.metrics import (
     GoldenQueryResult,
     ProjectEvalRun,
@@ -88,6 +90,7 @@ from services.identity.passwords import DUMMY_HASH, hash_password, verify_passwo
 from services.identity.store import DuplicateEmailError, IdentityStore, build_identity_store
 from services.indexing.service import IndexingService
 from services.indexing.web_indexer import WebRAGIndexer
+from services.ingestion.jobs import IngestJobRunner, IngestJobStore, StageReporter
 from services.ingestion.service import IngestionService
 from services.ingestion.url_source import UrlSourceError, url_to_pdf
 from services.ingestion.visualizer import render_page_with_bbox, resolve_document_path
@@ -109,6 +112,9 @@ session_manager = SessionManager(
 )
 telemetry_tracker = TelemetryTracker()
 model_catalog = ModelCatalog(settings.hardware.ollama_base_url)
+ingest_jobs = IngestJobStore(lambda: session_manager.redis_client)
+ingest_runner = IngestJobRunner(ingest_jobs)
+_index_lock = threading.Lock()  # BM25/graph are in-process state; index one document at a time
 ragops_store = RAGOpsStore(
     redis_host=settings.storage.redis_host,
     redis_port=settings.storage.redis_port,
@@ -936,6 +942,100 @@ def _parse_owned_upload(file_path: Path, filename: str, route: str | None, user:
     return res
 
 
+# --- Background ingest jobs (IRA-60) ---
+
+
+def _ingest_pipeline(
+    user: User, session: ChatSession, parse: Callable[[StageReporter], IngestResponse]
+) -> Callable[[StageReporter], tuple[str, int]]:
+    """The server-side add-a-source chain: parse -> index -> attach, reporting each stage."""
+
+    def work(report: StageReporter) -> tuple[str, int]:
+        res = parse(report)
+        if res.error:
+            raise HTTPException(status_code=422, detail=res.error)
+        report(f"Indexing {len(res.blocks)} blocks", doc_id=res.doc_id, blocks=len(res.blocks))
+        _index_owned(res.doc_id, res.blocks, user)
+        report("Attaching to project")
+        _attach_to_session(session, [res.doc_id], user)
+        return res.doc_id, len(res.blocks)
+
+    return work
+
+
+_JOB_HIDDEN = {"user_id", "runner_id"}
+
+
+@app.post("/api/v1/ingest/jobs", response_model=IngestJob, response_model_exclude=_JOB_HIDDEN, status_code=202)
+def create_ingest_job(
+    file: UploadFile = File(...),
+    session_id: str = Form(...),
+    route: str | None = Form(default=None),
+    user: User = Depends(current_user),
+) -> IngestJob:
+    """Saves an upload and returns immediately; the gateway parses, indexes and attaches it to the
+    project in the background. Poll `GET /api/v1/ingest/jobs` for progress."""
+    session = workspace_session(session_id, user)
+    safe_filename = Path(file.filename or "uploaded_document.pdf").name or "uploaded_document.pdf"
+    file_path = _user_upload_path(user, safe_filename)
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    job = ingest_jobs.create(user_id=user.id, session_id=session.id, kind="file", source=safe_filename)
+
+    def parse(report: StageReporter) -> IngestResponse:
+        report("Parsing")
+        return _parse_owned_upload(file_path, safe_filename, route, user)
+
+    ingest_runner.submit(job, _ingest_pipeline(user, session, parse))
+    return job
+
+
+@app.post("/api/v1/ingest/jobs/url", response_model=IngestJob, response_model_exclude=_JOB_HIDDEN, status_code=202)
+def create_ingest_url_job(req: IngestJobUrlRequest, user: User = Depends(current_user)) -> IngestJob:
+    """Like `POST /api/v1/ingest/jobs`, for a public web page or PDF link fetched server-side."""
+    session = workspace_session(req.session_id, user)
+    url = req.url.strip()
+    job = ingest_jobs.create(user_id=user.id, session_id=session.id, kind="url", source=url)
+    cfg = settings.ingestion
+
+    def parse(report: StageReporter) -> IngestResponse:
+        report("Fetching the page")
+        try:
+            filename, pdf_bytes = url_to_pdf(
+                url, max_bytes=cfg.url_max_bytes, timeout_s=cfg.url_timeout_s, max_redirects=cfg.url_max_redirects,
+            )
+        except UrlSourceError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        file_path = _user_upload_path(user, filename)
+        file_path.write_bytes(pdf_bytes)
+        report("Parsing")
+        return _parse_owned_upload(file_path, filename, req.route, user)
+
+    ingest_runner.submit(job, _ingest_pipeline(user, session, parse))
+    return job
+
+
+@app.get("/api/v1/ingest/jobs", response_model=IngestJobListResponse,
+         response_model_exclude={"jobs": {"__all__": _JOB_HIDDEN}})
+def list_ingest_jobs(
+    session_id: str | None = Query(default=None), user: User = Depends(current_user)
+) -> IngestJobListResponse:
+    """The caller's recent ingest jobs (newest first), optionally for one project."""
+    return IngestJobListResponse(jobs=ingest_jobs.list_for(user.id, session_id))
+
+
+@app.delete("/api/v1/ingest/jobs/{job_id}")
+def dismiss_ingest_job(job_id: str, user: User = Depends(current_user)) -> dict[str, bool]:
+    """Clears a finished job from the list. A queued or running job can't be dismissed."""
+    job = ingest_jobs.get(job_id)
+    if job is None or job.user_id != user.id:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+    if job.status in ("queued", "running"):
+        raise HTTPException(status_code=409, detail="Job is still running")
+    ingest_jobs.delete(job_id)
+    return {"deleted": True}
+
+
 @app.post("/api/v1/index", response_model=IndexResponse)
 def index_blocks(req: ChunkAndIndexRequest, user: User = Depends(current_user)) -> IndexResponse:
     """Chunks layout blocks with heading hierarchy & table windowing, then indexes into Qdrant & BM25s.
@@ -944,15 +1044,20 @@ def index_blocks(req: ChunkAndIndexRequest, user: User = Depends(current_user)) 
     re-index it: the blocks come from the client, and doc_ids are shared by everyone who uploaded the
     same content, so letting a later uploader re-index would let them rewrite another user's chunks.
     Identical content is already indexed, so for them this is a no-op."""
+    return _index_owned(req.doc_id, req.blocks, user)
+
+
+def _index_owned(doc_id: str, blocks: list[Block], user: User) -> IndexResponse:
     store = get_identity_store()
-    if store.get_document(req.doc_id, user.id) is None:
-        raise HTTPException(status_code=404, detail=f"Document '{req.doc_id}' not found")
+    if store.get_document(doc_id, user.id) is None:
+        raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found")
     _, indexing, _ = get_services()
-    if store.first_owner(req.doc_id) != user.id:
-        existing = sum(1 for c in indexing.bm25.corpus_chunks if c.get("doc_id") == req.doc_id)
+    if store.first_owner(doc_id) != user.id:
+        existing = sum(1 for c in indexing.bm25.corpus_chunks if c.get("doc_id") == doc_id)
         if existing:
-            return IndexResponse(doc_id=req.doc_id, indexed_count=existing, duration_ms=0.0)
-    return indexing.chunk_and_index(doc_id=req.doc_id, blocks=req.blocks)
+            return IndexResponse(doc_id=doc_id, indexed_count=existing, duration_ms=0.0)
+    with _index_lock:
+        return indexing.chunk_and_index(doc_id=doc_id, blocks=blocks)
 
 
 @app.post("/api/v1/retrieve", response_model=RetrieveResponse)
@@ -1045,7 +1150,11 @@ def attach_files_to_session(
     req: AttachFilesRequest, session: ChatSession = Depends(workspace_session), user: User = Depends(current_user)
 ) -> ChatSession:
     """Attaches documents the caller can read to a session workspace (stored as exact doc_ids)."""
-    doc_ids = _validated_files(req.files, user) or []
+    return _attach_to_session(session, req.files, user)
+
+
+def _attach_to_session(session: ChatSession, files: list[str], user: User) -> ChatSession:
+    doc_ids = _validated_files(files, user) or []
     updated = session_manager.attach_files(session.id, doc_ids)
     if not updated:
         raise HTTPException(status_code=404, detail=f"Session '{session.id}' not found")

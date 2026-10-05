@@ -158,5 +158,18 @@ class ApiClient {
     return _handle(response, (j) => j);
   }
 
+  /// Multipart upload for `POST /api/v1/ingest/jobs` — returns the queued job at once; the gateway
+  /// parses, indexes and attaches the file to `sessionId` in the background (IRA-60).
+  Future<dynamic> createIngestJob(List<int> bytes, String filename, String sessionId, {String? route}) async {
+    final request = http.MultipartRequest('POST', _uri('/api/v1/ingest/jobs'))
+      ..headers.addAll(await _headers(json: false, stateChanging: true))
+      ..fields['session_id'] = sessionId
+      ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
+    if (route != null) request.fields['route'] = route;
+    final streamedResponse = await _http.send(request);
+    final response = await http.Response.fromStream(streamedResponse);
+    return _handle(response, (j) => j);
+  }
+
   void close() => _http.close();
 }
