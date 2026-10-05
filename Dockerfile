@@ -33,6 +33,13 @@ RUN pip install --upgrade pip && \
     pip install --index-url https://download.pytorch.org/whl/cpu torch && \
     pip install ".[parse]"
 
+# Headless Chromium for website connectors that need JavaScript (IRA-57). ~400 MB; build with
+# `--build-arg INSTALL_BROWSER=0` to skip it (connectors then handle static HTML only).
+ARG INSTALL_BROWSER=1
+RUN if [ "$INSTALL_BROWSER" = "1" ]; then \
+        pip install ".[web-js]" && python -m playwright install --with-deps chromium; \
+    fi
+
 COPY . .
 
 # Pre-built Flutter web client (IRA-52) — `.dockerignore` excludes the rest of app_flutter/ (Dart

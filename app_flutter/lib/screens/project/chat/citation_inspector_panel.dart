@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_symbols_icons/symbols.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../api/auth_provider.dart';
 import '../../../api/models/retrieval.dart';
@@ -21,8 +22,9 @@ final _previewBytesProvider = FutureProvider.family<Uint8List, Citation>((ref, c
   });
 });
 
-/// DESIGN-evergreen.md inspector: page preview PNG with the citation's bbox highlighted,
-/// prev/next through the turn's citations, and a figure viewer for `is_figure` citations.
+/// DESIGN-evergreen.md inspector: for documents, the page preview with the citation's bbox highlighted
+/// (or the figure); for web pages (IRA-57), the page address and a link to open it. Prev/next walks
+/// the turn's citations.
 class CitationInspectorPanel extends ConsumerWidget {
   const CitationInspectorPanel({
     super.key,
@@ -40,7 +42,7 @@ class CitationInspectorPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final index = citations.indexOf(selected);
-    final previewAsync = ref.watch(_previewBytesProvider(selected));
+    final webUrl = selected.webUrl;
 
     return Container(
       color: EvergreenColors.surface,
@@ -69,76 +71,75 @@ class CitationInspectorPanel extends ConsumerWidget {
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              selected.formattedBadge.isNotEmpty ? selected.formattedBadge : '${selected.docId} · p. ${selected.page}',
-              style: monoStyle(fontSize: 12, color: EvergreenColors.metadata),
+          if (webUrl == null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                selected.formattedBadge.isNotEmpty ? selected.formattedBadge : '${selected.docId} · p. ${selected.page}',
+                style: monoStyle(fontSize: 12, color: EvergreenColors.metadata),
+              ),
             ),
-          ),
           const SizedBox(height: 12),
           Expanded(
-            child: previewAsync.when(
-              data: (bytes) => InteractiveViewer(
-                minScale: 0.5,
-                maxScale: 4,
-                child: Image.memory(bytes, fit: BoxFit.contain, width: double.infinity),
-              ),
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, _) => _DocumentMockupPreview(selected: selected),
-            ),
+            child: webUrl != null
+                ? _WebSource(url: webUrl)
+                : ref.watch(_previewBytesProvider(selected)).when(
+                      data: (bytes) => InteractiveViewer(
+                        minScale: 0.5,
+                        maxScale: 4,
+                        child: Image.memory(bytes, fit: BoxFit.contain, width: double.infinity),
+                      ),
+                      loading: () => const Center(child: CircularProgressIndicator()),
+                      error: (e, _) => const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text(
+                            'The page preview is not available for this source.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 13, color: EvergreenColors.metadata),
+                          ),
+                        ),
+                      ),
+                    ),
           ),
           if (selected.snippet.isNotEmpty)
             Container(
               width: double.infinity,
               margin: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              padding: const EdgeInsets.all(12),
+              clipBehavior: Clip.antiAlias,
+              // A rounded border must be uniform, so the accent is its own strip, not a thicker left side.
               decoration: BoxDecoration(
                 color: EvergreenColors.canvas,
-                border: const Border(
-                  left: BorderSide(color: EvergreenColors.primary, width: 3),
-                  top: BorderSide(color: EvergreenColors.border),
-                  right: BorderSide(color: EvergreenColors.border),
-                  bottom: BorderSide(color: EvergreenColors.border),
-                ),
+                border: Border.all(color: EvergreenColors.border),
                 borderRadius: BorderRadius.circular(EvergreenRadii.control),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'CITED PASSAGE',
-                    style: monoStyle(fontSize: 10, weight: FontWeight.w600, color: EvergreenColors.metadata),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '"${selected.snippet}"',
-                    style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: EvergreenColors.ink, height: 1.4),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: EvergreenColors.primaryTint,
-                          borderRadius: BorderRadius.circular(4),
+              child: IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Container(width: 3, color: EvergreenColors.primary),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'CITED PASSAGE',
+                              style: monoStyle(fontSize: 10, weight: FontWeight.w600, color: EvergreenColors.metadata),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              '"${selected.snippet}"',
+                              style: const TextStyle(
+                                  fontSize: 12, fontStyle: FontStyle.italic, color: EvergreenColors.ink, height: 1.4),
+                            ),
+                          ],
                         ),
-                        child: Text('Sim: 0.94', style: monoStyle(fontSize: 10, weight: FontWeight.w600, color: EvergreenColors.primary)),
                       ),
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: EvergreenColors.surface,
-                          border: Border.all(color: EvergreenColors.border),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text('Rerank: 0.98', style: monoStyle(fontSize: 10, color: EvergreenColors.metadata)),
-                      ),
-                    ],
-                  ),
-                ],
+                    ),
+                  ],
+                ),
               ),
             ),
         ],
@@ -147,104 +148,44 @@ class CitationInspectorPanel extends ConsumerWidget {
   }
 }
 
-class _DocumentMockupPreview extends StatelessWidget {
-  const _DocumentMockupPreview({required this.selected});
-  final Citation selected;
+/// A web page has no PDF page to render; show where it came from and let the user open it.
+class _WebSource extends StatelessWidget {
+  const _WebSource({required this.url});
+  final String url;
 
   @override
   Widget build(BuildContext context) {
+    final uri = Uri.tryParse(url);
+    final section = uri?.fragment ?? '';
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'PAGE PREVIEW',
-            style: monoStyle(fontSize: 10, weight: FontWeight.w600, color: EvergreenColors.metadata),
+          Row(
+            children: [
+              const Icon(Symbols.public, size: 18, color: EvergreenColors.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  uri?.host ?? url,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: EvergreenColors.ink),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border.all(color: EvergreenColors.border),
-              borderRadius: BorderRadius.circular(EvergreenRadii.control),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.03),
-                  blurRadius: 4,
-                  offset: const Offset(0, 1),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'UNITED STATES SEC · FORM 10-K',
-                      style: monoStyle(fontSize: 8, color: EvergreenColors.metadata),
-                    ),
-                    Text(
-                      'PART II · ITEM 7',
-                      style: monoStyle(fontSize: 8, color: EvergreenColors.metadata),
-                    ),
-                  ],
-                ),
-                const Divider(height: 12, color: EvergreenColors.border),
-                Container(height: 5, width: 140, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
-                const SizedBox(height: 6),
-                Container(height: 4, width: double.infinity, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(2))),
-                const SizedBox(height: 4),
-                Container(height: 4, width: 220, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(2))),
-                const SizedBox(height: 10),
-                // Highlight Box Around Cited Passage
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: EvergreenColors.primaryTint,
-                    border: Border.all(color: EvergreenColors.primary, width: 1.5),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Symbols.verified, size: 12, color: EvergreenColors.primary),
-                          const SizedBox(width: 4),
-                          Text(
-                            '[Extracted Context]',
-                            style: monoStyle(fontSize: 9, weight: FontWeight.w700, color: EvergreenColors.primary),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        selected.snippet,
-                        style: monoStyle(fontSize: 10, weight: FontWeight.w500, color: EvergreenColors.ink),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Container(height: 4, width: double.infinity, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(2))),
-                const SizedBox(height: 4),
-                Container(height: 4, width: 240, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(2))),
-                const SizedBox(height: 4),
-                Container(height: 4, width: 160, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(2))),
-                const SizedBox(height: 10),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Text(
-                    'Page ${selected.page} of 168',
-                    style: monoStyle(fontSize: 8, color: EvergreenColors.metadata),
-                  ),
-                ),
-              ],
-            ),
+          const SizedBox(height: 6),
+          SelectableText(url, style: monoStyle(fontSize: 11, color: EvergreenColors.metadata)),
+          if (section.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text('Section: #$section', style: const TextStyle(fontSize: 12, color: EvergreenColors.inkSecondary)),
+          ],
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: uri == null ? null : () => launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank'),
+            icon: const Icon(Symbols.open_in_new, size: 16),
+            label: const Text('Open page'),
           ),
         ],
       ),

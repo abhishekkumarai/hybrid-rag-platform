@@ -33,6 +33,11 @@ parse = [
 ui = [
     "langflow>=1.0.0",
 ]
+# Website connectors render JavaScript pages in headless Chromium (IRA-57). Optional: without it,
+# connectors still crawl static HTML and flag JS-only pages as `needs_js`.
+web-js = [
+    "playwright>=1.45",
+]
 dev = [
     "pytest>=8.1.0",
     "pytest-asyncio>=0.23.0",

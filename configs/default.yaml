@@ -30,6 +30,18 @@ ingestion:
   url_timeout_s: 20.0
   url_max_redirects: 5
 
+connectors:
+  # Website connectors (IRA-57): crawl a site, keep its pages indexed, cite page URLs.
+  enabled: true
+  user_agent: "IRA-RAG-Connector/1.0 (+document ingestion; respects robots.txt)"
+  max_pages_cap: 500          # hard ceiling on a connector's own max_pages
+  request_timeout_s: 15.0
+  max_page_bytes: 5000000
+  crawl_delay_s: 0.5          # minimum gap between requests to one site (robots crawl-delay can raise it)
+  browser_timeout_s: 30.0     # headless rendering of JavaScript pages
+  min_words: 20               # pages with less readable text are skipped (or flagged needs_js)
+  scheduler_interval_s: 60.0  # how often due daily/weekly syncs are checked
+
 chunking:
   max_tokens: 512
   overlap_tokens: 64

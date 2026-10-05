@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../api/auth_provider.dart';
 import '../features/workspace/workspace_providers.dart';
+import '../screens/connectors/connectors_screen.dart';
 import '../screens/evaluation/global_evaluation_screen.dart';
 import '../screens/graph/knowledge_graph_screen.dart';
 import '../screens/library/library_screen.dart';
@@ -117,6 +118,17 @@ GoRouter buildRouter(WidgetRef ref) {
             path: '/w/:ws/evaluation',
             builder: (context, state) => GlobalEvaluationScreen(
               workspaceId: state.pathParameters['ws']!,
+            ),
+          ),
+          GoRoute(
+            path: '/w/:ws/connectors',
+            builder: (context, state) => ConnectorsScreen(workspaceId: state.pathParameters['ws']!),
+          ),
+          GoRoute(
+            path: '/w/:ws/connectors/:connector',
+            builder: (context, state) => ConnectorDetailScreen(
+              workspaceId: state.pathParameters['ws']!,
+              connectorId: state.pathParameters['connector']!,
             ),
           ),
           GoRoute(

@@ -60,6 +60,20 @@ class IngestionConfig(BaseModel):
     url_max_redirects: int = 5
 
 
+class ConnectorsConfig(BaseModel):
+    """Website connectors (IRA-57)."""
+
+    enabled: bool = True
+    user_agent: str = "IRA-RAG-Connector/1.0 (+document ingestion; respects robots.txt)"
+    max_pages_cap: int = 500
+    request_timeout_s: float = 15.0
+    max_page_bytes: int = 5_000_000
+    crawl_delay_s: float = 0.5
+    browser_timeout_s: float = 30.0
+    min_words: int = 20
+    scheduler_interval_s: float = 60.0
+
+
 class ChunkingConfig(BaseModel):
     max_tokens: int = 512
     overlap_tokens: int = 64
@@ -127,6 +141,7 @@ class AppConfig(BaseModel):
     hardware: HardwareConfig = Field(default_factory=HardwareConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
     ingestion: IngestionConfig = Field(default_factory=IngestionConfig)
+    connectors: ConnectorsConfig = Field(default_factory=ConnectorsConfig)
     chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
     generation: GenerationConfig = Field(default_factory=GenerationConfig)

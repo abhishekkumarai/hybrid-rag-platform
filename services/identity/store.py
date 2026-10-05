@@ -39,6 +39,7 @@ class IdentityStore(Protocol):
 
     # documents
     def add_document(self, doc: OwnedDocument) -> None: ...
+    def remove_document(self, user_id: str, doc_id: str) -> None: ...
     def owned_doc_ids(self, user_id: str) -> set[str]: ...
     def get_document(self, doc_id: str, user_id: str | None = None) -> OwnedDocument | None: ...
     def document_owner_count(self, doc_id: str) -> int: ...
@@ -129,6 +130,9 @@ class InMemoryIdentityStore:
 
     def add_document(self, doc: OwnedDocument) -> None:
         self.documents.setdefault((doc.user_id, doc.doc_id), doc)
+
+    def remove_document(self, user_id: str, doc_id: str) -> None:
+        self.documents.pop((user_id, doc_id), None)
 
     def owned_doc_ids(self, user_id: str) -> set[str]:
         return {d for (u, d) in self.documents if u == user_id}
@@ -339,6 +343,10 @@ class PostgresIdentityStore:
                 "VALUES (%s, %s, %s, %s, %s) ON CONFLICT (user_id, doc_id) DO NOTHING",
                 (doc.user_id, doc.doc_id, doc.filename, doc.path, doc.created_at),
             )
+
+    def remove_document(self, user_id: str, doc_id: str) -> None:
+        with self._conn() as conn:
+            conn.execute("DELETE FROM user_documents WHERE user_id = %s AND doc_id = %s", (user_id, doc_id))
 
     def owned_doc_ids(self, user_id: str) -> set[str]:
         with self._conn() as conn:

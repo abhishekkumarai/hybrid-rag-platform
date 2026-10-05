@@ -77,6 +77,9 @@ from contracts.web import (
 )
 from services.common.config import load_config
 from services.common.logger import get_logger
+from services.connectors.web.router import ConnectorDeps, build_router, scheduler_loop
+from services.connectors.web.service import WebConnectorService
+from services.connectors.web.store import ConnectorStore
 from services.evaluation import project as project_eval
 from services.feedback.store import RAGOpsStore
 from services.gateway.chat_pipeline import ChatPipeline, fold_to_response, to_sse
@@ -336,9 +339,41 @@ async def _periodic_store_reload() -> None:
             logger.warning(f"Periodic BM25/graph store reload failed: {exc}")
 
 
+_connector_service: WebConnectorService | None = None
+
+
+def get_connector_service() -> WebConnectorService:
+    """Website connectors (IRA-57) write through this process's own indexing singletons."""
+    global _connector_service
+    if _connector_service is None:
+        _connector_service = WebConnectorService(
+            store=ConnectorStore(lambda: session_manager.redis_client),
+            indexing=lambda: get_services()[1],
+            identity=get_identity_store,
+            sessions=session_manager,
+            ingestion=lambda: get_services()[0],
+            config=settings.connectors,
+        )
+    return _connector_service
+
+
+def _project_visible(project_id: str, user: User) -> bool:
+    session, _ = session_manager.get_for_member(project_id, _user_workspace_ids(user))
+    return session is not None or session_manager.get_owned(project_id, user.id)[0] is not None
+
+
+app.include_router(build_router(current_user, ConnectorDeps(
+    service=get_connector_service,
+    user_workspaces=_user_workspace_ids,
+    project_visible=_project_visible,
+)))
+
+
 @app.on_event("startup")
 async def _start_background_tasks() -> None:
     asyncio.create_task(_periodic_store_reload())
+    if settings.connectors.enabled:
+        asyncio.create_task(scheduler_loop(get_connector_service, settings.connectors.scheduler_interval_s))
 
 
 def get_agentic_coordinator() -> AgenticCoordinator:
@@ -744,7 +779,22 @@ def list_documents(user: User = Depends(current_user)) -> dict:
     web_ids = {ws.doc_id for ws in web_sources}
 
     docs = []
-    for doc_id in sorted((owned | store.granted_doc_ids(user.id)) - web_ids):
+    readable = (owned | store.granted_doc_ids(user.id)) - web_ids
+    connector_docs = get_connector_service().store.doc_info(readable)
+    for doc_id in sorted(readable):
+        if doc_id in connector_docs:
+            info = connector_docs[doc_id]
+            docs.append({
+                "name": info.get("title") or info.get("url") or doc_id,
+                "doc_id": doc_id,
+                "pages": 1,
+                "size_kb": 0.0,
+                "is_web": True,
+                "url": info.get("url"),
+                "connector_id": info.get("connector_id"),
+                "read_only": doc_id not in owned,
+            })
+            continue
         record = store.get_document(doc_id, user.id) or store.get_document(doc_id)
         path = _readable_path(doc_id, {doc_id}, user.id)
         page_count = 1

@@ -70,10 +70,14 @@ class _NavigationRail extends StatelessWidget {
     const items = [
       (label: 'Overview', icon: Symbols.dashboard, suffix: ''),
       (label: 'Library', icon: Symbols.folder_open, suffix: '/library'),
+      (label: 'Connectors', icon: Symbols.language, suffix: '/connectors'),
       (label: 'Evaluation', icon: Symbols.analytics, suffix: '/evaluation'),
       (label: 'Observability', icon: Symbols.monitoring, suffix: '/observability'),
     ];
-    final selectedIndex = items.indexWhere((i) => location == '/w/$workspaceId${i.suffix}');
+    final selectedIndex = items.indexWhere((i) {
+      final path = '/w/$workspaceId${i.suffix}';
+      return location == path || (i.suffix.isNotEmpty && location.startsWith('$path/'));
+    });
 
     return NavigationRail(
       selectedIndex: selectedIndex < 0 ? 0 : selectedIndex,
