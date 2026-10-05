@@ -55,6 +55,20 @@ final serviceHealthProvider = FutureProvider<ServiceHealth>((ref) async {
   return ServiceHealth.fromJson(json);
 });
 
+/// `/api/v1/health` re-checked every 10 s, so the UI notices Ollama stopping or starting without a
+/// reload (chat is disabled while it's down). Errors surface as "unknown", not as "down".
+final liveServiceHealthProvider = StreamProvider<ServiceHealth>((ref) async* {
+  final client = ref.watch(userApiClientProvider);
+  while (true) {
+    try {
+      yield ServiceHealth.fromJson(await client.get('/api/v1/health') as Map<String, dynamic>);
+    } catch (_) {
+      // Keep the last known state; the next tick retries.
+    }
+    await Future<void>.delayed(const Duration(seconds: 10));
+  }
+});
+
 final documentsProvider = FutureProvider<List<DocumentInfo>>((ref) async {
   final client = ref.watch(userApiClientProvider);
   final json = await client.get('/api/v1/documents') as Map<String, dynamic>;
@@ -78,16 +92,17 @@ class WorkspaceActions {
     String workspaceId,
     String title, {
     String? description,
-    String model = 'llama3.2:3b',
+    String? model,
     String retrievalMode = 'auto',
   }) async {
     final json = await _client.post('/api/v1/sessions', body: {
       'title': title,
       if (workspaceId.isNotEmpty && workspaceId != 'default' && workspaceId != 'ws_default')
         'workspace_id': workspaceId,
-      if (description != null && description.trim().isNotEmpty) 'system_prompt': description.trim(),
+      if (description != null && description.trim().isNotEmpty) 'description': description.trim(),
+      // Without a model the gateway applies the user's default (Models & tuning).
       'parameters': {
-        'model': model,
+        'model': ?model,
         'retrieval_mode': retrievalMode,
       },
     }) as Map<String, dynamic>;

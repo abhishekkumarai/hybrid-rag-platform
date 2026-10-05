@@ -28,6 +28,10 @@ x-app-env: &app-env
   OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
   RAG_PROFILE: ${RAG_PROFILE:-quality}
   PYTHONPATH: /app
+  # Needed by both gateway (the /api/v1/queue/* admin endpoints, services/scheduling/client.py) and
+  # ingestion-worker (services/scheduling/worker.py) — shared here so neither forgets it.
+  TEMPORAL_HOST: temporal
+  TEMPORAL_PORT: 7233
 
 x-app-base: &app-base
   build:
@@ -47,6 +51,7 @@ x-app-base: &app-base
     - ./components:/app/components
     - ./tests:/app/tests
     - ./ui:/app/ui
+    - ./app_flutter:/app/app_flutter
   depends_on:
     qdrant:
       condition: service_healthy
@@ -123,15 +128,64 @@ services:
       retries: 5
       start_period: 120s
 
-  worker:
-    <<: *app-base
-    container_name: rag_worker
-    command: ["python", "-m", "services.scheduler.worker"]
+  # Temporal server. Persists to databases `temporal` and `temporal_visibility` on the same
+  # host-installed Postgres instance the app itself uses (see the Postgres note at the top of this
+  # file) — the auto-setup image creates both on first boot if they don't exist yet (needs the
+  # `postgres` user to have CREATEDB, same as every other database this stack has provisioned here).
+  temporal:
+    image: temporalio/auto-setup:1.24.2
+    container_name: rag_temporal
+    restart: unless-stopped
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PWD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD to your local Postgres password (already exported system-wide on this host)}
+      POSTGRES_SEEDS: host.docker.internal
+    ports:
+      - "7233:7233"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # The auto-setup image's frontend gRPC listens on the container's own interface IP, not
+    # 127.0.0.1/localhost (confirmed via `netstat` inside the running container) — a loopback-based
+    # healthcheck (`</dev/tcp/localhost/7233`) reports unhealthy forever even though the server is
+    # genuinely up, so this resolves the container's own address first instead.
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z $$(hostname -i) 7233 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
-  scheduler:
+  # Web UI for inspecting workflow executions (http://localhost:8081) — handy for debugging a
+  # document-ingestion run beyond what the gateway's /api/v1/queue/dlq admin view exposes.
+  temporal-ui:
+    image: temporalio/ui:2.31.2
+    container_name: rag_temporal_ui
+    restart: unless-stopped
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_UI_PORT: "8080"
+    ports:
+      - "8081:8080"
+    depends_on:
+      temporal:
+        condition: service_healthy
+
+  # Temporal worker: runs the recurring directory-scan schedule plus the per-document parse/index
+  # workflows it dispatches (services/scheduling). Replaces the old Redis-queue `worker` +
+  # `scheduler` services.
+  ingestion-worker:
     <<: *app-base
-    container_name: rag_scheduler
-    command: ["python", "-m", "services.scheduler.reconciler"]
+    container_name: rag_ingestion_worker
+    command: ["python", "-m", "services.scheduling.worker"]
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
 
   langflow:
     build:

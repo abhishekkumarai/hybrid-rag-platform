@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../api/models/session.dart';
+import '../features/project/project_providers.dart';
 import '../features/workspace/workspace_providers.dart';
 import '../theme/evergreen_theme.dart';
 
@@ -47,7 +48,8 @@ class _CreateProjectModal extends ConsumerStatefulWidget {
 class _CreateProjectModalState extends ConsumerState<_CreateProjectModal> {
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
-  String _selectedModel = 'llama3.2:3b';
+  String? _selectedModel;
+  String? _effectiveModel;
   String _selectedMode = 'auto';
   bool _isSubmitting = false;
   String? _errorMessage;
@@ -76,7 +78,7 @@ class _CreateProjectModalState extends ConsumerState<_CreateProjectModal> {
             widget.workspaceId,
             title,
             description: _descriptionController.text.trim(),
-            model: _selectedModel,
+            model: _effectiveModel,
             retrievalMode: _selectedMode,
           );
       if (mounted) {
@@ -248,7 +250,7 @@ class _CreateProjectModalState extends ConsumerState<_CreateProjectModal> {
                 style: const TextStyle(fontSize: 13),
                 maxLines: 2,
                 decoration: InputDecoration(
-                  hintText: 'e.g. NVIDIA and semiconductor transcripts, capex and gross margin commentary',
+                  hintText: 'e.g. Q3 earnings calls. Added to the default grounding prompt as the project focus.',
                   hintStyle: const TextStyle(color: EvergreenColors.metadata, fontSize: 12),
                   isDense: true,
                   contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -353,42 +355,46 @@ class _CreateProjectModalState extends ConsumerState<_CreateProjectModal> {
                   borderRadius: BorderRadius.circular(EvergreenRadii.control),
                   border: Border.all(color: EvergreenColors.border),
                 ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _selectedModel,
-                    isExpanded: true,
-                    icon: const Icon(Symbols.expand_more, size: 18, color: EvergreenColors.metadata),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'llama3.2:3b',
-                        child: Text(
-                          'llama3.2:3b (Local fast, low VRAM footprint)',
-                          style: TextStyle(fontSize: 13),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      DropdownMenuItem(
-                        value: 'llama3.1:latest',
-                        child: Text(
-                          'llama3.1:latest (8B parameters, production standard)',
-                          style: TextStyle(fontSize: 13),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      DropdownMenuItem(
-                        value: 'qwen2.5:7b',
-                        child: Text(
-                          'qwen2.5:7b (High quality reasoning & synthesis)',
-                          style: TextStyle(fontSize: 13),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                    onChanged: (val) {
-                      if (val != null) setState(() => _selectedModel = val);
-                    },
-                  ),
-                ),
+                child: Consumer(builder: (context, ref, _) {
+                  final modelsAsync = ref.watch(modelsProvider);
+                  final list = modelsAsync.valueOrNull;
+                  if (list == null) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: modelsAsync.hasError
+                          ? const Text('Could not load models.', style: TextStyle(fontSize: 13, color: EvergreenColors.refused))
+                          : const LinearProgressIndicator(minHeight: 2),
+                    );
+                  }
+                  final names = list.models.map((m) => m.name).toList();
+                  // Preselect the user's default (Models & tuning); keep an explicit choice.
+                  final value = names.contains(_selectedModel)
+                      ? _selectedModel
+                      : (names.contains(list.defaultModel) ? list.defaultModel : (names.isEmpty ? null : names.first));
+                  _effectiveModel = value;
+                  return DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: value,
+                      isExpanded: true,
+                      icon: const Icon(Symbols.expand_more, size: 18, color: EvergreenColors.metadata),
+                      hint: const Text('No chat models installed', style: TextStyle(fontSize: 13)),
+                      items: [
+                        for (final m in list.models)
+                          DropdownMenuItem(
+                            value: m.name,
+                            child: Text(
+                              m.name == list.defaultModel ? '${m.name}  (your default)' : m.name,
+                              style: const TextStyle(fontSize: 13),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) setState(() => _selectedModel = val);
+                      },
+                    ),
+                  );
+                }),
               ),
               const SizedBox(height: 24),
 

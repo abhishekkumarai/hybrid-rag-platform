@@ -4,6 +4,7 @@ import 'package:material_symbols_icons/symbols.dart';
 
 import '../../api/api_client.dart';
 import '../../api/auth_provider.dart';
+import '../../api/models/metrics.dart';
 import '../../features/admin/admin_providers.dart';
 import '../../features/project/project_providers.dart';
 import '../../theme/evergreen_theme.dart';
@@ -54,7 +55,7 @@ class _ModelsTuningScreenState extends ConsumerState<ModelsTuningScreen> {
                     ?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 20),
-              const SectionHeader(title: 'Chat models'),
+              const SectionHeader(title: 'Default chat model'),
               modelsAsync.when(
                 data: (list) => list.models.isEmpty
                     ? EmptyState(
@@ -63,45 +64,7 @@ class _ModelsTuningScreenState extends ConsumerState<ModelsTuningScreen> {
                             : 'Ollama is unreachable, so no models can be listed.',
                         icon: Symbols.smart_toy,
                       )
-                    : Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(
-                            EvergreenRadii.panel,
-                          ),
-                          border: Border.all(color: EvergreenColors.border),
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: Material(
-                          color: EvergreenColors.surface,
-                          child: Column(
-                            children: [
-                              for (final m in list.models)
-                                ListTile(
-                                  leading: Icon(
-                                    Symbols.smart_toy,
-                                    color: m.isDefault
-                                        ? EvergreenColors.primary
-                                        : EvergreenColors.metadata,
-                                    size: 18,
-                                  ),
-                                  title: Text(
-                                    m.name,
-                                    style: monoStyle(fontSize: 13),
-                                  ),
-                                  trailing: m.isDefault
-                                      ? const Text(
-                                          'default',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: EvergreenColors.primary,
-                                          ),
-                                        )
-                                      : null,
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
+                    : _DefaultModelPicker(list: list),
                 loading: () => const LinearProgressIndicator(),
                 error: (e, _) => const Text(
                   'Ollama unreachable.',
@@ -321,5 +284,95 @@ class _ModelsTuningScreenState extends ConsumerState<ModelsTuningScreen> {
     } finally {
       if (mounted) setState(() => _rebuilding = false);
     }
+  }
+}
+
+
+String _gb(int? bytes) => bytes == null || bytes <= 0 ? '' : '${(bytes / 1e9).toStringAsFixed(1)} GB';
+
+/// Your default chat model: preselected for new projects and in model pickers. Saved per user.
+class _DefaultModelPicker extends ConsumerStatefulWidget {
+  const _DefaultModelPicker({required this.list});
+  final ModelListResponse list;
+
+  @override
+  ConsumerState<_DefaultModelPicker> createState() => _DefaultModelPickerState();
+}
+
+class _DefaultModelPickerState extends ConsumerState<_DefaultModelPicker> {
+  bool _saving = false;
+
+  Future<void> _choose(String? name) async {
+    if (name == null || name == widget.list.defaultModel) return;
+    setState(() => _saving = true);
+    try {
+      await ref.read(projectActionsProvider).setDefaultModel(name);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('New projects will use $name.')));
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not set the default: ${e.detail}')));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final list = widget.list;
+    final names = list.models.map((m) => m.name).toList();
+    final current = names.contains(list.defaultModel) ? list.defaultModel : (names.isEmpty ? null : names.first);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                initialValue: current,
+                key: ValueKey(current),
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Used for new projects and as the preselected model'),
+                items: [
+                  for (final m in list.models)
+                    DropdownMenuItem(
+                      value: m.name,
+                      child: Row(
+                        children: [
+                          const Icon(Symbols.smart_toy, size: 16, color: EvergreenColors.metadata),
+                          const SizedBox(width: 8),
+                          Flexible(child: Text(m.name, overflow: TextOverflow.ellipsis, style: monoStyle(fontSize: 13))),
+                          if (_gb(m.sizeBytes).isNotEmpty) ...[
+                            const SizedBox(width: 8),
+                            Text(_gb(m.sizeBytes), style: monoStyle(fontSize: 11, color: EvergreenColors.metadata)),
+                          ],
+                          if (m.name == list.systemDefaultModel) ...[
+                            const SizedBox(width: 8),
+                            const Text('server default', style: TextStyle(fontSize: 11, color: EvergreenColors.metadata)),
+                          ],
+                        ],
+                      ),
+                    ),
+                ],
+                onChanged: _saving || !list.ollamaAlive ? null : _choose,
+              ),
+            ),
+            if (_saving) ...[
+              const SizedBox(width: 12),
+              const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+            ],
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          list.ollamaAlive
+              ? '${list.models.length} chat models installed. Existing projects keep their own model (Project → Settings).'
+              : 'Ollama is unreachable, so the installed models cannot be listed or changed.',
+          style: const TextStyle(fontSize: 12, color: EvergreenColors.metadata),
+        ),
+      ],
+    );
   }
 }

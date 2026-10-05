@@ -116,6 +116,16 @@ class LoggingConfig(BaseModel):
     dir: str = "logs"
 
 
+class SchedulingConfig(BaseModel):
+    # Temporal server backing the document-ingestion worker (services/scheduling) — the directory
+    # scan schedule and per-document parse/index workflows. Separate from storage.* since Temporal
+    # isn't a data store the rest of the app talks to directly.
+    temporal_host: str = "127.0.0.1"
+    temporal_port: int = 7233
+    temporal_namespace: str = "default"
+    scan_interval_s: int = Field(default=60, ge=5)
+
+
 class UIConfig(BaseModel):
     # "legacy" serves ui/index.html (default until the Flutter rewrite's parity checklist
     # passes); "flutter" serves app_flutter/build/web instead (IRA-52). The legacy page stays
@@ -132,6 +142,7 @@ class AppConfig(BaseModel):
     generation: GenerationConfig = Field(default_factory=GenerationConfig)
     evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
+    scheduling: SchedulingConfig = Field(default_factory=SchedulingConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     ui: UIConfig = Field(default_factory=UIConfig)
 
@@ -201,6 +212,14 @@ def load_config(profile: str | None = None) -> AppConfig:
 
     if "RAG_AUTH_DB" in os.environ:
         data.setdefault("auth", {})["database"] = os.environ["RAG_AUTH_DB"]
+
+    scheduling_data = data.setdefault("scheduling", {})
+    if "TEMPORAL_HOST" in os.environ:
+        scheduling_data["temporal_host"] = os.environ["TEMPORAL_HOST"]
+    if "TEMPORAL_PORT" in os.environ:
+        scheduling_data["temporal_port"] = int(os.environ["TEMPORAL_PORT"])
+    if "TEMPORAL_NAMESPACE" in os.environ:
+        scheduling_data["temporal_namespace"] = os.environ["TEMPORAL_NAMESPACE"]
 
     hardware_data = data.setdefault("hardware", {})
     if "OLLAMA_BASE_URL" in os.environ:

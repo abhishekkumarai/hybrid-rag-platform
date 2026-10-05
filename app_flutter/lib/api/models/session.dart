@@ -60,6 +60,7 @@ class ChatMessage {
   final List<Citation> citations;
   final double timestamp;
   final double? latencyMs;
+  final Map<String, dynamic> metadata;
 
   const ChatMessage({
     required this.id,
@@ -68,6 +69,7 @@ class ChatMessage {
     this.citations = const [],
     this.timestamp = 0,
     this.latencyMs,
+    this.metadata = const {},
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
@@ -79,6 +81,7 @@ class ChatMessage {
             .toList(),
         timestamp: (json['timestamp'] as num?)?.toDouble() ?? 0,
         latencyMs: (json['latency_ms'] as num?)?.toDouble(),
+        metadata: Map<String, dynamic>.from(json['metadata'] as Map? ?? const {}),
       );
 }
 
@@ -91,6 +94,7 @@ class ChatSession {
   final int messageCount;
   final List<String> files;
   final String? systemPrompt;
+  final String? description;
   final SessionParameters parameters;
   final String? ownerId;
   final String? forkedFrom;
@@ -104,6 +108,7 @@ class ChatSession {
     this.messageCount = 0,
     this.files = const [],
     this.systemPrompt,
+    this.description,
     this.parameters = const SessionParameters(),
     this.ownerId,
     this.forkedFrom,
@@ -118,6 +123,7 @@ class ChatSession {
         messageCount: json['message_count'] as int? ?? 0,
         files: (json['files'] as List<dynamic>? ?? []).cast<String>(),
         systemPrompt: json['system_prompt'] as String?,
+        description: json['description'] as String?,
         parameters: json['parameters'] != null
             ? SessionParameters.fromJson(json['parameters'] as Map<String, dynamic>)
             : const SessionParameters(),

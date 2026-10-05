@@ -33,13 +33,15 @@ make eval                               # retrieval quality + faithfulness bench
 make gate                               # regression gate; fails on metric regression vs baseline
 make eval-chat                          # multi-turn answer-quality suite vs the live gateway (sampled, N trials)
 make services-up / services-down        # full docker stack up/down
-make scheduler / worker                 # reconciler and Redis queue daemons
+make ingestion-worker                   # Temporal worker: directory-scan schedule + ingest/index workflows
 ```
 
-Docker: `docker-compose.yml` defines `qdrant`, `redis`, `gateway`, `worker`, `scheduler`, `langflow`, plus
-an opt-in `ollama` behind the `local-llm` profile — **not** `postgres`; see Configuration below, Postgres
-is host-installed, not a compose service. `gateway`, `worker` and `scheduler` share one image built from
-`Dockerfile` and differ only in their `command`. `docker compose up -d --build` runs everything;
+Docker: `docker-compose.yml` defines `qdrant`, `redis`, `gateway`, `temporal`, `temporal-ui`,
+`ingestion-worker`, `langflow`, plus an opt-in `ollama` behind the `local-llm` profile — **not** `postgres`;
+see Configuration below, Postgres is host-installed, not a compose service (Temporal is the one exception
+that provisions its own databases, `temporal`/`temporal_visibility`, on that same host instance — see the
+`temporal` service's comment in `docker-compose.yml`). `gateway` and `ingestion-worker` share one image
+built from `Dockerfile` and differ only in their `command`. `docker compose up -d --build` runs everything;
 `docker compose up -d qdrant redis` gives just the infrastructure for a local `make serve`.
 `GATEWAY_HOST_PORT` in `.env` controls the host-side port for the dockerized gateway (defaults to 8001 in
 `docker-compose.yml`, but is overridden to `8010` in this machine's `.env` — 8001 and 8000 both collide
@@ -95,6 +97,23 @@ image ratio, column count and table score, then `IngestionService.parse()` dispa
 parsers: `fast_text` (PyMuPDF), `layout` (Docling, for tables/multi-column), `ocr` (RapidOCR, for scans).
 Thresholds live in `configs/default.yaml` under `ingestion:`, not in code.
 
+**Background document scheduling (`services/scheduling/`).** Documents dropped straight into
+`data/documents/` (not uploaded through the gateway) are picked up by a Temporal worker, not the gateway
+process. `DirectoryScanWorkflow` runs on a recurring Temporal Schedule (`configs/default.yaml`'s
+`scheduling.scan_interval_s`, default 60s) and fans each newly-discovered file out to its own
+`DocumentIngestWorkflow` (workflow id `ingest-{sha256}`, matching `doc_id`'s own hash so a failed run is
+traceable back to its file), which runs the same `IngestionService.parse()` → `IndexingService.chunk_and_index()`
+pair the gateway's synchronous `/api/v1/index` route uses — **the interactive upload path stays synchronous
+and does not go through Temporal**; only this background directory scan does. Retries are Temporal's own
+(`INGEST_RETRY_POLICY`, 3 attempts per activity), not a manually-tracked counter: a document that exhausts
+retries surfaces as a Failed workflow execution — visible in the Temporal UI (`:8081`) and in the admin DLQ
+view (`/api/v1/queue/dlq`, backed by `services/scheduling/client.py`) — for a deliberate manual replay rather
+than being silently retried forever. `services/scheduling/registry.py`'s `data/seen_documents.json` is the
+single source of truth mapping a file's hash to its path; it's how both the scan activity's dedup and the
+DLQ replay endpoint (recovering a failed run's original `file_path` from its workflow id, rather than parsing
+raw Temporal history) work. Run it locally with `make ingestion-worker` / `.\run.ps1 ingestion-worker`; in
+Docker it's the `ingestion-worker` service, needing `temporal` (and `qdrant`/`redis`) healthy first.
+
 **Add-a-source jobs (IRA-60).** The Flutter client adds sources through `POST /api/v1/ingest/jobs` (file) and
 `/ingest/jobs/url`, which return a job at once; `services/ingestion/jobs.py` runs parse → `_index_owned` →
 `_attach_to_session` on a 2-thread pool inside the gateway (not Temporal) and records each stage in the Redis
@@ -124,7 +143,9 @@ in `configs/default.yaml` (served to the UI at `/api/v1/prompts/default`). Overs
 — `/api/v1/preview` renders it onto the page image, so dropping it breaks visual provenance downstream.
 
 **Document identity.** `doc_id` is `{filename_stem_lowercased}_{sha256(content)[:8]}` — content-addressed,
-so re-ingesting an identical file is a no-op and an edited file gets a new id. The scheduler dedups on this.
+so re-ingesting an identical file is a no-op and an edited file gets a new id. The ingestion worker's
+directory-scan activity (`services/scheduling/activities.py`) dedups on this, independent of `doc_id` itself —
+see Background Document Scheduling below.
 
 **Accounts and isolation (IRA-32).** Every route is private by default: `auth_gate` (an app-level dependency in
 `services/gateway/api.py`) requires a signed-in user except on `/`, `/s/{token}`, `/api/v1/health`,
@@ -188,7 +209,7 @@ false. "Try demo" on the sign-in card (`POST /api/v1/auth/demo`, IRA-38) creates
 `auth.demo_max_per_hour`) — a normal isolated user, never admin; turn it off with `auth.allow_demo: false`. Guest
 accounts and their projects are not purged automatically yet. `python -m services.identity.migrate --adopt-legacy <admin-email>` hands pre-accounts projects and indexed
 documents to that admin — until it runs, those are invisible to everyone. It is idempotent; re-run it after
-dropping files straight into `data/documents/` (reconciler-indexed files have no uploader). The gateway falls
+dropping files straight into `data/documents/` (ingestion-worker-indexed files have no uploader). The gateway falls
 back to an in-memory identity store, loudly logged, when Postgres is down or unmigrated.
 
 **Postgres is host-installed, not a `docker-compose` service** (migrated 2026-09-15). This machine already
@@ -198,9 +219,10 @@ runs a native PostgreSQL 16 service on `127.0.0.1:5432` (shared with unrelated l
 from the shell, because this host also exports `POSTGRES_DB`/`POSTGRES_USER` system-wide for a different
 project — letting compose substitution pick those up previously created a stray, wrongly-named database
 inside the old `postgres` container. Only `POSTGRES_PASSWORD` is still read from the environment (already
-correct system-wide, and mirrored in the gitignored `.env` for compose). Langflow is the only current
-consumer of Postgres (its own schema/migrations; confirmed working against `rag_db`) — the app services
-(gateway/worker/scheduler) load `storage.postgres_url` but nothing calls it today.
+correct system-wide, and mirrored in the gitignored `.env` for compose). Langflow (its own schema/migrations,
+confirmed working against `rag_db`) and Temporal (its own `temporal`/`temporal_visibility` databases, see
+Background Document Scheduling below) are the only current consumers of this Postgres instance — the app
+services (gateway/ingestion-worker) load `storage.postgres_url` but nothing calls it today.
 
 **Langflow's Knowledge Bases Postgres DB provider** (added 2026-09-15) is a second, separate use of the
 same host Postgres instance — unrelated to `LANGFLOW_DATABASE_URL` above (Langflow's own app metadata).

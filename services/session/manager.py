@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import time
 from typing import Any
 
@@ -36,6 +37,8 @@ class SessionManager:
         self._in_memory_messages: dict[str, list[ChatMessage]] = {}
         self._in_memory_conversations: dict[str, dict[str, Conversation]] = {}
         self._in_memory_conv_messages: dict[str, list[ChatMessage]] = {}
+        self._default_conv_locks: dict[str, threading.Lock] = {}
+        self._default_conv_locks_guard = threading.Lock()
 
         self._init_redis()
 
@@ -66,11 +69,13 @@ class SessionManager:
         owner_id: str | None = None,
         forked_from: str | None = None,
         workspace_id: str | None = None,
+        description: str | None = None,
     ) -> ChatSession:
         """Creates a new conversational chat session with scoped parameters, prompt, and files."""
         session = ChatSession(
             title=title or "New Conversation",
             system_prompt=system_prompt,
+            description=description,
             parameters=parameters or SessionParameters(),
             files=list(dict.fromkeys(files or [])),
             owner_id=owner_id,
@@ -203,6 +208,13 @@ class SessionManager:
     def _legacy_messages_key(self, session_id: str) -> str:
         return f"rag:sessions:{session_id}:messages"
 
+    def _default_conv_claim_key(self, session_id: str) -> str:
+        return f"rag:sessions:{session_id}:default_conv_claim"
+
+    def _default_conv_lock(self, session_id: str) -> threading.Lock:
+        with self._default_conv_locks_guard:
+            return self._default_conv_locks.setdefault(session_id, threading.Lock())
+
     def _save_conversation(self, conversation: Conversation) -> None:
         if self.redis_client:
             try:
@@ -226,26 +238,57 @@ class SessionManager:
         return list(self._in_memory_conversations.get(session_id, {}).values())
 
     def _resolve_default_conversation(self, session_id: str) -> str:
-        """Returns the project's oldest conversation id, migrating legacy flat history if needed."""
+        """Returns the project's oldest conversation id, migrating legacy flat history if needed.
+
+        A brand-new project has several widgets (overview, eval summary, observability, chat list)
+        querying it at once, each of which lands here with no conversation yet — without a guard that
+        races to create one default "Main" conversation per concurrent caller. The in-process lock
+        serializes same-process callers; the Redis NX claim does the same across worker processes."""
         existing = self._raw_list_conversations(session_id)
         if existing:
             existing.sort(key=lambda c: c.created_at)
             return existing[0].id
 
-        # Lazily migrate a pre-IRA-24 flat message list into a new default conversation (idempotent:
-        # once the conversation exists above, this branch never runs again for this session).
-        legacy_messages = self._read_raw_messages(self._legacy_messages_key(session_id))
-        conversation = Conversation(
-            session_id=session_id,
-            title=DEFAULT_CONVERSATION_TITLE,
-            message_count=len(legacy_messages),
-        )
-        if legacy_messages:
-            self._write_raw_messages(self._conv_messages_key(session_id, conversation.id), legacy_messages)
-            conversation.created_at = legacy_messages[0].timestamp
-            conversation.updated_at = legacy_messages[-1].timestamp
-        self._save_conversation(conversation)
-        return conversation.id
+        with self._default_conv_lock(session_id):
+            # Re-check: another thread may have created the default while we waited for the lock.
+            existing = self._raw_list_conversations(session_id)
+            if existing:
+                existing.sort(key=lambda c: c.created_at)
+                return existing[0].id
+
+            # Lazily migrate a pre-IRA-24 flat message list into the new default conversation
+            # (idempotent: once the conversation exists above, this branch never runs again).
+            legacy_messages = self._read_raw_messages(self._legacy_messages_key(session_id))
+            conversation = Conversation(
+                session_id=session_id,
+                title=DEFAULT_CONVERSATION_TITLE,
+                message_count=len(legacy_messages),
+            )
+            if legacy_messages:
+                self._write_raw_messages(self._conv_messages_key(session_id, conversation.id), legacy_messages)
+                conversation.created_at = legacy_messages[0].timestamp
+                conversation.updated_at = legacy_messages[-1].timestamp
+
+            if self.redis_client:
+                try:
+                    claimed = self.redis_client.set(
+                        self._default_conv_claim_key(session_id), conversation.id, nx=True, ex=30
+                    )
+                except Exception as e:
+                    logger.error(f"Error claiming default conversation for {session_id}: {e}")
+                    claimed = True
+                if not claimed:
+                    # Another process won the race. Its write may not be visible yet; retry briefly
+                    # rather than saving a second "Main" conversation.
+                    for _ in range(20):
+                        existing = self._raw_list_conversations(session_id)
+                        if existing:
+                            existing.sort(key=lambda c: c.created_at)
+                            return existing[0].id
+                        time.sleep(0.05)
+
+            self._save_conversation(conversation)
+            return conversation.id
 
     def _read_raw_messages(self, key: str) -> list[ChatMessage]:
         if self.redis_client:
@@ -398,6 +441,8 @@ class SessionManager:
             session.title = update_req.title
         if update_req.system_prompt is not None:
             session.system_prompt = update_req.system_prompt
+        if update_req.description is not None:
+            session.description = update_req.description.strip() or None
         if update_req.parameters is not None:
             # Preserve existing session parameters if only a subset was provided in the update
             current_params_dict = session.parameters.model_dump()

@@ -50,7 +50,14 @@ class AppShell extends StatelessWidget {
           case ShellBreakpoint.narrow:
             return Scaffold(
               key: const ValueKey('narrow-shell'),
-              appBar: AppBar(title: const Text('IRA'), backgroundColor: Colors.white, foregroundColor: Colors.black),
+              appBar: AppBar(
+                title: Tooltip(
+                  message: 'Home',
+                  child: InkWell(onTap: () => context.go('/w/$workspaceId'), child: const Text('IRA')),
+                ),
+                backgroundColor: Colors.white,
+                foregroundColor: Colors.black,
+              ),
               drawer: Drawer(child: AppSidebar(workspaceId: workspaceId)),
               body: child,
             );

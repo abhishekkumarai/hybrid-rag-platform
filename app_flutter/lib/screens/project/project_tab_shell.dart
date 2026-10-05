@@ -7,10 +7,10 @@ import '../../features/project/project_providers.dart';
 import '../../theme/evergreen_theme.dart';
 import 'chat/share_dialog.dart';
 
-enum ProjectTab { overview, sources, chatSessions, evaluation, settings }
+enum ProjectTab { overview, sources, chatSessions, observability, evaluation, settings }
 
 /// DESIGN-evergreen.md "Project pages": breadcrumb, title, actions (Share · New chat · Add
-/// source), tabs Overview · Sources · Chat sessions · Evaluation · Settings.
+/// source), tabs Overview · Sources · Chat sessions · Observability · Evaluation · Settings.
 class ProjectTabShell extends ConsumerWidget {
   const ProjectTabShell({
     super.key,
@@ -29,6 +29,7 @@ class ProjectTabShell extends ConsumerWidget {
     (tab: ProjectTab.overview, label: 'Overview', suffix: 'overview'),
     (tab: ProjectTab.sources, label: 'Sources', suffix: 'sources'),
     (tab: ProjectTab.chatSessions, label: 'Chat sessions', suffix: 'chats/default'),
+    (tab: ProjectTab.observability, label: 'Observability', suffix: 'observability'),
     (tab: ProjectTab.evaluation, label: 'Evaluation', suffix: 'evaluation'),
     (tab: ProjectTab.settings, label: 'Settings', suffix: 'settings'),
   ];

@@ -4,27 +4,36 @@
 class QueryTelemetry {
   final String queryId;
   final String? sessionId;
+  final String? conversationId;
   final String queryText;
   final bool refused;
   final int citationsCount;
   final double timestamp;
+  final double totalMs;
+  final double topScore;
 
   const QueryTelemetry({
     required this.queryId,
     this.sessionId,
+    this.conversationId,
     this.queryText = '',
     this.refused = false,
     this.citationsCount = 0,
     this.timestamp = 0,
+    this.totalMs = 0,
+    this.topScore = 0,
   });
 
   factory QueryTelemetry.fromJson(Map<String, dynamic> json) => QueryTelemetry(
     queryId: json['query_id'] as String? ?? '',
     sessionId: json['session_id'] as String?,
+    conversationId: json['conversation_id'] as String?,
     queryText: json['query_text'] as String? ?? '',
     refused: json['refused'] as bool? ?? false,
     citationsCount: json['citations_count'] as int? ?? 0,
     timestamp: (json['timestamp'] as num?)?.toDouble() ?? 0,
+    totalMs: (json['total_ms'] as num?)?.toDouble() ?? 0,
+    topScore: (json['top_score'] as num?)?.toDouble() ?? 0,
   );
 }
 
@@ -105,11 +114,13 @@ class ModelInfo {
 class ModelListResponse {
   final List<ModelInfo> models;
   final String defaultModel;
+  final String systemDefaultModel;
   final bool ollamaAlive;
 
   const ModelListResponse({
     this.models = const [],
     this.defaultModel = '',
+    this.systemDefaultModel = '',
     this.ollamaAlive = false,
   });
 
@@ -119,6 +130,7 @@ class ModelListResponse {
             .map((e) => ModelInfo.fromJson(e as Map<String, dynamic>))
             .toList(),
         defaultModel: json['default_model'] as String? ?? '',
+        systemDefaultModel: json['system_default_model'] as String? ?? '',
         ollamaAlive: json['ollama_alive'] as bool? ?? false,
       );
 }
@@ -169,5 +181,88 @@ class HnswStatusResponse {
         status: json['status'] as String? ?? 'unknown',
         pointsCount: json['points_count'] as int?,
         indexedVectorsCount: json['indexed_vectors_count'] as int?,
+      );
+}
+
+double _d(Object? v) => (v as num?)?.toDouble() ?? 0;
+
+/// Mirrors contracts/metrics.py::ChatLatencyStats.
+class ChatLatencyStats {
+  final int queries;
+  final int refusals;
+  final double avgTotalMs;
+  final double avgRetrievalMs;
+  final double avgTtftMs;
+  final double avgGenerationMs;
+  final double avgTokensPerSec;
+  final double avgTopScore;
+  final double? lastQueryAt;
+
+  const ChatLatencyStats({
+    this.queries = 0,
+    this.refusals = 0,
+    this.avgTotalMs = 0,
+    this.avgRetrievalMs = 0,
+    this.avgTtftMs = 0,
+    this.avgGenerationMs = 0,
+    this.avgTokensPerSec = 0,
+    this.avgTopScore = 0,
+    this.lastQueryAt,
+  });
+
+  factory ChatLatencyStats.fromJson(Map<String, dynamic> json) => ChatLatencyStats(
+        queries: json['queries'] as int? ?? 0,
+        refusals: json['refusals'] as int? ?? 0,
+        avgTotalMs: _d(json['avg_total_ms']),
+        avgRetrievalMs: _d(json['avg_retrieval_ms']),
+        avgTtftMs: _d(json['avg_ttft_ms']),
+        avgGenerationMs: _d(json['avg_generation_ms']),
+        avgTokensPerSec: _d(json['avg_tokens_per_sec']),
+        avgTopScore: _d(json['avg_top_score']),
+        lastQueryAt: (json['last_query_at'] as num?)?.toDouble(),
+      );
+}
+
+/// Mirrors contracts/metrics.py::ConversationStats — one chat's row.
+class ConversationStats {
+  final String conversationId;
+  final String title;
+  final ChatLatencyStats stats;
+
+  const ConversationStats({required this.conversationId, required this.title, required this.stats});
+
+  factory ConversationStats.fromJson(Map<String, dynamic> json) => ConversationStats(
+        conversationId: json['conversation_id'] as String,
+        title: json['title'] as String? ?? 'Chat',
+        stats: ChatLatencyStats.fromJson(json),
+      );
+}
+
+/// Mirrors contracts/metrics.py::ProjectObservability (IRA-56).
+class ProjectObservability {
+  final String sessionId;
+  final String? conversationId;
+  final ChatLatencyStats totals;
+  final List<ConversationStats> conversations;
+  final List<QueryTelemetry> recent;
+
+  const ProjectObservability({
+    required this.sessionId,
+    this.conversationId,
+    this.totals = const ChatLatencyStats(),
+    this.conversations = const [],
+    this.recent = const [],
+  });
+
+  factory ProjectObservability.fromJson(Map<String, dynamic> json) => ProjectObservability(
+        sessionId: json['session_id'] as String,
+        conversationId: json['conversation_id'] as String?,
+        totals: ChatLatencyStats.fromJson(json['totals'] as Map<String, dynamic>? ?? const {}),
+        conversations: (json['conversations'] as List<dynamic>? ?? [])
+            .map((e) => ConversationStats.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        recent: (json['recent'] as List<dynamic>? ?? [])
+            .map((e) => QueryTelemetry.fromJson(e as Map<String, dynamic>))
+            .toList(),
       );
 }

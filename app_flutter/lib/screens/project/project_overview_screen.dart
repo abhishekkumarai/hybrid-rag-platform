@@ -27,7 +27,7 @@ class ProjectOverviewScreen extends ConsumerWidget {
     final projectAsync = ref.watch(projectProvider(projectId));
     final conversationsAsync = ref.watch(projectConversationsProvider(projectId));
     final documents = ref.watch(documentsProvider).valueOrNull ?? const <DocumentInfo>[];
-    final evalSummary = ref.watch(projectEvalSummaryProvider(projectId)).valueOrNull;
+    final evalSummary = ref.watch(projectEvalSummaryProvider((sessionId: projectId, conversationId: null))).valueOrNull;
 
     if (!projectAsync.hasValue) {
       return ProjectTabShell(

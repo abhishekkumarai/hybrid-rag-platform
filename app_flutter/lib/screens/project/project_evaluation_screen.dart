@@ -6,6 +6,7 @@ import '../../api/api_client.dart';
 import '../../api/models/eval.dart';
 import '../../features/project/project_providers.dart';
 import '../../theme/evergreen_theme.dart';
+import '../../widgets/chat_scope_selector.dart';
 import '../../widgets/section_header.dart';
 import '../../widgets/stat_card.dart';
 import 'project_tab_shell.dart';
@@ -28,12 +29,19 @@ class ProjectEvaluationScreen extends ConsumerStatefulWidget {
 class _ProjectEvaluationScreenState
     extends ConsumerState<ProjectEvaluationScreen> {
   bool _running = false;
+  String? _conversationId; // null = all chats in the project
 
   @override
   Widget build(BuildContext context) {
-    final summaryAsync =
-        ref.watch(projectEvalSummaryProvider(widget.projectId));
-    final lastRunAsync = ref.watch(projectEvalLastRunProvider(widget.projectId));
+    final summaryAsync = ref.watch(
+      projectEvalSummaryProvider((
+        sessionId: widget.projectId,
+        conversationId: _conversationId,
+      )),
+    );
+    final lastRunAsync = ref.watch(
+      projectEvalLastRunProvider(widget.projectId),
+    );
 
     return ProjectTabShell(
       workspaceId: widget.workspaceId,
@@ -45,7 +53,48 @@ class _ProjectEvaluationScreenState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SectionHeader(
-              title: 'Online evaluation summary',
+              title: _conversationId == null
+                  ? 'Online evaluation — all chats'
+                  : 'Online evaluation — this chat',
+              action: ChatScopeSelector(
+                projectId: widget.projectId,
+                value: _conversationId,
+                onChanged: (v) => setState(() => _conversationId = v),
+              ),
+            ),
+            const SizedBox(height: 12),
+            summaryAsync.when(
+              data: (summary) => _buildSummaryCards(summary),
+              loading: () => const LinearProgressIndicator(),
+              error: (e, _) =>
+                  EmptyState(message: 'Could not load evaluation summary: $e'),
+            ),
+            const SizedBox(height: 28),
+            const SectionHeader(title: 'Groundedness trend (turn-by-turn)'),
+            const SizedBox(height: 12),
+            summaryAsync.when(
+              data: (summary) => summary.trend.isEmpty
+                  ? const EmptyState(
+                      message: 'No scored chat turns yet.',
+                      icon: Symbols.analytics,
+                    )
+                  : _buildTrendChart(summary),
+              loading: () => const SizedBox.shrink(),
+              error: (e, _) => const SizedBox.shrink(),
+            ),
+            const SizedBox(height: 28),
+            const SectionHeader(title: 'Weakest query turns'),
+            const SizedBox(height: 12),
+            summaryAsync.when(
+              data: (summary) => summary.weakest.isEmpty
+                  ? const EmptyState(message: 'No weak turns to show.')
+                  : _buildWeakestTurns(summary),
+              loading: () => const SizedBox.shrink(),
+              error: (e, _) => const SizedBox.shrink(),
+            ),
+            const SizedBox(height: 28),
+            SectionHeader(
+              title: 'Golden-set benchmark (whole project)',
               action: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -53,12 +102,14 @@ class _ProjectEvaluationScreenState
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: EvergreenColors.border),
                       shape: RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(EvergreenRadii.control),
+                        borderRadius: BorderRadius.circular(
+                          EvergreenRadii.control,
+                        ),
                       ),
                     ),
-                    onPressed:
-                        _running ? null : () => _runGoldenSet(rebuild: true),
+                    onPressed: _running
+                        ? null
+                        : () => _runGoldenSet(rebuild: true),
                     icon: const Icon(Symbols.restore, size: 16),
                     label: const Text('Rebuild + run'),
                   ),
@@ -68,12 +119,14 @@ class _ProjectEvaluationScreenState
                       backgroundColor: EvergreenColors.primary,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(EvergreenRadii.control),
+                        borderRadius: BorderRadius.circular(
+                          EvergreenRadii.control,
+                        ),
                       ),
                     ),
-                    onPressed:
-                        _running ? null : () => _runGoldenSet(rebuild: false),
+                    onPressed: _running
+                        ? null
+                        : () => _runGoldenSet(rebuild: false),
                     icon: _running
                         ? const SizedBox(
                             width: 14,
@@ -90,43 +143,17 @@ class _ProjectEvaluationScreenState
               ),
             ),
             const SizedBox(height: 12),
-            summaryAsync.when(
-              data: (summary) => _buildSummaryCards(summary),
-              loading: () => const LinearProgressIndicator(),
-              error: (e, _) => EmptyState(message: 'Could not load evaluation summary: $e'),
-            ),
-            const SizedBox(height: 28),
-            const SectionHeader(title: 'Groundedness trend (turn-by-turn)'),
-            const SizedBox(height: 12),
-            summaryAsync.when(
-              data: (summary) => summary.trend.isEmpty
-                  ? const EmptyState(message: 'No scored chat turns yet.', icon: Symbols.analytics)
-                  : _buildTrendChart(summary),
-              loading: () => const SizedBox.shrink(),
-              error: (e, _) => const SizedBox.shrink(),
-            ),
-            const SizedBox(height: 28),
-            const SectionHeader(title: 'Weakest query turns'),
-            const SizedBox(height: 12),
-            summaryAsync.when(
-              data: (summary) => summary.weakest.isEmpty
-                  ? const EmptyState(message: 'No weak turns to show.')
-                  : _buildWeakestTurns(summary),
-              loading: () => const SizedBox.shrink(),
-              error: (e, _) => const SizedBox.shrink(),
-            ),
-            const SizedBox(height: 28),
-            const SectionHeader(title: 'Last golden-set benchmark run'),
-            const SizedBox(height: 12),
             lastRunAsync.when(
               data: (run) => run == null
                   ? const EmptyState(
-                      message: 'No golden-set run yet. Use "Run golden set" above.',
+                      message:
+                          'No golden-set run yet. Use "Run golden set" above.',
                       icon: Symbols.play_arrow,
                     )
                   : _buildGoldenRunCards(run),
               loading: () => const LinearProgressIndicator(),
-              error: (e, _) => EmptyState(message: 'Could not load last run: $e'),
+              error: (e, _) =>
+                  EmptyState(message: 'Could not load last run: $e'),
             ),
           ],
         ),
@@ -205,17 +232,47 @@ class _ProjectEvaluationScreenState
             children: [
               Text(
                 'Per-turn Groundedness Score',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: EvergreenColors.inkSecondary),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: EvergreenColors.inkSecondary,
+                ),
               ),
               Row(
                 children: [
-                  Container(width: 8, height: 8, decoration: const BoxDecoration(color: EvergreenColors.primary, shape: BoxShape.circle)),
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: EvergreenColors.primary,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
                   const SizedBox(width: 4),
-                  const Text('≥ 0.80 Confident', style: TextStyle(fontSize: 11, color: EvergreenColors.caption)),
+                  const Text(
+                    '≥ 0.80 Confident',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: EvergreenColors.caption,
+                    ),
+                  ),
                   const SizedBox(width: 12),
-                  Container(width: 8, height: 8, decoration: const BoxDecoration(color: EvergreenColors.ambiguous, shape: BoxShape.circle)),
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: EvergreenColors.ambiguous,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
                   const SizedBox(width: 4),
-                  const Text('< 0.80 Ambiguous', style: TextStyle(fontSize: 11, color: EvergreenColors.caption)),
+                  const Text(
+                    '< 0.80 Ambiguous',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: EvergreenColors.caption,
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -274,21 +331,28 @@ class _ProjectEvaluationScreenState
               ),
               child: Row(
                 children: [
-                  const Icon(Symbols.trending_down,
-                      size: 18, color: EvergreenColors.refused),
+                  const Icon(
+                    Symbols.trending_down,
+                    size: 18,
+                    color: EvergreenColors.refused,
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       weakest[i].queryText,
                       style: const TextStyle(
-                          fontSize: 13, fontWeight: FontWeight.w500),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
                     decoration: BoxDecoration(
                       color: EvergreenColors.refusedTint,
                       borderRadius: BorderRadius.circular(10),
@@ -384,13 +448,14 @@ class _ProjectEvaluationScreenState
       }
     } on ApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Eval run notice: ${e.detail}')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not run the golden set: ${e.detail}')),
+        );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Eval run completed.')));
+            .showSnackBar(SnackBar(content: Text('Golden-set run failed: $e')));
       }
     } finally {
       if (mounted) setState(() => _running = false);

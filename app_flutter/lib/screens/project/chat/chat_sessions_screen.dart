@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,10 +10,12 @@ import '../../../api/models/session.dart';
 import '../../../features/chat/chat_providers.dart';
 import '../../../features/chat/chat_state.dart';
 import '../../../features/project/project_providers.dart';
+import '../../../features/workspace/workspace_providers.dart';
 import '../../../widgets/section_header.dart';
 import '../../../theme/evergreen_theme.dart';
 import '../../../widgets/answer_state_chip.dart';
 import '../../../widgets/citation_chip.dart';
+import '../../../widgets/eval_strip.dart';
 import '../project_tab_shell.dart';
 import 'citation_inspector_panel.dart';
 import 'fork_dialog.dart';
@@ -38,7 +41,7 @@ class ChatSessionsScreen extends ConsumerStatefulWidget {
 
 class _ChatSessionsScreenState extends ConsumerState<ChatSessionsScreen> {
   final _composerController = TextEditingController();
-  String _mode = 'auto';
+  String? _mode; // null = the project's retrieval mode
   String? _model;
   Citation? _inspectorCitation;
   List<Citation> _inspectorList = const [];
@@ -76,7 +79,7 @@ class _ChatSessionsScreenState extends ConsumerState<ChatSessionsScreen> {
 
   Future<void> _send() async {
     final text = _composerController.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty || ref.read(chatControllerProvider(_key)).sending) return;
     _composerController.clear();
     await ref.read(chatControllerProvider(_key).notifier).send(text, mode: _mode, model: _model);
     ref.invalidate(projectConversationsProvider(widget.projectId));
@@ -131,12 +134,14 @@ class _ChatSessionsScreenState extends ConsumerState<ChatSessionsScreen> {
                   ),
                 ),
                 _Composer(
+                  projectId: widget.projectId,
                   controller: _composerController,
                   mode: _mode,
                   model: _model,
                   onModeChanged: (m) => setState(() => _mode = m),
                   onModelChanged: (m) => setState(() => _model = m),
                   onSend: _send,
+                  sending: ref.watch(chatControllerProvider(_key)).sending,
                 ),
               ],
             ),
@@ -449,6 +454,33 @@ class _TurnCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final cleanAnswer = turn.answer
+        .replaceFirst(RegExp(r'\n+---\n#+[^\n]*Verified Sources[\s\S]*$'), '')
+        .trim();
+    final displayAnswer = cleanAnswer.isEmpty ? (turn.streaming ? '…' : '') : cleanAnswer;
+
+    final markdownStyle = MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+      p: const TextStyle(fontSize: 14, height: 1.55, color: EvergreenColors.ink),
+      code: monoStyle(
+        fontSize: 12,
+        weight: FontWeight.w500,
+        color: EvergreenColors.primary,
+      ),
+      codeblockDecoration: BoxDecoration(
+        color: EvergreenColors.fill,
+        border: Border.all(color: EvergreenColors.border),
+        borderRadius: BorderRadius.circular(EvergreenRadii.control),
+      ),
+      blockquoteDecoration: BoxDecoration(
+        color: EvergreenColors.primaryTint,
+        border: const Border(left: BorderSide(color: EvergreenColors.primary, width: 3)),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      tableBorder: TableBorder.all(color: EvergreenColors.border, width: 1),
+      tableHead: const TextStyle(fontWeight: FontWeight.w600, color: EvergreenColors.ink),
+      tableBody: const TextStyle(fontSize: 13, color: EvergreenColors.inkSecondary),
+    );
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 20),
       child: Column(
@@ -461,32 +493,79 @@ class _TurnCard extends ConsumerWidget {
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: EvergreenColors.fill,
+                border: Border.all(color: EvergreenColors.border),
                 borderRadius: BorderRadius.circular(EvergreenRadii.control),
               ),
-              child: Text(turn.query),
+              child: Text(
+                turn.query,
+                style: const TextStyle(fontSize: 14, height: 1.4, color: EvergreenColors.ink),
+              ),
             ),
           ),
           const SizedBox(height: 10),
           if (turn.error != null)
             _ErrorCard(message: turn.error!)
           else if (turn.refused && !turn.streaming)
-            _RefusedCard(answer: turn.answer)
+            _RefusedCard(answer: displayAnswer.isEmpty ? turn.answer : displayAnswer)
           else
             Container(
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: EvergreenColors.surface,
                 border: Border.all(color: EvergreenColors.border),
                 borderRadius: BorderRadius.circular(EvergreenRadii.panel),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.02),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(children: [AnswerStateChip(state: turn.answerState), const Spacer(), if (turn.streaming) const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))]),
-                  const SizedBox(height: 8),
-                  MarkdownBody(data: turn.answer.isEmpty ? '…' : turn.answer, shrinkWrap: true, selectable: true),
+                  Row(
+                    children: [
+                      AnswerStateChip(state: turn.answerState),
+                      if (turn.mode != null) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          '${turn.mode} mode',
+                          style: monoStyle(fontSize: 11, color: EvergreenColors.caption),
+                        ),
+                      ],
+                      const Spacer(),
+                      if (turn.streaming)
+                        Row(
+                          children: [
+                            Text('generating…', style: monoStyle(fontSize: 11, color: EvergreenColors.primary)),
+                            const SizedBox(width: 6),
+                            const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2)),
+                          ],
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  MarkdownBody(
+                    data: displayAnswer.isEmpty ? '…' : displayAnswer,
+                    shrinkWrap: true,
+                    selectable: true,
+                    styleSheet: markdownStyle,
+                  ),
                   if (turn.citations.isNotEmpty) ...[
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        const Icon(Symbols.verified, size: 14, color: EvergreenColors.primary),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Verified Sources (${turn.citations.length})',
+                          style: monoStyle(fontSize: 11, weight: FontWeight.w600, color: EvergreenColors.primary),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
                     Wrap(
                       spacing: 6,
                       runSpacing: 6,
@@ -496,8 +575,14 @@ class _TurnCard extends ConsumerWidget {
                       ],
                     ),
                   ],
+                  if (turn.evalScores != null || (turn.latencyMs != null && !turn.streaming))
+                    EvalStrip(
+                      evalScores: turn.evalScores,
+                      latencyMs: turn.latencyMs,
+                      tokensPerSec: turn.tokensPerSec,
+                    ),
                   if (!turn.streaming) ...[
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 10),
                     Row(
                       children: [
                         IconButton(
@@ -510,6 +595,17 @@ class _TurnCard extends ConsumerWidget {
                           icon: const Icon(Symbols.thumb_down, size: 16),
                           onPressed: () => _feedback(ref, false),
                         ),
+                        IconButton(
+                          tooltip: 'Copy answer',
+                          icon: const Icon(Symbols.content_copy, size: 16),
+                          onPressed: () {
+                            Clipboard.setData(ClipboardData(text: displayAnswer));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Answer copied to clipboard')),
+                            );
+                          },
+                        ),
+                        const Spacer(),
                         TextButton.icon(
                           onPressed: onForkFromHere,
                           icon: const Icon(Symbols.call_split, size: 14),
@@ -578,27 +674,38 @@ class _ErrorCard extends StatelessWidget {
   }
 }
 
-class _Composer extends StatelessWidget {
+class _Composer extends ConsumerWidget {
   const _Composer({
+    required this.projectId,
     required this.controller,
     required this.mode,
     required this.model,
     required this.onModeChanged,
     required this.onModelChanged,
     required this.onSend,
+    required this.sending,
   });
 
+  final String projectId;
   final TextEditingController controller;
-  final String mode;
+  // null = use the project's own setting (Project -> Settings); only an explicit pick overrides it.
+  final String? mode;
   final String? model;
-  final ValueChanged<String> onModeChanged;
+  final ValueChanged<String?> onModeChanged;
   final ValueChanged<String?> onModelChanged;
   final VoidCallback onSend;
+  final bool sending;
 
   static const _modes = ['auto', 'agentic', 'graph', 'direct'];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final health = ref.watch(liveServiceHealthProvider).valueOrNull;
+    // Unknown (not checked yet / health call failed) stays enabled; only a confirmed-down Ollama blocks.
+    final ollamaDown = health != null && !health.ollamaAlive;
+    final project = ref.watch(projectProvider(projectId)).valueOrNull;
+    final canSend = !ollamaDown && !sending;
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: const BoxDecoration(
@@ -608,31 +715,67 @@ class _Composer extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (ollamaDown) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: EvergreenColors.refusedTint,
+                borderRadius: BorderRadius.circular(EvergreenRadii.control),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Symbols.power_off, size: 16, color: EvergreenColors.refused),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Ollama is not running, so chat is paused. Start Ollama and this re-enables on its own.',
+                      style: TextStyle(fontSize: 12, color: EvergreenColors.refused),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           Row(
             children: [
               DropdownButton<String>(
-                value: mode,
+                value: mode ?? project?.parameters.retrievalMode ?? 'auto',
                 underline: const SizedBox.shrink(),
                 items: [
                   for (final m in _modes) DropdownMenuItem(value: m, child: Text(_modeLabel(m))),
                 ],
-                onChanged: (v) => v != null ? onModeChanged(v) : null,
+                onChanged: ollamaDown
+                    ? null
+                    : (v) => onModeChanged(v == project?.parameters.retrievalMode ? null : v),
               ),
               const SizedBox(width: 12),
               Consumer(builder: (context, ref, _) {
-                final modelsAsync = ref.watch(modelsProvider);
-                return modelsAsync.when(
-                  data: (list) => DropdownButton<String>(
-                    value: model ?? (list.models.isNotEmpty ? list.models.first.name : null),
+                final list = ref.watch(modelsProvider).valueOrNull;
+                if (list == null || list.models.isEmpty) return const SizedBox.shrink();
+                final names = list.models.map((m) => m.name).toList();
+                final projectModel = project?.parameters.model;
+                final shown = model ??
+                    (names.contains(projectModel)
+                        ? projectModel
+                        : (names.contains(list.defaultModel) ? list.defaultModel : names.first));
+                return Theme(
+                  data: Theme.of(context).copyWith(
+                    scrollbarTheme: const ScrollbarThemeData(
+                      thumbVisibility: WidgetStatePropertyAll(true),
+                    ),
+                  ),
+                  child: DropdownButton<String>(
+                    value: shown,
                     underline: const SizedBox.shrink(),
+                    menuMaxHeight: 280,
                     items: [
                       for (final m in list.models)
                         DropdownMenuItem(value: m.name, child: Text(m.name, style: monoStyle(fontSize: 13))),
                     ],
-                    onChanged: onModelChanged,
+                    onChanged: ollamaDown ? null : (v) => onModelChanged(v == projectModel ? null : v),
                   ),
-                  loading: () => const SizedBox(width: 100, height: 20, child: LinearProgressIndicator()),
-                  error: (_, _) => const SizedBox.shrink(),
                 );
               }),
             ],
@@ -641,18 +784,41 @@ class _Composer extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: TextField(
-                  controller: controller,
-                  minLines: 1,
-                  maxLines: 5,
-                  onSubmitted: (_) => onSend(),
-                  decoration: const InputDecoration(hintText: 'Ask a question…', isDense: true),
+                child: Focus(
+                  // Enter sends; Shift+Enter falls through to the field and inserts a newline.
+                  onKeyEvent: (node, event) {
+                    final isEnter = event.logicalKey == LogicalKeyboardKey.enter ||
+                        event.logicalKey == LogicalKeyboardKey.numpadEnter;
+                    if (event is! KeyDownEvent || !isEnter || HardwareKeyboard.instance.isShiftPressed) {
+                      return KeyEventResult.ignored;
+                    }
+                    if (canSend) onSend();
+                    return KeyEventResult.handled;
+                  },
+                  child: TextField(
+                    controller: controller,
+                    enabled: !ollamaDown,
+                    minLines: 1,
+                    maxLines: 6,
+                    keyboardType: TextInputType.multiline,
+                    textInputAction: TextInputAction.newline,
+                    decoration: InputDecoration(
+                      hintText: ollamaDown
+                          ? 'Chat is paused while Ollama is down'
+                          : 'Ask a question...  (Shift+Enter for a new line)',
+                      isDense: true,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
               IconButton.filled(
-                onPressed: onSend,
-                icon: const Icon(Symbols.send, size: 18),
+                tooltip: ollamaDown ? 'Ollama is not running' : 'Send (Enter)',
+                onPressed: canSend ? onSend : null,
+                icon: sending
+                    ? const SizedBox(
+                        width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Symbols.send, size: 18),
                 style: IconButton.styleFrom(backgroundColor: EvergreenColors.primary),
               ),
             ],

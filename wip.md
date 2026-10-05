@@ -21,8 +21,8 @@
 | **Qdrant Vector Database**| **Active (HNSW + Cosine)** | `http://localhost:6333` | Docker container `rag_qdrant` |
 | **Redis Cache & Queue** | **Active** | `localhost:6379` | Docker container `rag_redis` |
 | **PostgreSQL Metadata DB**| **Active** | `localhost:5433` (host mapped) | Docker container `rag_postgres` |
-| **Background Ingestion Worker** | **Active** | Docker container `rag_worker` | Polls Redis tasks, parses PDF via Docling/PyMuPDF |
-| **Scheduler & Reconciler** | **Active** | Docker container `rag_scheduler` | Watches `data/documents/` for new files |
+| **Temporal Ingestion Worker** | **Active** | Docker container `rag_ingestion_worker` | Runs the directory-scan schedule + per-document parse/index workflows |
+| **Temporal Server & UI** | **Active** | Docker containers `rag_temporal`, `rag_temporal_ui` (`http://localhost:8081`) | Workflow orchestration backing the ingestion worker |
 | **Ollama Local LLM** | **Active** | `http://127.0.0.1:11434` | Serving `llama3.2:3b` / `llama3.1:8b` / custom models |
 
 ---
@@ -188,8 +188,8 @@ python -m pytest tests/unit/test_session_scoped_workspace.py -v
 # Start FastAPI Gateway locally (outside Docker, on port 8000)
 python -m uvicorn services.gateway.api:app --host 0.0.0.0 --port 8000 --reload
 
-# Start Background Ingestion Worker locally
-python -m services.scheduler.worker
+# Start Temporal ingestion worker locally (needs a reachable Temporal server; see docker-compose.yml)
+python -m services.scheduling.worker
 
 # Run Automated CI Regression Gate
 python tests/eval/regression_gate.py

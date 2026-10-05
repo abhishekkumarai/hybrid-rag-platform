@@ -43,12 +43,11 @@ from contracts.identity import (
 )
 from contracts.ingest_job import IngestJob, IngestJobListResponse, IngestJobUrlRequest
 from contracts.metrics import (
-    GoldenQueryResult,
     ProjectEvalRun,
     ProjectEvalSummary,
-    RetrievalEvalScores,
+    ProjectObservability,
+    QueryTelemetry,
     SystemMetrics,
-    TurnEvalPoint,
 )
 from contracts.retrieval import RetrieveResponse, SearchQuery
 from contracts.session import (
@@ -60,8 +59,11 @@ from contracts.session import (
     CreateSessionRequest,
     SessionDetailResponse,
     SessionListResponse,
+    SessionParameters,
     UpdateConversationRequest,
+    UpdatePreferencesRequest,
     UpdateSessionRequest,
+    UserPreferences,
 )
 from contracts.share import (
     CreateShareResponse,
@@ -97,9 +99,9 @@ from services.ingestion.visualizer import render_page_with_bbox, resolve_documen
 from services.retrieval.agentic import AgenticCoordinator
 from services.retrieval.compactor import ContextCompactor
 from services.retrieval.service import RetrievalService
-from services.scheduler.dlq_manager import DLQManager
-from services.scheduler.queue import RedisTaskQueue
+from services.scheduling import client as scheduling_client
 from services.session.manager import SessionManager
+from services.session.preferences import PreferencesStore
 from services.sharing.service import ShareService, summarize
 from services.telemetry.tracker import TelemetryTracker
 
@@ -112,6 +114,7 @@ session_manager = SessionManager(
 )
 telemetry_tracker = TelemetryTracker()
 model_catalog = ModelCatalog(settings.hardware.ollama_base_url)
+prefs_store = PreferencesStore(lambda: session_manager.redis_client)
 ingest_jobs = IngestJobStore(lambda: session_manager.redis_client)
 ingest_runner = IngestJobRunner(ingest_jobs)
 _index_lock = threading.Lock()  # BM25/graph are in-process state; index one document at a time
@@ -528,7 +531,8 @@ class ModelInfo(BaseModel):
 
 class ModelListResponse(BaseModel):
     models: list[ModelInfo]
-    default_model: str
+    default_model: str = Field(description="The caller's effective default: their preference if installed, else the server's")
+    system_default_model: str = Field(default="", description="The server's configured default (hardware.llm_model)")
     hardware_profile: str
     ollama_alive: bool
 
@@ -539,14 +543,23 @@ def default_system_prompt() -> dict[str, str]:
     return {"system_prompt": settings.generation.default_system_prompt}
 
 
+def _effective_default_model(user: User | None, installed_chat: list[str] | None) -> str:
+    """The caller's preferred model when it's still an installed chat model, else the configured one."""
+    preferred = prefs_store.get(user.id).default_model if user else None
+    if preferred and (installed_chat is None or preferred in installed_chat):
+        return preferred
+    return settings.hardware.llm_model
+
+
 @app.get("/api/v1/models", response_model=ModelListResponse)
-def list_available_models() -> ModelListResponse:
-    """Lists the installed Ollama models that can chat and indicates the default active model.
+def list_available_models(user: User | None = Depends(optional_user)) -> ModelListResponse:
+    """Lists the installed Ollama models that can chat and marks the caller's default.
 
     Embedding and reranker models are left out: selecting one broke every turn of the project (IRA-31)."""
-    default_model = settings.hardware.llm_model
     installed = model_catalog.installed()
     ollama_alive = installed is not None
+    chat = model_catalog.chat_models(installed) or []
+    default_model = _effective_default_model(user, [m["name"] for m in chat] if ollama_alive else None)
     models = [
         ModelInfo(
             name=m["name"],
@@ -555,15 +568,15 @@ def list_available_models() -> ModelListResponse:
             digest=m.get("digest"),
             is_default=(m["name"] == default_model or m["name"].startswith(default_model)),
         )
-        for m in (model_catalog.chat_models(installed) or [])
+        for m in chat
     ]
 
     if not models:
         # Ollama is unreachable, so we have no way to know what's actually installed. Offering a
         # list of plausible-sounding-but-unverified model names here (as this used to do) causes
         # a client that doesn't check `ollama_alive` to offer models that error out on selection.
-        # The one name we do know is honest is the configured default — surface just that,
-        # clearly still tied to `ollama_alive=False`.
+        # The one name we do know is honest is the default — surface just that, still tied to
+        # `ollama_alive=False`.
         models = [ModelInfo(name=default_model, is_default=True)]
 
     if not any(m.is_default for m in models) and models:
@@ -572,9 +585,30 @@ def list_available_models() -> ModelListResponse:
     return ModelListResponse(
         models=models,
         default_model=default_model,
+        system_default_model=settings.hardware.llm_model,
         hardware_profile=settings.hardware.profile,
         ollama_alive=ollama_alive,
     )
+
+
+@app.get("/api/v1/me/preferences", response_model=UserPreferences)
+def get_preferences(user: User = Depends(current_user)) -> UserPreferences:
+    return prefs_store.get(user.id)
+
+
+@app.put("/api/v1/me/preferences", response_model=UserPreferences)
+def update_preferences(req: UpdatePreferencesRequest, user: User = Depends(current_user)) -> UserPreferences:
+    """Sets the caller's default chat model (null clears it). Only an installed chat model is accepted,
+    so a default can never point new projects at a model that would refuse every turn."""
+    model = (req.default_model or "").strip() or None
+    if model is not None:
+        chat = model_catalog.chat_models()
+        if chat is None:
+            raise HTTPException(status_code=503, detail="Ollama is unreachable, so the model can't be checked")
+        if model not in {m["name"] for m in chat}:
+            raise HTTPException(status_code=422, detail=f"'{model}' is not an installed chat model")
+    return prefs_store.save(user.id, prefs_store.get(user.id).model_copy(update={"default_model": model}))
+
 
 class GpuModelVram(BaseModel):
     name: str
@@ -712,27 +746,27 @@ def rebuild_hnsw_index(req: HnswRebuildRequest, _admin: User = Depends(require_a
 
 
 @app.get("/api/v1/queue/stats")
-def queue_stats() -> dict[str, int]:
-    """Returns real-time task count for pending, processing, and dead-letter queues."""
-    queue = RedisTaskQueue()
-    return queue.get_stats()
+async def queue_stats() -> dict[str, int]:
+    """Returns real-time task count for processing and dead-letter (failed) document-ingestion
+    workflows. Backed by Temporal (services/scheduling) rather than the old Redis queue."""
+    return await scheduling_client.queue_stats()
 
 
 @app.get("/api/v1/queue/dlq")
-def list_dlq(limit: int = Query(default=50, ge=1, le=1000), _admin: User = Depends(require_admin)) -> list[dict[str, Any]]:
-    """Lists dead-letter queue items requiring operator inspection."""
-    dlq_mgr = DLQManager()
-    return dlq_mgr.list_dead_letters(limit=limit)
+async def list_dlq(
+    limit: int = Query(default=50, ge=1, le=1000), _admin: User = Depends(require_admin)
+) -> list[dict[str, Any]]:
+    """Lists failed document-ingestion workflows requiring operator inspection."""
+    return await scheduling_client.list_dead_letters(limit=limit)
 
 
 @app.post("/api/v1/queue/dlq/replay")
-def replay_dlq(task_id: str | None = None, _admin: User = Depends(require_admin)) -> dict[str, Any]:
-    """Replays all dead-letter tasks or a specific task back to the pending queue."""
-    dlq_mgr = DLQManager()
+async def replay_dlq(task_id: str | None = None, _admin: User = Depends(require_admin)) -> dict[str, Any]:
+    """Replays all failed document-ingestion workflows, or a specific one by workflow id."""
     if task_id:
-        success = dlq_mgr.replay_task(task_id)
+        success = await scheduling_client.replay_task(task_id)
         return {"replayed": 1 if success else 0, "task_id": task_id}
-    replayed = dlq_mgr.replay_all()
+    replayed = await scheduling_client.replay_all()
     return {"replayed": replayed}
 
 
@@ -1088,16 +1122,31 @@ def create_session(req: CreateSessionRequest | None = None, user: User = Depends
         raise HTTPException(status_code=422, detail="Create a workspace first, then add projects to it")
     if workspace_id not in _user_workspace_ids(user):
         raise HTTPException(status_code=404, detail=f"Workspace '{workspace_id}' not found")
-    if req:
-        return session_manager.create_session(
-            title=req.title,
-            system_prompt=req.system_prompt,
-            parameters=req.parameters,
-            files=_validated_files(req.files, user),
-            owner_id=user.id,
-            workspace_id=workspace_id,
-        )
-    return session_manager.create_session(owner_id=user.id, workspace_id=workspace_id)
+    req = req or CreateSessionRequest()
+    if req.parameters is None or "model" not in req.parameters.model_fields_set:
+        # No model chosen: the caller's default, not SessionParameters' hardcoded fallback.
+        chat = model_catalog.chat_models()
+        default = _effective_default_model(user, [m["name"] for m in chat] if chat is not None else None)
+        params = req.parameters or SessionParameters()
+        req = req.model_copy(update={"parameters": params.model_copy(update={"model": default})})
+    description = (req.description or "").strip() or None
+    custom = (req.system_prompt or "").strip()
+    return session_manager.create_session(
+        title=req.title,
+        system_prompt=custom or _default_project_prompt(description),
+        description=description,
+        parameters=req.parameters,
+        files=_validated_files(req.files, user),
+        owner_id=user.id,
+        workspace_id=workspace_id,
+    )
+
+
+def _default_project_prompt(focus: str | None) -> str:
+    """Every new project starts with the grounding persona written into its own settings (visible and
+    editable), with the project's stated focus appended — never replacing the grounding rules."""
+    base = settings.generation.default_system_prompt.strip()
+    return f"{base}\n\nProject focus: {focus}" if focus else base
 
 
 @app.get("/api/v1/sessions", response_model=SessionListResponse)
@@ -1740,120 +1789,56 @@ def _enrich_eval_report(raw: dict[str, Any]) -> dict[str, Any]:
     return report
 
 
-@app.get("/api/v1/sessions/{session_id}/eval/summary", response_model=ProjectEvalSummary)
-def project_eval_summary(session_id: str, _session: ChatSession = Depends(workspace_session)) -> ProjectEvalSummary:
-    """Aggregates this project's per-turn online evaluation scores (trend + weakest turns)."""
-    records, judge = project_eval.load_session_telemetry(
+def _project_telemetry(session_id: str) -> tuple[list[QueryTelemetry], dict[str, float]]:
+    return project_eval.load_session_telemetry(
         session_id,
         telemetry_tracker.get_recent_telemetry(limit=10_000),
         redis_host=settings.storage.redis_host,
         redis_port=settings.storage.redis_port,
     )
-    summary = project_eval.summarize_project(session_id, records, judge)
-    if summary.turns == 0:
-        now = time.time()
-        baseline_points = [
-            TurnEvalPoint(
-                query_id=f"q_{i}",
-                query_text=[
-                    "What is the FY24 Datacenter gross margin?",
-                    "Minimum CET1 ratio under Basel III?",
-                    "What are the Capex guidance figures for FY25?",
-                    "Explain the text coverage threshold for OCR",
-                    "How does RRF fusion compute reciprocal ranks?",
-                    "What is the cross-encoder rerank cutoff score?",
-                ][i % 6],
-                timestamp=now - (18 - i) * 3600,
-                eval=RetrievalEvalScores(
-                    groundedness=round(0.88 + (i % 6) * 0.02, 2),
-                    context_relevance=round(0.85 + (i % 4) * 0.03, 2),
-                    citation_validity=1.0,
-                    answer_sentences=3,
-                    passages_used=2,
-                ),
-            )
-            for i in range(18)
-        ]
-        return ProjectEvalSummary(
-            session_id=session_id,
-            turns=18,
-            answered=17,
-            refusal_rate=0.055,
-            mean_groundedness=0.94,
-            mean_context_relevance=0.89,
-            mean_citation_validity=0.98,
-            trend=baseline_points,
-            weakest=[
-                TurnEvalPoint(
-                    query_id="w_1",
-                    query_text="What are the unstated Capex expectations for FY26?",
-                    timestamp=now - 7200,
-                    eval=RetrievalEvalScores(
-                        groundedness=0.72,
-                        context_relevance=0.68,
-                        citation_validity=1.0,
-                        answer_sentences=2,
-                        passages_used=1,
-                    ),
-                ),
-                TurnEvalPoint(
-                    query_id="w_2",
-                    query_text="Detail competitor pricing strategies from footnotes",
-                    timestamp=now - 3600,
-                    eval=RetrievalEvalScores(
-                        groundedness=0.78,
-                        context_relevance=0.71,
-                        citation_validity=1.0,
-                        answer_sentences=2,
-                        passages_used=1,
-                    ),
-                ),
-            ],
-        )
-    return summary
+
+
+def _project_conversation(session_id: str, conversation_id: str | None) -> tuple[list[Conversation], str | None]:
+    """The project's chats (oldest first) and the validated chat to scope to (404 if not in the project)."""
+    conversations = session_manager.list_conversations(session_id)
+    if conversation_id and not any(c.id == conversation_id for c in conversations):
+        raise HTTPException(status_code=404, detail=f"Conversation '{conversation_id}' not found")
+    return conversations, conversation_id or None
+
+
+@app.get("/api/v1/sessions/{session_id}/eval/summary", response_model=ProjectEvalSummary)
+def project_eval_summary(
+    session_id: str,
+    conversation_id: str | None = Query(default=None),
+    _session: ChatSession = Depends(workspace_session),
+) -> ProjectEvalSummary:
+    """Aggregates this project's per-turn online evaluation scores (trend + weakest turns), or one
+    chat's when `conversation_id` is given. A project with no scored turns gets an empty summary."""
+    conversations, conversation_id = _project_conversation(session_id, conversation_id)
+    records, judge = _project_telemetry(session_id)
+    if conversation_id:
+        default_id = conversations[0].id if conversations else None
+        records = project_eval.in_conversation(records, conversation_id, default_id)
+    return project_eval.summarize_project(session_id, records, judge, conversation_id=conversation_id)
+
+
+@app.get("/api/v1/sessions/{session_id}/observability", response_model=ProjectObservability)
+def project_observability(
+    session_id: str,
+    conversation_id: str | None = Query(default=None),
+    _session: ChatSession = Depends(workspace_session),
+) -> ProjectObservability:
+    """Per-chat query volume and latency for this project (IRA-56), with totals and recent queries for
+    the whole project or, when `conversation_id` is given, one chat."""
+    conversations, conversation_id = _project_conversation(session_id, conversation_id)
+    records, _ = _project_telemetry(session_id)
+    return project_eval.summarize_observability(session_id, records, conversations, conversation_id)
 
 
 @app.get("/api/v1/sessions/{session_id}/eval/run", response_model=ProjectEvalRun | None)
 def project_eval_last_run(session_id: str, _session: ChatSession = Depends(workspace_session)) -> ProjectEvalRun | None:
     """Returns this project's most recent golden-set run, or null if it has never been run."""
-    run = project_eval.load_last_run(session_id)
-    if run is None:
-        run = ProjectEvalRun(
-            session_id=session_id,
-            started_at=time.time() - 3600,
-            duration_ms=412.0,
-            num_questions=12,
-            llm_generated=10,
-            hit_rate_at_1=0.8333,
-            hit_rate_at_3=1.0000,
-            mrr=0.9167,
-            ndcg_at_3=0.9482,
-            refusal_rate=0.0,
-            results=[
-                GoldenQueryResult(
-                    question="What is the hardware execution and storage topology?",
-                    target_chunk_id="chunk_gpu_spec",
-                    rank=1,
-                    top_score=0.9917,
-                    refused=False,
-                ),
-                GoldenQueryResult(
-                    question="What is the text coverage threshold to trigger OCR?",
-                    target_chunk_id="chunk_probe_heuristic",
-                    rank=1,
-                    top_score=0.9858,
-                    refused=False,
-                ),
-                GoldenQueryResult(
-                    question="What is the smoothing constant k in Reciprocal Rank Fusion?",
-                    target_chunk_id="chunk_rrf_fusion",
-                    rank=1,
-                    top_score=0.9996,
-                    refused=False,
-                ),
-            ],
-        )
-    return run
+    return project_eval.load_last_run(session_id)
 
 
 @app.post("/api/v1/sessions/{session_id}/eval/run", response_model=ProjectEvalRun)
@@ -1876,37 +1861,12 @@ def project_eval_run(
         logger.warning(f"Building golden set fell back: {exc}")
         golden = []
 
-    if golden:
-        run = project_eval.run_golden_set(session, golden, retrieval)
-    else:
-        run = ProjectEvalRun(
-            session_id=session.id,
-            started_at=time.time(),
-            duration_ms=384.5,
-            num_questions=12,
-            llm_generated=10,
-            hit_rate_at_1=0.8750,
-            hit_rate_at_3=1.0000,
-            mrr=0.9375,
-            ndcg_at_3=0.9580,
-            refusal_rate=0.0,
-            results=[
-                GoldenQueryResult(
-                    question="What is the primary relational database and port?",
-                    target_chunk_id="chunk_db_postgres",
-                    rank=1,
-                    top_score=0.9772,
-                    refused=False,
-                ),
-                GoldenQueryResult(
-                    question="How does the task broker handle dead letters?",
-                    target_chunk_id="chunk_redis_queue",
-                    rank=1,
-                    top_score=0.9993,
-                    refused=False,
-                ),
-            ],
+    if not golden:
+        raise HTTPException(
+            status_code=422,
+            detail="Not enough indexed text in this project's sources to build a golden set. Add sources first.",
         )
+    run = project_eval.run_golden_set(session, golden, retrieval)
     project_eval.save_run(run)
     return run
 

@@ -30,11 +30,10 @@ function Show-Help {
     Write-Host "  check          - Run ruff linter and full pytest suite"
     Write-Host "  services-up    - Start infrastructure only (Qdrant, Redis)"
     Write-Host "  services-down  - Stop all Docker containers"
-    Write-Host "  stack-up       - Build and start the entire stack (infra + gateway + worker + scheduler)"
+    Write-Host "  stack-up       - Build and start the entire stack (infra + gateway + Temporal + ingestion-worker)"
     Write-Host "  stack-down     - Stop the entire stack"
     Write-Host "  stack-logs     - Tail logs from the containerised app services"
-    Write-Host "  scheduler      - Run directory reconciler daemon"
-    Write-Host "  worker         - Run asynchronous Redis queue worker daemon"
+    Write-Host "  ingestion-worker - Run the Temporal worker (directory scan schedule + ingest/index workflows)"
     Write-Host "  flutter-web    - Build the Flutter web client (app_flutter/build/web)"
     Write-Host "  flutter-test   - Run flutter analyze + flutter test for app_flutter"
     Write-Host "  flutter-apk    - Build a release Android APK"
@@ -94,15 +93,11 @@ switch ($Target.ToLower()) {
     }
     "stack-logs" {
         Write-Host "Tailing app service logs (Ctrl+C to exit)..." -ForegroundColor Green
-        docker compose logs -f gateway worker scheduler
+        docker compose logs -f gateway ingestion-worker temporal
     }
-    "scheduler" {
-        Write-Host "Starting directory reconciler..." -ForegroundColor Green
-        python services/scheduler/reconciler.py
-    }
-    "worker" {
-        Write-Host "Starting asynchronous Redis queue worker..." -ForegroundColor Green
-        python services/scheduler/worker.py
+    "ingestion-worker" {
+        Write-Host "Starting Temporal ingestion worker..." -ForegroundColor Green
+        python -m services.scheduling.worker
     }
     "flutter-web" {
         Write-Host "Building Flutter web client..." -ForegroundColor Green

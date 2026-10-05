@@ -98,6 +98,15 @@ class ApiClient {
     return _handle(response, (j) => j);
   }
 
+  Future<dynamic> put(String path, {Object? body}) async {
+    final response = await _http.put(
+      _uri(path),
+      headers: await _headers(stateChanging: true),
+      body: body == null ? null : jsonEncode(body),
+    );
+    return _handle(response, (j) => j);
+  }
+
   Future<dynamic> patch(String path, {Object? body}) async {
     final response = await _http.patch(
       _uri(path),

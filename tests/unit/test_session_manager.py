@@ -1,5 +1,6 @@
 """Unit tests for the SessionManager and conversational memory capabilities."""
 
+import threading
 from unittest.mock import MagicMock, patch
 
 from contracts.session import ChatMessage, ChatSession, CreateSessionRequest
@@ -234,6 +235,34 @@ def test_pre_ira24_flat_history_migrates_into_a_default_conversation():
 
     sess, msgs = manager.get_session(session.id)
     assert [m.content for m in msgs] == ["Pre-existing question", "Pre-existing answer"]
+
+
+def test_concurrent_default_conversation_resolution_creates_only_one():
+    """A brand-new project's overview page fires several requests at once (conversations, eval
+    summary, observability) that each resolve the default conversation with none existing yet.
+    Without a guard, each thread's check-then-create races and the project ends up with two "Main"
+    conversations (confirmed live: a fresh project showed "Chat sessions 2" before any user action)."""
+    with patch("redis.Redis") as mock_redis_cls:
+        mock_redis_cls.side_effect = Exception("Redis unavailable")
+        manager = SessionManager()
+
+    session = manager.create_session(title="Race project")
+
+    results: list[str] = []
+
+    def resolve():
+        results.append(manager.resolve_conversation_id(session.id))
+
+    threads = [threading.Thread(target=resolve) for _ in range(12)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert len(set(results)) == 1
+    conversations = manager.list_conversations(session.id)
+    assert len(conversations) == 1
+    assert conversations[0].title == "Main"
 
 
 def test_session_scoped_parameters_and_files():

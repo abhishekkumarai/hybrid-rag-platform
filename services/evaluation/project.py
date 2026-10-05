@@ -21,15 +21,18 @@ from typing import Any
 import requests
 
 from contracts.metrics import (
+    ChatLatencyStats,
+    ConversationStats,
     GoldenQueryResult,
     GoldenQuestion,
     ProjectEvalRun,
     ProjectEvalSummary,
+    ProjectObservability,
     QueryTelemetry,
     TurnEvalPoint,
 )
 from contracts.retrieval import SearchQuery
-from contracts.session import ChatSession
+from contracts.session import ChatSession, Conversation
 from services.common.doc_scope import matches_doc_scope
 from services.common.logger import get_logger
 from services.common.ollama_options import no_think
@@ -73,8 +76,66 @@ def load_session_telemetry(
     return records, judge
 
 
+def in_conversation(
+    records: Sequence[QueryTelemetry], conversation_id: str, default_conversation_id: str | None
+) -> list[QueryTelemetry]:
+    """A chat's records. Records from before IRA-56 carry no thread; they belong to the project's first
+    (default) thread, which held all of a project's history before multi-thread chats (IRA-24)."""
+    return [t for t in records if (t.conversation_id or default_conversation_id) == conversation_id]
+
+
+def _latency_stats(records: Sequence[QueryTelemetry]) -> ChatLatencyStats:
+    if not records:
+        return ChatLatencyStats()
+
+    def avg(values: list[float]) -> float:
+        return round(sum(values) / len(values), 2) if values else 0.0
+
+    answered = [t for t in records if not t.refused]
+    return ChatLatencyStats(
+        queries=len(records),
+        refusals=len(records) - len(answered),
+        avg_total_ms=avg([t.total_ms for t in records]),
+        avg_retrieval_ms=avg([t.dense_ms + t.sparse_ms + t.fusion_ms + t.rerank_ms for t in records]),
+        avg_ttft_ms=avg([t.llm_ttft_ms for t in answered if t.llm_ttft_ms > 0]),
+        avg_generation_ms=avg([t.llm_gen_ms for t in answered if t.llm_gen_ms > 0]),
+        avg_tokens_per_sec=avg([t.tokens_per_sec for t in answered if t.tokens_per_sec > 0]),
+        avg_top_score=round(sum(t.top_score for t in records) / len(records), 4),
+        last_query_at=max(t.timestamp for t in records),
+    )
+
+
+def summarize_observability(
+    session_id: str,
+    records: Sequence[QueryTelemetry],
+    conversations: Sequence[Conversation],
+    conversation_id: str | None = None,
+    recent_n: int = 20,
+) -> ProjectObservability:
+    """Per-chat latency/volume rows for every thread, plus totals and recent queries for the scope
+    (one chat when `conversation_id` is given, else the whole project)."""
+    default_id = conversations[0].id if conversations else None
+    rows = []
+    for conv in conversations:
+        stats = _latency_stats(in_conversation(records, conv.id, default_id))
+        rows.append(ConversationStats(conversation_id=conv.id, title=conv.title, **stats.model_dump()))
+    rows.sort(key=lambda r: (r.queries, r.last_query_at or 0), reverse=True)
+    scoped = in_conversation(records, conversation_id, default_id) if conversation_id else list(records)
+    return ProjectObservability(
+        session_id=session_id,
+        conversation_id=conversation_id,
+        totals=_latency_stats(scoped),
+        conversations=rows,
+        recent=sorted(scoped, key=lambda t: t.timestamp, reverse=True)[:recent_n],
+    )
+
+
 def summarize_project(
-    session_id: str, records: Sequence[QueryTelemetry], judge: dict[str, float], weakest_n: int = 5
+    session_id: str,
+    records: Sequence[QueryTelemetry],
+    judge: dict[str, float],
+    weakest_n: int = 5,
+    conversation_id: str | None = None,
 ) -> ProjectEvalSummary:
     points: list[TurnEvalPoint] = []
     for t in records:
@@ -93,6 +154,7 @@ def summarize_project(
     refusals = sum(1 for t in records if t.refused)
     return ProjectEvalSummary(
         session_id=session_id,
+        conversation_id=conversation_id,
         turns=len(records),
         answered=len(points),
         refusal_rate=round(refusals / len(records), 4) if records else 0.0,

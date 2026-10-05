@@ -116,26 +116,56 @@ class CitationInspectorPanel extends ConsumerWidget {
                     style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: EvergreenColors.ink, height: 1.4),
                   ),
                   const SizedBox(height: 8),
-                  Row(
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: EvergreenColors.primaryTint,
-                          borderRadius: BorderRadius.circular(4),
+                      if (selected.isWeb) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: EvergreenColors.primaryTint,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text('Web Source', style: monoStyle(fontSize: 10, weight: FontWeight.w600, color: EvergreenColors.primary)),
                         ),
-                        child: Text('Sim: 0.94', style: monoStyle(fontSize: 10, weight: FontWeight.w600, color: EvergreenColors.primary)),
-                      ),
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: EvergreenColors.surface,
-                          border: Border.all(color: EvergreenColors.border),
-                          borderRadius: BorderRadius.circular(4),
+                        if (selected.resourceUrl != null || selected.webUrl != null)
+                          ActionChip(
+                            avatar: const Icon(Symbols.link, size: 12, color: EvergreenColors.primary),
+                            label: Text('Copy link', style: monoStyle(fontSize: 10, color: EvergreenColors.primary)),
+                            padding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () {
+                              final url = selected.resourceUrl ?? selected.webUrl ?? '';
+                              if (url.isNotEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Copied: $url')),
+                                );
+                              }
+                            },
+                          ),
+                      ] else ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: EvergreenColors.primaryTint,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text('Page ${selected.page}', style: monoStyle(fontSize: 10, weight: FontWeight.w600, color: EvergreenColors.primary)),
                         ),
-                        child: Text('Rerank: 0.98', style: monoStyle(fontSize: 10, color: EvergreenColors.metadata)),
-                      ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: EvergreenColors.surface,
+                            border: Border.all(color: EvergreenColors.border),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            'bbox: [${selected.bbox.map((e) => e.toStringAsFixed(0)).join(', ')}]',
+                            style: monoStyle(fontSize: 10, color: EvergreenColors.metadata),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ],
@@ -153,18 +183,23 @@ class _DocumentMockupPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final title = selected.resourceTitle?.isNotEmpty == true
+        ? selected.resourceTitle!
+        : (selected.formattedBadge.isNotEmpty ? selected.formattedBadge : selected.docId);
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'PAGE PREVIEW',
+            selected.isWeb ? 'WEB SOURCE PROVENANCE' : 'DOCUMENT PROVENANCE',
             style: monoStyle(fontSize: 10, weight: FontWeight.w600, color: EvergreenColors.metadata),
           ),
           const SizedBox(height: 8),
           Container(
-            padding: const EdgeInsets.all(12),
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: Colors.white,
               border: Border.all(color: EvergreenColors.border),
@@ -181,67 +216,77 @@ class _DocumentMockupPreview extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'UNITED STATES SEC · FORM 10-K',
-                      style: monoStyle(fontSize: 8, color: EvergreenColors.metadata),
+                    Icon(
+                      selected.isWeb
+                          ? Symbols.public
+                          : (selected.isFigure ? Symbols.image : (selected.isTable ? Symbols.table : Symbols.description)),
+                      size: 20,
+                      color: EvergreenColors.primary,
                     ),
-                    Text(
-                      'PART II · ITEM 7',
-                      style: monoStyle(fontSize: 8, color: EvergreenColors.metadata),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: EvergreenColors.ink),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ],
                 ),
-                const Divider(height: 12, color: EvergreenColors.border),
-                Container(height: 5, width: 140, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
-                const SizedBox(height: 6),
-                Container(height: 4, width: double.infinity, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(2))),
-                const SizedBox(height: 4),
-                Container(height: 4, width: 220, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(2))),
-                const SizedBox(height: 10),
-                // Highlight Box Around Cited Passage
+                if (selected.webUrl != null || selected.resourceUrl != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    selected.resourceUrl ?? selected.webUrl!,
+                    style: monoStyle(fontSize: 11, color: EvergreenColors.primary),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+                const Divider(height: 20, color: EvergreenColors.border),
                 Container(
-                  padding: const EdgeInsets.all(8),
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: EvergreenColors.primaryTint,
                     border: Border.all(color: EvergreenColors.primary, width: 1.5),
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(EvergreenRadii.control),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
-                          const Icon(Symbols.verified, size: 12, color: EvergreenColors.primary),
-                          const SizedBox(width: 4),
+                          const Icon(Symbols.verified, size: 14, color: EvergreenColors.primary),
+                          const SizedBox(width: 6),
                           Text(
-                            '[Extracted Context]',
-                            style: monoStyle(fontSize: 9, weight: FontWeight.w700, color: EvergreenColors.primary),
+                            '[Verified Source Passage]',
+                            style: monoStyle(fontSize: 10, weight: FontWeight.w700, color: EvergreenColors.primary),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        selected.snippet,
-                        style: monoStyle(fontSize: 10, weight: FontWeight.w500, color: EvergreenColors.ink),
+                      const SizedBox(height: 8),
+                      SelectableText(
+                        selected.snippet.isNotEmpty ? selected.snippet : 'Passage text not available.',
+                        style: monoStyle(fontSize: 11, weight: FontWeight.w500, color: EvergreenColors.ink),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 10),
-                Container(height: 4, width: double.infinity, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(2))),
-                const SizedBox(height: 4),
-                Container(height: 4, width: 240, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(2))),
-                const SizedBox(height: 4),
-                Container(height: 4, width: 160, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(2))),
-                const SizedBox(height: 10),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Text(
-                    'Page ${selected.page} of 168',
-                    style: monoStyle(fontSize: 8, color: EvergreenColors.metadata),
-                  ),
+                const SizedBox(height: 14),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Doc: ${selected.docId}',
+                      style: monoStyle(fontSize: 10, color: EvergreenColors.metadata),
+                    ),
+                    Text(
+                      selected.isWeb ? 'Web resource' : 'Page ${selected.page}',
+                      style: monoStyle(fontSize: 10, color: EvergreenColors.metadata),
+                    ),
+                  ],
                 ),
               ],
             ),

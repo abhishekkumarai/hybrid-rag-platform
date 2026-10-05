@@ -38,6 +38,9 @@ class QueryTelemetry(BaseModel):
 
     query_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     session_id: str | None = None
+    conversation_id: str | None = Field(
+        default=None, description="Chat thread within the project; None on records made before IRA-56"
+    )
     query_text: str
     dense_ms: float = 0.0
     sparse_ms: float = 0.0
@@ -85,9 +88,11 @@ class TurnEvalPoint(BaseModel):
 
 
 class ProjectEvalSummary(BaseModel):
-    """Aggregated online (per-turn) evaluation for one project (backend ChatSession)."""
+    """Aggregated online (per-turn) evaluation for one project (backend ChatSession), or for one of its
+    chats when `conversation_id` is set."""
 
     session_id: str
+    conversation_id: str | None = None
     turns: int = 0
     answered: int = 0
     refusal_rate: float = 0.0
@@ -98,6 +103,37 @@ class ProjectEvalSummary(BaseModel):
     judged_turns: int = 0
     trend: list[TurnEvalPoint] = Field(default_factory=list, description="Oldest first")
     weakest: list[TurnEvalPoint] = Field(default_factory=list, description="Lowest groundedness first")
+
+
+class ChatLatencyStats(BaseModel):
+    """Query counts and mean latencies over a set of turns (one chat, or all of a project's chats)."""
+
+    queries: int = 0
+    refusals: int = 0
+    avg_total_ms: float = 0.0
+    avg_retrieval_ms: float = 0.0
+    avg_ttft_ms: float = 0.0
+    avg_generation_ms: float = 0.0
+    avg_tokens_per_sec: float = 0.0
+    avg_top_score: float = 0.0
+    last_query_at: float | None = None
+
+
+class ConversationStats(ChatLatencyStats):
+    """One chat thread's observability row."""
+
+    conversation_id: str
+    title: str
+
+
+class ProjectObservability(BaseModel):
+    """Per-chat observability for one project (IRA-56). `conversation_id` set = scoped to that chat."""
+
+    session_id: str
+    conversation_id: str | None = None
+    totals: ChatLatencyStats = Field(default_factory=ChatLatencyStats, description="For the scope")
+    conversations: list[ConversationStats] = Field(default_factory=list, description="Every chat, busiest first")
+    recent: list[QueryTelemetry] = Field(default_factory=list, description="Newest first, for the scope")
 
 
 class GoldenQuestion(BaseModel):

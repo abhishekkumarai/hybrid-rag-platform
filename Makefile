@@ -1,13 +1,13 @@
 # Makefile for Hybrid RAG Platform (SOA + Langflow)
 
-.PHONY: help setup services-up services-down stack-up stack-down stack-logs test check run serve eval gate eval-chat scheduler worker clean
+.PHONY: help setup services-up services-down stack-up stack-down stack-logs test check run serve eval gate eval-chat ingestion-worker clean
 
 help:
 	@echo "Available targets:"
 	@echo "  make setup          - Sync and install Python dependencies via uv"
 	@echo "  make services-up    - Start infrastructure only (Qdrant, Redis)"
 	@echo "  make services-down  - Stop all Docker containers"
-	@echo "  make stack-up       - Build and start the entire stack (infra + gateway + worker + scheduler + Langflow)"
+	@echo "  make stack-up       - Build and start the entire stack (infra + gateway + Temporal + ingestion-worker + Langflow)"
 	@echo "  make stack-down     - Stop the entire stack"
 	@echo "  make stack-logs     - Tail logs from the containerised app services"
 	@echo "  make test           - Run all unit tests"
@@ -17,8 +17,7 @@ help:
 	@echo "  make eval           - Run offline evaluation & faithfulness benchmark"
 	@echo "  make gate           - Run CI/CD evaluation regression quality gate"
 	@echo "  make eval-chat      - Multi-turn answer-quality regression suite (live gateway on :8010)"
-	@echo "  make scheduler      - Run directory reconciler daemon"
-	@echo "  make worker         - Run asynchronous Redis queue worker daemon"
+	@echo "  make ingestion-worker - Run the Temporal worker (directory scan schedule + ingest/index workflows)"
 	@echo "  make clean          - Clean up temporary files and caches"
 
 setup:
@@ -37,7 +36,7 @@ stack-down:
 	docker compose down
 
 stack-logs:
-	docker compose logs -f gateway worker scheduler
+	docker compose logs -f gateway ingestion-worker temporal
 
 test:
 	python -m pytest tests/unit -v
@@ -61,11 +60,8 @@ gate:
 eval-chat:
 	python tests/eval/conversation_regression.py
 
-scheduler:
-	python services/scheduler/reconciler.py
-
-worker:
-	python services/scheduler/worker.py
+ingestion-worker:
+	python -m services.scheduling.worker
 
 flutter-web:
 	cd app_flutter && flutter build web --release

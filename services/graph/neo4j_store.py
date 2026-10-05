@@ -80,6 +80,10 @@ class Neo4jGraphStore:
     def is_connected(self) -> bool:
         return self._is_connected
 
+    @property
+    def graph(self) -> Any:
+        return self.fallback.graph
+
     def add_entity(self, entity: Entity) -> None:
         """Upserts an entity node in Neo4j (or local fallback)."""
         # Always maintain local fallback mirror

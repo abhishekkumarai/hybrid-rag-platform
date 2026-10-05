@@ -57,6 +57,32 @@ void main() {
     expect(find.text('Forked by me'), findsOneWidget);
   });
 
+  testWidgets('vector storage and New project sit at the top right on a wide screen', (tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(testApp());
+    await tester.pumpAndSettle();
+
+    final newProject = tester.getRect(find.text('New project'));
+    final storage = tester.getRect(find.textContaining('Vector Storage'));
+    final title = tester.getRect(find.text('Workspace').first);
+    expect(newProject.right, greaterThan(1400 - 80));
+    expect(storage.left, greaterThan(title.right));
+    expect(newProject.top, lessThan(title.bottom)); // same row as the title
+  });
+
+  testWidgets('on a narrow screen the actions stack under the title without overflowing', (tester) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(testApp());
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(tester.getRect(find.text('New project')).top, greaterThan(tester.getRect(find.text('Workspace').first).bottom));
+  });
+
   testWidgets('selecting projects reveals a bulk-delete action with the count', (tester) async {
     await tester.pumpWidget(testApp());
     await tester.pumpAndSettle();

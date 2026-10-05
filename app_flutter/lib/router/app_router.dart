@@ -10,6 +10,7 @@ import '../screens/library/library_screen.dart';
 import '../screens/models/models_tuning_screen.dart';
 import '../screens/observability/observability_screen.dart';
 import '../screens/project/project_evaluation_screen.dart';
+import '../screens/project/project_observability_screen.dart';
 import '../screens/project/project_overview_screen.dart';
 import '../screens/project/project_settings_screen.dart';
 import '../screens/project/project_sources_screen.dart';
@@ -25,7 +26,7 @@ import '../shell/app_shell.dart';
 
 /// Routes from IRA-47/IRA-50: `/signin`, `/w/:ws`,
 /// `/w/:ws/{members,library,evaluation,observability,graph,ragops,models}`,
-/// `/w/:ws/p/:project/{overview|sources|chats/:chat|evaluation|settings}`, `/settings`, `/s/:token`.
+/// `/w/:ws/p/:project/{overview|sources|chats/:chat|observability|evaluation|settings}`, `/settings`, `/s/:token`.
 GoRouter buildRouter(WidgetRef ref) {
   final authListenable = _AuthRefreshListenable(ref);
 
@@ -159,6 +160,13 @@ GoRouter buildRouter(WidgetRef ref) {
               workspaceId: state.pathParameters['ws']!,
               projectId: state.pathParameters['project']!,
               conversationId: state.pathParameters['chat']!,
+            ),
+          ),
+          GoRoute(
+            path: '/w/:ws/p/:project/observability',
+            builder: (context, state) => ProjectObservabilityScreen(
+              workspaceId: state.pathParameters['ws']!,
+              projectId: state.pathParameters['project']!,
             ),
           ),
           GoRoute(

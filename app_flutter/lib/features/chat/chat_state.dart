@@ -1,4 +1,5 @@
 import '../../api/models/chat_event.dart';
+import '../../api/models/eval.dart';
 import '../../api/models/retrieval.dart';
 
 enum AnswerState { confident, ambiguous, refused }
@@ -15,6 +16,10 @@ class ChatTurn {
   final double topScore;
   final String? mode;
   final List<String> subQueries;
+  final RetrievalEvalScores? evalScores;
+  final double? latencyMs;
+  final double? tokensPerSec;
+  final int? tokensGenerated;
 
   const ChatTurn({
     required this.id,
@@ -27,14 +32,25 @@ class ChatTurn {
     this.topScore = 0.0,
     this.mode,
     this.subQueries = const [],
+    this.evalScores,
+    this.latencyMs,
+    this.tokensPerSec,
+    this.tokensGenerated,
   });
 
-  /// A conservative online-eval heuristic (no verdict is on the wire — see `DoneEvent`):
-  /// refused turns are `refused`, otherwise `topScore` against the project's own
-  /// `min_score_threshold`-style band splits `confident` vs `ambiguous`.
+  /// Evaluates whether the answer is confident, ambiguous, or refused using real metrics.
   AnswerState get answerState {
     if (refused) return AnswerState.refused;
-    return topScore >= 0.5 ? AnswerState.confident : AnswerState.ambiguous;
+    if (evalScores?.cragStatus != null) {
+      final s = evalScores!.cragStatus!.toLowerCase();
+      if (s == 'confident') return AnswerState.confident;
+      if (s == 'refuse' || s == 'refused') return AnswerState.refused;
+      if (s == 'ambiguous') return AnswerState.ambiguous;
+    }
+    if (evalScores != null && evalScores!.groundedness >= 0.7 && evalScores!.contextRelevance >= 0.25) {
+      return AnswerState.confident;
+    }
+    return (topScore >= 0.35 || citations.isNotEmpty) ? AnswerState.confident : AnswerState.ambiguous;
   }
 
   ChatTurn copyWith({
@@ -46,6 +62,10 @@ class ChatTurn {
     double? topScore,
     String? mode,
     List<String>? subQueries,
+    RetrievalEvalScores? evalScores,
+    double? latencyMs,
+    double? tokensPerSec,
+    int? tokensGenerated,
   }) =>
       ChatTurn(
         id: id,
@@ -58,6 +78,10 @@ class ChatTurn {
         topScore: topScore ?? this.topScore,
         mode: mode ?? this.mode,
         subQueries: subQueries ?? this.subQueries,
+        evalScores: evalScores ?? this.evalScores,
+        latencyMs: latencyMs ?? this.latencyMs,
+        tokensPerSec: tokensPerSec ?? this.tokensPerSec,
+        tokensGenerated: tokensGenerated ?? this.tokensGenerated,
       );
 }
 
@@ -77,6 +101,17 @@ ChatTurn reduceChatEvent(ChatTurn turn, ChatEvent event) {
   return switch (event) {
     TokenEvent(:final token) => turn.copyWith(answer: turn.answer + token, streaming: true),
     ChatErrorEvent(:final error) => turn.copyWith(error: error, streaming: false),
+    EvalEvent(:final scores) => turn.copyWith(
+        evalScores: RetrievalEvalScores.fromJson(scores),
+      ),
+    TelemetryEvent(:final telemetry) => turn.copyWith(
+        latencyMs: (telemetry['total_ms'] as num?)?.toDouble() ?? turn.latencyMs,
+        tokensPerSec: (telemetry['tokens_per_sec'] as num?)?.toDouble() ?? turn.tokensPerSec,
+        tokensGenerated: (telemetry['tokens_generated'] as num?)?.toInt() ?? turn.tokensGenerated,
+        evalScores: telemetry['eval'] is Map
+            ? RetrievalEvalScores.fromJson(Map<String, dynamic>.from(telemetry['eval'] as Map))
+            : turn.evalScores,
+      ),
     DoneEvent(:final refused, :final answer, :final rawAnswer, :final citations, :final topScore, :final mode, :final subQueries, :final error) =>
       turn.copyWith(
         // `answer` is pre-formatted for the legacy HTML client (a markdown "Verified Sources" block
@@ -90,6 +125,6 @@ ChatTurn reduceChatEvent(ChatTurn turn, ChatEvent event) {
         subQueries: subQueries,
         error: error,
       ),
-    SessionEvent() || ModeEvent() || AgentStepEvent() || EvalEvent() || TelemetryEvent() => turn,
+    SessionEvent() || ModeEvent() || AgentStepEvent() => turn,
   };
 }

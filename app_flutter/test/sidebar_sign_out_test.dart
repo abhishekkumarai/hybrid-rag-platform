@@ -55,6 +55,33 @@ void main() {
     expect(button.hitTestable(), findsOneWidget);
   });
 
+  testWidgets('the top-left logo goes to the workspace home', (tester) async {
+    tester.view.physicalSize = const Size(1400, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final visited = <String>[];
+    final router = GoRouter(initialLocation: '/w/ws1/library', routes: [
+      GoRoute(path: '/w/:ws', builder: (_, s) {
+        visited.add(s.uri.toString());
+        return const Scaffold(body: Row(children: [AppSidebar(workspaceId: 'ws1')]));
+      }),
+      GoRoute(path: '/w/:ws/library', builder: (_, _) => const Scaffold(body: Row(children: [AppSidebar(workspaceId: 'ws1')]))),
+    ]);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        authProvider.overrideWith((ref) => _FakeAuth(const User(id: 'u1', email: 'a@b.c'))),
+        workspaceProjectsProvider.overrideWith((ref, ws) async => const <ChatSession>[]),
+        workspacesProvider.overrideWith((ref) async => const <Workspace>[]),
+        serviceHealthProvider.overrideWith((ref) async => const ServiceHealth()),
+      ],
+      child: MaterialApp.router(routerConfig: router),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Home'));
+    await tester.pumpAndSettle();
+    expect(visited, ['/w/ws1']);
+  });
+
   testWidgets('tapping sign out asks to confirm, then logs out', (tester) async {
     final auth = await pumpSidebar(tester, height: 800, projects: 2);
     await tester.tap(find.byTooltip('Sign out'));

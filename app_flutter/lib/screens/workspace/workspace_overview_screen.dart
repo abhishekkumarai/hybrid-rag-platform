@@ -41,13 +41,16 @@ class _WorkspaceOverviewScreenState
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
     final currentUserId = auth is AuthSignedIn ? auth.user.id : null;
-    final projectsAsync = ref.watch(workspaceProjectsProvider(widget.workspaceId));
+    final projectsAsync = ref.watch(
+      workspaceProjectsProvider(widget.workspaceId),
+    );
     final metricsAsync = ref.watch(workspaceMetricsProvider(null));
 
     final projects = projectsAsync.valueOrNull ?? const <ChatSession>[];
     final metrics = metricsAsync.valueOrNull;
     final isLoading = projectsAsync.isLoading && !projectsAsync.hasValue;
-    final workspaceName = ref
+    final workspaceName =
+        ref
             .watch(workspacesProvider)
             .valueOrNull
             ?.where((w) => w.id == widget.workspaceId)
@@ -68,8 +71,10 @@ class _WorkspaceOverviewScreenState
       return Scaffold(
         backgroundColor: EvergreenColors.canvas,
         body: Center(
-          child: Text('Failed to load workspace: ${projectsAsync.error}',
-              style: const TextStyle(color: EvergreenColors.refused)),
+          child: Text(
+            'Failed to load workspace: ${projectsAsync.error}',
+            style: const TextStyle(color: EvergreenColors.refused),
+          ),
         ),
       );
     }
@@ -78,26 +83,27 @@ class _WorkspaceOverviewScreenState
       backgroundColor: EvergreenColors.canvas,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(horizontal: isDesktop ? 32 : 16, vertical: isDesktop ? 20 : 12),
+          padding: EdgeInsets.symmetric(
+            horizontal: isDesktop ? 32 : 16,
+            vertical: isDesktop ? 20 : 12,
+          ),
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 1400),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Top Title & Subtitle Banner
-                  Wrap(
-                    alignment: WrapAlignment.spaceBetween,
-                    crossAxisAlignment: WrapCrossAlignment.start,
-                    spacing: 16,
-                    runSpacing: 12,
-                    children: [
-                      Column(
+                  // Title on the left; vector storage + New project pinned to the top-right corner on
+                  // wide screens, stacked under the title on narrow ones.
+                  Builder(
+                    builder: (context) {
+                      final title = Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             workspaceName,
-                            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                            style: Theme.of(context).textTheme.headlineMedium
+                                ?.copyWith(
                                   fontWeight: FontWeight.w700,
                                   color: EvergreenColors.ink,
                                   letterSpacing: -0.5,
@@ -112,17 +118,22 @@ class _WorkspaceOverviewScreenState
                             ),
                           ),
                         ],
-                      ),
-                      Wrap(
+                      );
+                      final actions = Wrap(
                         spacing: 8,
                         runSpacing: 8,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
                             decoration: BoxDecoration(
                               color: EvergreenColors.surface,
-                              borderRadius: BorderRadius.circular(EvergreenRadii.control),
+                              borderRadius: BorderRadius.circular(
+                                EvergreenRadii.control,
+                              ),
                               border: Border.all(color: EvergreenColors.border),
                             ),
                             child: Row(
@@ -130,10 +141,15 @@ class _WorkspaceOverviewScreenState
                               children: [
                                 const Text(
                                   'Vector Storage: ',
-                                  style: TextStyle(fontSize: 12, color: EvergreenColors.metadata),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: EvergreenColors.metadata,
+                                  ),
                                 ),
                                 Text(
-                                  metrics == null ? '—' : '${metrics.qdrantPoints} chunks',
+                                  metrics == null
+                                      ? '—'
+                                      : '${metrics.qdrantPoints} chunks',
                                   style: monoStyle(
                                     fontSize: 12,
                                     weight: FontWeight.w600,
@@ -144,17 +160,41 @@ class _WorkspaceOverviewScreenState
                             ),
                           ),
                           FilledButton.icon(
-                            onPressed: () => createProjectDialog(context, ref, widget.workspaceId),
+                            onPressed: () => createProjectDialog(
+                              context,
+                              ref,
+                              widget.workspaceId,
+                            ),
                             icon: const Icon(Symbols.add, size: 16),
                             label: const Text('New project'),
                             style: FilledButton.styleFrom(
                               backgroundColor: EvergreenColors.primary,
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 10,
+                              ),
                             ),
                           ),
                         ],
-                      ),
-                    ],
+                      );
+                      return isDesktop
+                          ? Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(child: title),
+                                const SizedBox(width: 16),
+                                actions,
+                              ],
+                            )
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                title,
+                                const SizedBox(height: 12),
+                                actions,
+                              ],
+                            );
+                    },
                   ),
                   SizedBox(height: isDesktop ? 16 : 8),
 
@@ -162,7 +202,10 @@ class _WorkspaceOverviewScreenState
                   _FourStatCardsGrid(
                     projects: projects,
                     metrics: metrics,
-                    documentCount: ref.watch(documentsProvider).valueOrNull?.length,
+                    documentCount: ref
+                        .watch(documentsProvider)
+                        .valueOrNull
+                        ?.length,
                   ),
                   SizedBox(height: isDesktop ? 16 : 8),
 
@@ -173,7 +216,11 @@ class _WorkspaceOverviewScreenState
                       children: [
                         Expanded(
                           flex: 8,
-                          child: _buildProjectsColumn(context, projects, currentUserId),
+                          child: _buildProjectsColumn(
+                            context,
+                            projects,
+                            currentUserId,
+                          ),
                         ),
                         const SizedBox(width: 24),
                         Expanded(
@@ -235,20 +282,33 @@ class _WorkspaceOverviewScreenState
                   onChanged: (f) => setState(() => _filter = f),
                 ),
                 IconButton(
-                  icon: const Icon(Symbols.refresh, size: 16, color: EvergreenColors.metadata),
+                  icon: const Icon(
+                    Symbols.refresh,
+                    size: 16,
+                    color: EvergreenColors.metadata,
+                  ),
                   tooltip: 'Refresh projects',
                   visualDensity: VisualDensity.compact,
                   onPressed: () {
-                    ref.invalidate(workspaceProjectsProvider(widget.workspaceId));
+                    ref.invalidate(
+                      workspaceProjectsProvider(widget.workspaceId),
+                    );
                   },
                 ),
                 if (_selected.isNotEmpty)
                   TextButton.icon(
                     onPressed: () => _deleteSelected(context),
-                    icon: const Icon(Symbols.delete, size: 16, color: EvergreenColors.refused),
+                    icon: const Icon(
+                      Symbols.delete,
+                      size: 16,
+                      color: EvergreenColors.refused,
+                    ),
                     label: Text(
                       'Delete ${_selected.length}',
-                      style: const TextStyle(color: EvergreenColors.refused, fontWeight: FontWeight.w600),
+                      style: const TextStyle(
+                        color: EvergreenColors.refused,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
               ],
@@ -260,8 +320,15 @@ class _WorkspaceOverviewScreenState
                 style: const TextStyle(fontSize: 12),
                 decoration: InputDecoration(
                   isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  prefixIcon: const Icon(Symbols.search, size: 16, color: EvergreenColors.metadata),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  prefixIcon: const Icon(
+                    Symbols.search,
+                    size: 16,
+                    color: EvergreenColors.metadata,
+                  ),
                   hintText: 'Filter projects…',
                   fillColor: EvergreenColors.surface,
                   filled: true,
@@ -292,12 +359,19 @@ class _WorkspaceOverviewScreenState
             children: [
               if (filtered.isEmpty)
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 40,
+                    horizontal: 20,
+                  ),
                   child: Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Symbols.folder_open, size: 36, color: EvergreenColors.border),
+                        const Icon(
+                          Symbols.folder_open,
+                          size: 36,
+                          color: EvergreenColors.border,
+                        ),
                         const SizedBox(height: 10),
                         Text(
                           _search.isNotEmpty
@@ -312,7 +386,10 @@ class _WorkspaceOverviewScreenState
                         const SizedBox(height: 4),
                         const Text(
                           'Click "New project" above to create your first project.',
-                          style: TextStyle(fontSize: 12, color: EvergreenColors.metadata),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: EvergreenColors.metadata,
+                          ),
                         ),
                       ],
                     ),
@@ -353,9 +430,14 @@ class _WorkspaceOverviewScreenState
               children: [
                 Icon(Symbols.info, size: 14, color: EvergreenColors.metadata),
                 SizedBox(width: 6),
-                Text(
-                  'All RAG queries cite passage doc_ids and token-level offsets.',
-                  style: TextStyle(fontSize: 11, color: EvergreenColors.metadata),
+                Flexible(
+                  child: Text(
+                    'All RAG queries cite passage doc_ids and token-level offsets.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: EvergreenColors.metadata,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -406,169 +488,203 @@ class _WorkspaceOverviewScreenState
                 ],
               ),
               const Divider(height: 20, color: EvergreenColors.border),
-              Builder(builder: (context) {
-                final telemetry = metrics?.recentTelemetry ?? const [];
-                if (telemetry.isEmpty) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    child: Text(
-                      'No queries yet.',
-                      style: TextStyle(fontSize: 12, color: EvergreenColors.metadata),
-                    ),
-                  );
-                }
-                return Column(
-                  children: [
-                    for (var i = 0; i < telemetry.length; i++) ...[
-                      _ActivityItem(
-                        initials: 'AK',
-                        initialsColor: EvergreenColors.ink,
-                        initialsBg: const Color(0xFFE7E5E4),
-                        query: telemetry[i].queryText,
-                        subtitle: telemetry[i].sessionId != null
-                            ? 'Asked in ${telemetry[i].sessionId} · recently'
-                            : 'Asked recently',
-                        statusLabel: telemetry[i].refused
-                            ? 'Refused — not in sources'
-                            : 'Answered from ${telemetry[i].citationsCount} citations',
-                        statusColor: telemetry[i].refused
-                            ? EvergreenColors.refused
-                            : EvergreenColors.primary,
-                        statusBg: telemetry[i].refused
-                            ? EvergreenColors.refusedTint
-                            : EvergreenColors.primaryTint,
+              Builder(
+                builder: (context) {
+                  final telemetry = metrics?.recentTelemetry ?? const [];
+                  if (telemetry.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Text(
+                        'No queries yet.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: EvergreenColors.metadata,
+                        ),
                       ),
-                      if (i != telemetry.length - 1)
-                        const Divider(height: 18, color: Color(0xFFF5F5F4)),
+                    );
+                  }
+                  return Column(
+                    children: [
+                      for (var i = 0; i < telemetry.length; i++) ...[
+                        _ActivityItem(
+                          initials: 'AK',
+                          initialsColor: EvergreenColors.ink,
+                          initialsBg: const Color(0xFFE7E5E4),
+                          query: telemetry[i].queryText,
+                          subtitle: telemetry[i].sessionId != null
+                              ? 'Asked in ${telemetry[i].sessionId} · recently'
+                              : 'Asked recently',
+                          statusLabel: telemetry[i].refused
+                              ? 'Refused — not in sources'
+                              : 'Answered from ${telemetry[i].citationsCount} citations',
+                          statusColor: telemetry[i].refused
+                              ? EvergreenColors.refused
+                              : EvergreenColors.primary,
+                          statusBg: telemetry[i].refused
+                              ? EvergreenColors.refusedTint
+                              : EvergreenColors.primaryTint,
+                        ),
+                        if (i != telemetry.length - 1)
+                          const Divider(height: 18, color: Color(0xFFF5F5F4)),
+                      ],
                     ],
-                  ],
-                );
-              }),
+                  );
+                },
+              ),
             ],
           ),
         ),
         const SizedBox(height: 16),
 
         // Infrastructure & Models Card
-        Builder(builder: (context) {
-          final health = ref.watch(serviceHealthProvider).valueOrNull;
-          final gpu = ref.watch(gpuStatusProvider).valueOrNull;
-          final models = ref.watch(modelsProvider).valueOrNull;
-          final allHealthy = health != null && health.qdrantAlive && health.redisAlive && health.ollamaAlive;
-          final usedMb = (gpu?['used_vram_mb'] as num?)?.toDouble();
-          final totalMb = (gpu?['total_vram_mb'] as num?)?.toDouble();
-          final vramRatio = (usedMb != null && totalMb != null && totalMb > 0)
-              ? (usedMb / totalMb).clamp(0.0, 1.0).toDouble()
-              : null;
-          String state(bool? alive) => alive == null ? 'unknown' : (alive ? 'up' : 'down');
-          final defaultModel = models?.defaultModel ?? '';
-          return Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: EvergreenColors.surface,
-            borderRadius: BorderRadius.circular(EvergreenRadii.panel),
-            border: Border.all(color: EvergreenColors.border),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Builder(
+          builder: (context) {
+            final health = ref.watch(serviceHealthProvider).valueOrNull;
+            final gpu = ref.watch(gpuStatusProvider).valueOrNull;
+            final models = ref.watch(modelsProvider).valueOrNull;
+            final allHealthy =
+                health != null &&
+                health.qdrantAlive &&
+                health.redisAlive &&
+                health.ollamaAlive;
+            final usedMb = (gpu?['used_vram_mb'] as num?)?.toDouble();
+            final totalMb = (gpu?['total_vram_mb'] as num?)?.toDouble();
+            final vramRatio = (usedMb != null && totalMb != null && totalMb > 0)
+                ? (usedMb / totalMb).clamp(0.0, 1.0).toDouble()
+                : null;
+            String state(bool? alive) =>
+                alive == null ? 'unknown' : (alive ? 'up' : 'down');
+            final defaultModel = models?.defaultModel ?? '';
+            return Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: EvergreenColors.surface,
+                borderRadius: BorderRadius.circular(EvergreenRadii.panel),
+                border: Border.all(color: EvergreenColors.border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Infrastructure & Models',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: EvergreenColors.ink,
-                    ),
-                  ),
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Container(
-                        width: 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: allHealthy ? EvergreenColors.confident : EvergreenColors.refused,
-                          shape: BoxShape.circle,
+                      const Expanded(
+                        child: Text(
+                          'Infrastructure & Models',
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: EvergreenColors.ink,
+                          ),
                         ),
                       ),
-                      const SizedBox(width: 4),
+                      Row(
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: allHealthy
+                                  ? EvergreenColors.confident
+                                  : EvergreenColors.refused,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            health == null
+                                ? 'Checking…'
+                                : (allHealthy ? 'Healthy' : 'Degraded'),
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: allHealthy
+                                  ? EvergreenColors.primary
+                                  : EvergreenColors.refused,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 20, color: EvergreenColors.border),
+                  _InfraItem(
+                    title: 'Qdrant Vector DB',
+                    detail: metrics == null
+                        ? state(health?.qdrantAlive)
+                        : '${state(health?.qdrantAlive)} · ${metrics.qdrantPoints} vectors',
+                    healthy: health?.qdrantAlive ?? false,
+                  ),
+                  const SizedBox(height: 8),
+                  _InfraItem(
+                    title: 'Redis Cache',
+                    detail: metrics == null
+                        ? state(health?.redisAlive)
+                        : '${state(health?.redisAlive)} · queue ${metrics.redisQueueDepth}',
+                    healthy: health?.redisAlive ?? false,
+                  ),
+                  const SizedBox(height: 8),
+                  _InfraItem(
+                    title: 'Ollama Engine',
+                    detail:
+                        '${state(health?.ollamaAlive)} · ${models?.models.length ?? 0} models',
+                    healthy: health?.ollamaAlive ?? false,
+                  ),
+                  const SizedBox(height: 14),
+                  const Divider(height: 1, color: EvergreenColors.border),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
                       Text(
-                        health == null ? 'Checking…' : (allHealthy ? 'Healthy' : 'Degraded'),
-                        style: TextStyle(
+                        vramRatio == null
+                            ? 'VRAM —'
+                            : 'VRAM ${(usedMb! / 1024).toStringAsFixed(1)} / ${(totalMb! / 1024).toStringAsFixed(1)} GB',
+                        style: monoStyle(
                           fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                          color: allHealthy ? EvergreenColors.primary : EvergreenColors.refused,
+                          weight: FontWeight.w600,
+                          color: EvergreenColors.ink,
+                        ),
+                      ),
+                      Text(
+                        vramRatio == null
+                            ? ''
+                            : '${(vramRatio * 100).round()}%',
+                        style: monoStyle(
+                          fontSize: 10,
+                          color: EvergreenColors.metadata,
                         ),
                       ),
                     ],
                   ),
-                ],
-              ),
-              const Divider(height: 20, color: EvergreenColors.border),
-              _InfraItem(
-                title: 'Qdrant Vector DB',
-                detail: metrics == null
-                    ? state(health?.qdrantAlive)
-                    : '${state(health?.qdrantAlive)} · ${metrics.qdrantPoints} vectors',
-                healthy: health?.qdrantAlive ?? false,
-              ),
-              const SizedBox(height: 8),
-              _InfraItem(
-                title: 'Redis Cache',
-                detail: metrics == null
-                    ? state(health?.redisAlive)
-                    : '${state(health?.redisAlive)} · queue ${metrics.redisQueueDepth}',
-                healthy: health?.redisAlive ?? false,
-              ),
-              const SizedBox(height: 8),
-              _InfraItem(
-                title: 'Ollama Engine',
-                detail: '${state(health?.ollamaAlive)} · ${models?.models.length ?? 0} models',
-                healthy: health?.ollamaAlive ?? false,
-              ),
-              const SizedBox(height: 14),
-              const Divider(height: 1, color: EvergreenColors.border),
-              const SizedBox(height: 10),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    vramRatio == null
-                        ? 'VRAM —'
-                        : 'VRAM ${(usedMb! / 1024).toStringAsFixed(1)} / ${(totalMb! / 1024).toStringAsFixed(1)} GB',
-                    style: monoStyle(
-                      fontSize: 11,
-                      weight: FontWeight.w600,
-                      color: EvergreenColors.ink,
+                  const SizedBox(height: 6),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: LinearProgressIndicator(
+                      value: vramRatio ?? 0,
+                      minHeight: 6,
+                      backgroundColor: const Color(0xFFF5F5F4),
+                      valueColor: const AlwaysStoppedAnimation<Color>(
+                        EvergreenColors.primary,
+                      ),
                     ),
                   ),
+                  const SizedBox(height: 6),
                   Text(
-                    vramRatio == null ? '' : '${(vramRatio * 100).round()}%',
-                    style: monoStyle(fontSize: 10, color: EvergreenColors.metadata),
+                    defaultModel.isEmpty
+                        ? 'No chat model available'
+                        : 'Default model: $defaultModel',
+                    style: monoStyle(
+                      fontSize: 10,
+                      color: EvergreenColors.metadata,
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 6),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: LinearProgressIndicator(
-                  value: vramRatio ?? 0,
-                  minHeight: 6,
-                  backgroundColor: const Color(0xFFF5F5F4),
-                  valueColor: const AlwaysStoppedAnimation<Color>(EvergreenColors.primary),
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                defaultModel.isEmpty ? 'No chat model available' : 'Default model: $defaultModel',
-                style: monoStyle(fontSize: 10, color: EvergreenColors.metadata),
-              ),
-            ],
-          ),
-          );
-        }),
+            );
+          },
+        ),
         const SizedBox(height: 16),
 
         // Zero-hallucination constraint card
@@ -582,7 +698,11 @@ class _WorkspaceOverviewScreenState
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Symbols.fact_check, size: 16, color: EvergreenColors.primary),
+              const Icon(
+                Symbols.fact_check,
+                size: 16,
+                color: EvergreenColors.primary,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Column(
@@ -621,11 +741,18 @@ class _WorkspaceOverviewScreenState
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Delete $count project${count == 1 ? '' : 's'}?'),
-        content: const Text('This permanently removes their chat history. This cannot be undone.'),
+        content: const Text(
+          'This permanently removes their chat history. This cannot be undone.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: EvergreenColors.refused),
+            style: FilledButton.styleFrom(
+              backgroundColor: EvergreenColors.refused,
+            ),
             onPressed: () => Navigator.of(context).pop(true),
             child: const Text('Delete'),
           ),
@@ -638,14 +765,17 @@ class _WorkspaceOverviewScreenState
     if (mounted) setState(() => _selected.clear());
   }
 
-  List<ChatSession> _applyFilter(List<ChatSession> projects, String? currentUserId) {
+  List<ChatSession> _applyFilter(
+    List<ChatSession> projects,
+    String? currentUserId,
+  ) {
     Iterable<ChatSession> result = switch (_filter) {
       _ProjectFilter.all => projects,
       _ProjectFilter.mine => projects.where(
-          (p) => currentUserId != null
-              ? (p.ownerId == currentUserId || p.ownerId == null)
-              : true,
-        ),
+        (p) => currentUserId != null
+            ? (p.ownerId == currentUserId || p.ownerId == null)
+            : true,
+      ),
       _ProjectFilter.forked => projects.where((p) => p.forkedFrom != null),
     };
     if (_search.trim().isNotEmpty) {
@@ -657,7 +787,11 @@ class _WorkspaceOverviewScreenState
 }
 
 class _FourStatCardsGrid extends StatelessWidget {
-  const _FourStatCardsGrid({required this.projects, required this.metrics, required this.documentCount});
+  const _FourStatCardsGrid({
+    required this.projects,
+    required this.metrics,
+    required this.documentCount,
+  });
   final List<ChatSession> projects;
   final SystemMetrics? metrics;
   final int? documentCount;
@@ -667,11 +801,15 @@ class _FourStatCardsGrid extends StatelessWidget {
     final m = metrics;
     final totalQueries = m?.totalQueries ?? 0;
     final answered = totalQueries - (m?.totalRefusals ?? 0);
-    final groundedPct = totalQueries > 0 ? (answered * 100 / totalQueries).round() : null;
+    final groundedPct = totalQueries > 0
+        ? (answered * 100 / totalQueries).round()
+        : null;
     final sourced = projects.where((p) => p.files.isNotEmpty).length;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final count = constraints.maxWidth >= 1000 ? 4 : (constraints.maxWidth >= 480 ? 2 : 1);
+        final count = constraints.maxWidth >= 1000
+            ? 4
+            : (constraints.maxWidth >= 480 ? 2 : 1);
         final width = (constraints.maxWidth - ((count - 1) * 12)) / count;
 
         return Wrap(
@@ -783,14 +921,22 @@ class _StatCardItem extends StatelessWidget {
                         label,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12, color: EvergreenColors.metadata, fontWeight: FontWeight.w500),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: EvergreenColors.metadata,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         value,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: EvergreenColors.ink),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: EvergreenColors.ink,
+                        ),
                       ),
                     ],
                   ),
@@ -809,8 +955,16 @@ class _StatCardItem extends StatelessWidget {
             child: Text(
               chipLabel,
               style: isMono
-                  ? monoStyle(fontSize: 10, weight: FontWeight.w500, color: chipColor)
-                  : TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: chipColor),
+                  ? monoStyle(
+                      fontSize: 10,
+                      weight: FontWeight.w500,
+                      color: chipColor,
+                    )
+                  : TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: chipColor,
+                    ),
             ),
           ),
         ],
@@ -841,8 +995,8 @@ class _ProjectListRow extends StatelessWidget {
     final isForked = project.forkedFrom != null;
 
     final String description;
-    if (project.systemPrompt != null && project.systemPrompt!.isNotEmpty) {
-      description = project.systemPrompt!;
+    if (project.description != null && project.description!.isNotEmpty) {
+      description = project.description!;
     } else {
       description = project.files.isNotEmpty
           ? '${project.files.length} sources attached · Ready for query'
@@ -919,56 +1073,89 @@ class _ProjectListRow extends StatelessWidget {
                       ),
                       if (isWebRag) ...[
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 1,
+                          ),
                           decoration: BoxDecoration(
                             color: const Color(0xFFF5F5F4),
-                            borderRadius: BorderRadius.circular(EvergreenRadii.chip),
+                            borderRadius: BorderRadius.circular(
+                              EvergreenRadii.chip,
+                            ),
                             border: Border.all(color: EvergreenColors.border),
                           ),
                           child: Text(
                             'preset',
-                            style: monoStyle(fontSize: 9, color: EvergreenColors.inkSecondary),
+                            style: monoStyle(
+                              fontSize: 9,
+                              color: EvergreenColors.inkSecondary,
+                            ),
                           ),
                         ),
                       ],
                       if (isForked) ...[
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 1,
+                          ),
                           decoration: BoxDecoration(
                             color: const Color(0xFFF5F5F4),
-                            borderRadius: BorderRadius.circular(EvergreenRadii.chip),
+                            borderRadius: BorderRadius.circular(
+                              EvergreenRadii.chip,
+                            ),
                             border: Border.all(color: EvergreenColors.border),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Symbols.fork_right, size: 10, color: EvergreenColors.metadata),
+                              const Icon(
+                                Symbols.fork_right,
+                                size: 10,
+                                color: EvergreenColors.metadata,
+                              ),
                               const SizedBox(width: 2),
                               Text(
                                 'forked',
-                                style: monoStyle(fontSize: 9, color: EvergreenColors.metadata),
+                                style: monoStyle(
+                                  fontSize: 9,
+                                  color: EvergreenColors.metadata,
+                                ),
                               ),
                             ],
                           ),
                         ),
                       ],
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 1,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFFF5F5F4),
-                          borderRadius: BorderRadius.circular(EvergreenRadii.chip),
+                          borderRadius: BorderRadius.circular(
+                            EvergreenRadii.chip,
+                          ),
                           border: Border.all(color: EvergreenColors.border),
                         ),
                         child: Text(
                           project.parameters.model,
-                          style: monoStyle(fontSize: 10, color: EvergreenColors.ink),
+                          style: monoStyle(
+                            fontSize: 10,
+                            color: EvergreenColors.ink,
+                          ),
                         ),
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 1,
+                        ),
                         decoration: BoxDecoration(
                           color: EvergreenColors.primaryTint,
-                          borderRadius: BorderRadius.circular(EvergreenRadii.chip),
+                          borderRadius: BorderRadius.circular(
+                            EvergreenRadii.chip,
+                          ),
                         ),
                         child: Text(
                           modeLabel,
@@ -987,7 +1174,10 @@ class _ProjectListRow extends StatelessWidget {
                     description.replaceAll(RegExp(r'\s+'), ' ').trim(),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12, color: EvergreenColors.metadata),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: EvergreenColors.metadata,
+                    ),
                   ),
                 ],
               ),
@@ -997,17 +1187,27 @@ class _ProjectListRow extends StatelessWidget {
               children: [
                 Text(
                   '$sourcesCount sources · $chatsCount chats',
-                  style: monoStyle(fontSize: 11, color: EvergreenColors.inkSecondary),
+                  style: monoStyle(
+                    fontSize: 11,
+                    color: EvergreenColors.inkSecondary,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   timeAgo,
-                  style: const TextStyle(fontSize: 11, color: EvergreenColors.metadata),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: EvergreenColors.metadata,
+                  ),
                 ),
               ],
             ),
             const SizedBox(width: 8),
-            const Icon(Symbols.chevron_right, size: 16, color: EvergreenColors.metadata),
+            const Icon(
+              Symbols.chevron_right,
+              size: 16,
+              color: EvergreenColors.metadata,
+            ),
           ],
         ),
       ),
@@ -1037,7 +1237,9 @@ class _FilterTabs extends StatelessWidget {
             onSelected: (_) => onChanged(f),
             visualDensity: VisualDensity.compact,
             showCheckmark: false,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(6),
+            ),
           ),
           if (f != _ProjectFilter.values.last) const SizedBox(width: 4),
         ],
@@ -1079,7 +1281,11 @@ class _ActivityItem extends StatelessWidget {
           alignment: Alignment.center,
           child: Text(
             initials,
-            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: initialsColor),
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: initialsColor,
+            ),
           ),
         ),
         const SizedBox(width: 10),
@@ -1089,20 +1295,34 @@ class _ActivityItem extends StatelessWidget {
             children: [
               Text(
                 query,
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: EvergreenColors.ink),
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: EvergreenColors.ink,
+                ),
               ),
               const SizedBox(height: 2),
               Text(
                 subtitle,
-                style: const TextStyle(fontSize: 11, color: EvergreenColors.metadata),
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: EvergreenColors.metadata,
+                ),
               ),
               const SizedBox(height: 4),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(color: statusBg, borderRadius: BorderRadius.circular(EvergreenRadii.chip)),
+                decoration: BoxDecoration(
+                  color: statusBg,
+                  borderRadius: BorderRadius.circular(EvergreenRadii.chip),
+                ),
                 child: Text(
                   statusLabel,
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: statusColor),
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: statusColor,
+                  ),
                 ),
               ),
             ],
@@ -1114,7 +1334,11 @@ class _ActivityItem extends StatelessWidget {
 }
 
 class _InfraItem extends StatelessWidget {
-  const _InfraItem({required this.title, required this.detail, required this.healthy});
+  const _InfraItem({
+    required this.title,
+    required this.detail,
+    required this.healthy,
+  });
   final String title;
   final String detail;
   final bool healthy;
@@ -1122,25 +1346,36 @@ class _InfraItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Row(
-          children: [
-            Container(
-              width: 5,
-              height: 5,
-              decoration: BoxDecoration(
-                color: healthy ? EvergreenColors.confident : EvergreenColors.refused,
-                shape: BoxShape.circle,
+        Expanded(
+          child: Row(
+            children: [
+              Container(
+                width: 5,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: healthy
+                      ? EvergreenColors.confident
+                      : EvergreenColors.refused,
+                  shape: BoxShape.circle,
+                ),
               ),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              title,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: EvergreenColors.ink),
-            ),
-          ],
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  title,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: EvergreenColors.ink,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
+        const SizedBox(width: 8),
         Text(
           detail,
           style: monoStyle(fontSize: 10, color: EvergreenColors.inkSecondary),

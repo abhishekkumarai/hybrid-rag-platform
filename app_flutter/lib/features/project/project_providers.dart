@@ -19,10 +19,32 @@ final projectProvider = FutureProvider.family<ChatSession, String>((ref, session
   return ChatSession.fromJson(json['session'] as Map<String, dynamic>);
 });
 
-final projectEvalSummaryProvider = FutureProvider.family<ProjectEvalSummary, String>((ref, sessionId) async {
+/// A project, optionally narrowed to one of its chats (null = every chat in the project).
+typedef ChatScope = ({String sessionId, String? conversationId});
+
+final projectEvalSummaryProvider = FutureProvider.family<ProjectEvalSummary, ChatScope>((ref, scope) async {
   final client = ref.watch(userApiClientProvider);
-  final json = await client.get('/api/v1/sessions/$sessionId/eval/summary') as Map<String, dynamic>;
+  final json = await client.get(
+    '/api/v1/sessions/${scope.sessionId}/eval/summary',
+    query: scope.conversationId == null ? null : {'conversation_id': scope.conversationId},
+  ) as Map<String, dynamic>;
   return ProjectEvalSummary.fromJson(json);
+});
+
+/// Per-chat volume and latency for a project (IRA-56).
+final projectObservabilityProvider = FutureProvider.family<ProjectObservability, ChatScope>((ref, scope) async {
+  final client = ref.watch(userApiClientProvider);
+  final json = await client.get(
+    '/api/v1/sessions/${scope.sessionId}/observability',
+    query: scope.conversationId == null ? null : {'conversation_id': scope.conversationId},
+  ) as Map<String, dynamic>;
+  return ProjectObservability.fromJson(json);
+});
+
+final defaultSystemPromptProvider = FutureProvider<String>((ref) async {
+  final client = ref.watch(userApiClientProvider);
+  final json = await client.get('/api/v1/prompts/default') as Map<String, dynamic>;
+  return json['system_prompt'] as String? ?? '';
 });
 
 final projectEvalLastRunProvider = FutureProvider.family<ProjectEvalRun?, String>((ref, sessionId) async {
@@ -203,6 +225,12 @@ class ProjectActions {
     return json['id'] as String;
   }
 
+  /// The caller's default chat model for new projects; null restores the server default.
+  Future<void> setDefaultModel(String? model) async {
+    await _client.put('/api/v1/me/preferences', body: {'default_model': model});
+    _ref.invalidate(modelsProvider);
+  }
+
   Future<void> deleteProject(String sessionId) async {
     await _client.delete('/api/v1/sessions/$sessionId');
     _ref.read(projectsRefreshProvider.notifier).state++;
@@ -212,7 +240,7 @@ class ProjectActions {
     final json = await _client.post('/api/v1/sessions/$sessionId/eval/run?rebuild=$rebuild') as Map<String, dynamic>;
     final run = ProjectEvalRun.fromJson(json);
     _ref.invalidate(projectEvalLastRunProvider(sessionId));
-    _ref.invalidate(projectEvalSummaryProvider(sessionId));
+    _ref.invalidate(projectEvalSummaryProvider);
     return run;
   }
 }

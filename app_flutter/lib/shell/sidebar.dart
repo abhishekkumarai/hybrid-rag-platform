@@ -66,7 +66,7 @@ class AppSidebar extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _Logo(),
+                    _Logo(workspaceId: workspaceId),
                     const Divider(height: 1, color: EvergreenColors.border),
                     _WorkspaceSwitcher(workspaceId: workspaceId),
                     const SizedBox(height: 8),
@@ -150,31 +150,44 @@ class AppSidebar extends ConsumerWidget {
 }
 
 class _Logo extends StatelessWidget {
+  const _Logo({required this.workspaceId});
+  final String workspaceId;
+
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.all(16),
-    child: Row(
-      children: [
-        Container(
-          width: 28,
-          height: 28,
-          decoration: BoxDecoration(
-            color: EvergreenColors.primary,
-            borderRadius: BorderRadius.circular(EvergreenRadii.control),
-          ),
-          alignment: Alignment.center,
-          child: const Text(
-            'R',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+  Widget build(BuildContext context) => Tooltip(
+    message: 'Home',
+    child: Material(
+      color: Colors.transparent,
+      child: InkWell(
+        // Home = this workspace's overview (the router sends users with no workspace to /home).
+        onTap: () => context.go('/w/$workspaceId'),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: EvergreenColors.primary,
+                  borderRadius: BorderRadius.circular(EvergreenRadii.control),
+                ),
+                alignment: Alignment.center,
+                child: const Text(
+                  'R',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'IRA',
+                style: Theme.of(context).textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ],
           ),
         ),
-        const SizedBox(width: 10),
-        Text(
-          'IRA',
-          style: Theme.of(context).textTheme.titleMedium
-              ?.copyWith(fontWeight: FontWeight.w700),
-        ),
-      ],
+      ),
     ),
   );
 }

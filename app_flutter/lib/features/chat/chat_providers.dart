@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../api/api_client.dart';
 import '../../api/auth_provider.dart';
+import '../../api/models/eval.dart';
 import '../../api/models/feedback.dart';
 import '../../api/models/session.dart';
 import '../../api/models/share.dart';
@@ -39,11 +40,21 @@ class ChatController extends StateNotifier<ChatConversationState> {
         if (m['role'] == 'user') {
           final reply = (i + 1 < messages.length) ? messages[i + 1] as Map<String, dynamic> : null;
           final replyMsg = reply != null && reply['role'] == 'assistant' ? ChatMessage.fromJson(reply) : null;
+          final meta = replyMsg?.metadata ?? const {};
+          final evalJson = meta['eval'] is Map ? Map<String, dynamic>.from(meta['eval'] as Map) : null;
+          final isRefused = meta['refused'] as bool? ?? false;
+          final topScore = (meta['top_score'] as num?)?.toDouble() ?? 0.0;
+
           turns.add(ChatTurn(
             id: (m['id'] as String?) ?? '$i',
             query: m['content'] as String? ?? '',
             answer: replyMsg?.content ?? '',
             citations: replyMsg?.citations ?? const [],
+            refused: isRefused,
+            topScore: topScore,
+            latencyMs: replyMsg?.latencyMs ?? (meta['latency_ms'] as num?)?.toDouble(),
+            tokensPerSec: (meta['tokens_per_sec'] as num?)?.toDouble(),
+            evalScores: evalJson != null ? RetrievalEvalScores.fromJson(evalJson) : null,
           ));
         }
       }

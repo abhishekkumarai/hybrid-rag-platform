@@ -94,6 +94,8 @@ class ChatPipeline:
         telemetry, done. `stream_llm` only changes how Ollama is called, never the event contract."""
         t_start = time.perf_counter()
         conversation_id = self.sessions.resolve_conversation_id(req.session_id, req.conversation_id)
+        # Carry the resolved thread so every record of this turn (messages, telemetry) names it.
+        req = req.model_copy(update={"conversation_id": conversation_id})
         yield SessionEvent(session_id=req.session_id, conversation_id=conversation_id)
 
         if self.models is not None and self.models.rejects(req.model):
@@ -261,7 +263,7 @@ class ChatPipeline:
         logger.warning(f"Rejected non-chat model {req.model!r} for session {req.session_id}")
         yield ErrorEvent(error=error)
         yield TelemetryEvent(telemetry=QueryTelemetry(
-            session_id=req.session_id, query_text=req.query,
+            session_id=req.session_id, conversation_id=req.conversation_id, query_text=req.query,
             total_ms=round((time.perf_counter() - t_start) * 1000, 2),
         ))
         yield DoneEvent(error=error)
@@ -271,13 +273,18 @@ class ChatPipeline:
                 mode: str | None = None) -> Iterator[ChatEvent]:
         total_ms = (time.perf_counter() - t_start) * 1000
         telemetry = QueryTelemetry(
-            session_id=req.session_id, query_text=req.query, rerank_ms=round(retrieval_ms, 2),
+            session_id=req.session_id, conversation_id=req.conversation_id, query_text=req.query, rerank_ms=round(retrieval_ms, 2),
             total_ms=round(total_ms, 2), refused=True, top_score=top_score, citations_count=0,
         )
         self.telemetry.record_query(telemetry)
         self.sessions.append_message(
             req.session_id,
-            ChatMessage(role="assistant", content=message, latency_ms=round(total_ms, 2)),
+            ChatMessage(
+                role="assistant",
+                content=message,
+                latency_ms=round(total_ms, 2),
+                metadata={"refused": True, "top_score": top_score, "eval": None},
+            ),
             req.conversation_id,
         )
         yield TokenEvent(token=message)
@@ -368,7 +375,7 @@ class ChatPipeline:
         total_ms = (time.perf_counter() - t_start) * 1000
         raw_answer = "".join(parts)
         telemetry = QueryTelemetry(
-            session_id=req.session_id, query_text=req.query, rerank_ms=round(retrieval_ms, 2),
+            session_id=req.session_id, conversation_id=req.conversation_id, query_text=req.query, rerank_ms=round(retrieval_ms, 2),
             llm_ttft_ms=round(ttft_ms, 2), llm_gen_ms=round(llm_ms, 2), total_ms=round(total_ms, 2),
             tokens_generated=token_count,
             tokens_per_sec=round(token_count / (llm_ms / 1000), 1) if llm_ms > 0 else 0.0,
@@ -390,7 +397,14 @@ class ChatPipeline:
             req.session_id,
             ChatMessage(
                 role="assistant", content=raw_answer, citations=prep.citations, latency_ms=round(total_ms, 2),
-                metadata={"eval": turn_eval.model_dump() if turn_eval else None, "query_id": telemetry.query_id},
+                metadata={
+                    "eval": turn_eval.model_dump() if turn_eval else None,
+                    "query_id": telemetry.query_id,
+                    "refused": False,
+                    "top_score": prep.top_score,
+                    "latency_ms": round(total_ms, 2),
+                    "tokens_per_sec": telemetry.tokens_per_sec,
+                },
             ),
             req.conversation_id,
         )

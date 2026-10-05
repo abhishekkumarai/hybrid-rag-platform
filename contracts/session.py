@@ -53,6 +53,7 @@ class ChatSession(BaseModel):
     message_count: int = 0
     files: list[str] = Field(default_factory=list, description="Document IDs scoped to this session")
     system_prompt: str | None = Field(default=None, description="Custom system persona instructions for this session")
+    description: str | None = Field(default=None, description="Short, human-facing summary of the project's focus")
     parameters: SessionParameters = Field(default_factory=SessionParameters, description="Runtime execution parameters")
     owner_id: str | None = Field(default=None, description="User who owns this project (IRA-34)")
     forked_from: str | None = Field(default=None, description="Share id this project was forked from (IRA-35)")
@@ -65,7 +66,10 @@ class CreateSessionRequest(BaseModel):
     """Request payload to initialize a new session with custom settings."""
 
     title: str | None = None
-    system_prompt: str | None = None
+    system_prompt: str | None = Field(
+        default=None, description="Omitted: the default grounding persona, plus `description` as a focus line"
+    )
+    description: str | None = None
     parameters: SessionParameters | None = None
     files: list[str] | None = None
     workspace_id: str | None = None
@@ -76,6 +80,7 @@ class UpdateSessionRequest(BaseModel):
 
     title: str | None = None
     system_prompt: str | None = None
+    description: str | None = None
     parameters: SessionParameters | None = None
     files: list[str] | None = None
 
@@ -125,3 +130,13 @@ class ConversationListResponse(BaseModel):
 class ConversationDetailResponse(BaseModel):
     conversation: Conversation
     messages: list[ChatMessage]
+
+
+class UserPreferences(BaseModel):
+    """Per-user settings. `default_model` preselects the chat model for new projects and model pickers."""
+
+    default_model: str | None = Field(default=None, description="None = the server's configured default")
+
+
+class UpdatePreferencesRequest(BaseModel):
+    default_model: str | None = Field(default=None, description="An installed chat model, or null to clear")
