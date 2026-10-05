@@ -40,9 +40,12 @@ class ProjectTabShell extends ConsumerWidget {
     final sourcesCount = projectAsync.valueOrNull?.files.length;
     final chatCount = ref.watch(projectConversationsProvider(projectId)).valueOrNull?.length;
 
-    return Scaffold(
-      backgroundColor: EvergreenColors.canvas,
-      body: SafeArea(
+    return Title(
+      title: '$title · IRA',
+      color: EvergreenColors.primary,
+      child: Scaffold(
+        backgroundColor: EvergreenColors.canvas,
+        body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -104,7 +107,8 @@ class ProjectTabShell extends ConsumerWidget {
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 }
 

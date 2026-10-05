@@ -43,7 +43,7 @@ class _EvergreenAppState extends ConsumerState<EvergreenApp> {
     _router ??= buildRouter(ref);
 
     return MaterialApp.router(
-      title: 'Evergreen Document RAG',
+      title: 'IRA - Intelligent RAG Assistant',
       debugShowCheckedModeBanner: false,
       theme: buildEvergreenTheme(appearance: appearance),
       routerConfig: _router!,

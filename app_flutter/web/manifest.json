@@ -1,6 +1,6 @@
 {
-    "name": "app_flutter",
-    "short_name": "app_flutter",
+    "name": "IRA - Intelligent RAG Assistant",
+    "short_name": "IRA",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
