@@ -17,6 +17,7 @@ import requests
 from contracts.metrics import QueryTelemetry, RetrievalEvalScores
 from contracts.retrieval import Candidate, Citation
 from services.common.logger import get_logger
+from services.common.ollama_options import no_think
 
 logger = get_logger("evaluation.online")
 
@@ -137,6 +138,7 @@ def maybe_schedule_llm_judge(
                     "model": model,
                     "prompt": prompt,
                     "stream": False,
+                    **no_think(ollama_url, model),
                     "options": {"num_predict": 8, "temperature": 0.0},
                 },
                 timeout=timeout_s,

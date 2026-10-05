@@ -32,6 +32,7 @@ from contracts.retrieval import SearchQuery
 from contracts.session import ChatSession
 from services.common.doc_scope import matches_doc_scope
 from services.common.logger import get_logger
+from services.common.ollama_options import no_think
 
 logger = get_logger("evaluation.project")
 
@@ -163,6 +164,7 @@ def llm_question(chunk: dict[str, Any], model: str, ollama_url: str, timeout_s: 
                 "model": model,
                 "prompt": _QUESTION_PROMPT.format(text=str(chunk.get("text", ""))[:2000]),
                 "stream": False,
+                **no_think(ollama_url, model),
                 "options": {"num_predict": 64, "temperature": 0.2},
             },
             timeout=timeout_s,

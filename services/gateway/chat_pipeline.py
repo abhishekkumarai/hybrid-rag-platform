@@ -34,6 +34,7 @@ from contracts.metrics import QueryTelemetry, RetrievalEvalScores
 from contracts.retrieval import Candidate, Citation, SearchQuery
 from contracts.session import ChatMessage
 from services.common.logger import get_logger
+from services.common.ollama_options import no_think
 from services.evaluation.online import maybe_schedule_llm_judge, score_turn
 from services.retrieval.prompting import build_grounded_prompt
 
@@ -302,6 +303,7 @@ class ChatPipeline:
                 url,
                 json={
                     "model": req.model, "prompt": p, "stream": stream,
+                    **no_think(self.settings.hardware.ollama_base_url, req.model),
                     "options": {"num_predict": NUM_PREDICT, "temperature": req.temperature, "num_ctx": ctx},
                 },
                 stream=stream,
