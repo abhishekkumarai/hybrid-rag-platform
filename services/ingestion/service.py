@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 from contracts.document import IngestRequest, IngestResponse
+from services.common.config import load_config
 from services.common.logger import get_logger
 from services.ingestion.parsers.fast_text import FastTextParser
 from services.ingestion.parsers.layout import LayoutParser
@@ -53,6 +54,12 @@ class IngestionService:
 
         # 2. Determine Route (override takes precedence)
         selected_route = request.profile_override or profile.route
+        if (
+            request.profile_override is None
+            and selected_route == "fast_text"
+            and load_config().ingestion.docling_default
+        ):
+            selected_route = "layout"  # IRA-61: Docling for all digital PDFs
 
         logger.info(
             f"Ingesting '{file_path.name}' [doc_id={doc_id}]: route='{selected_route}' (probe='{profile.route}')"

@@ -33,7 +33,7 @@ def test_ingestion_service_digital_flow(sample_pdf: Path):
     res = service.parse(req)
 
     assert res.doc_id.startswith("annual_report_")
-    assert res.profile.route == "fast_text"
+    assert res.profile.route == "fast_text"  # probe verdict; the service then upgrades it to Docling
     assert len(res.blocks) >= 2
     assert res.duration_ms > 0
 
@@ -52,3 +52,30 @@ def test_ingestion_service_override(sample_pdf: Path):
 
     assert res.doc_id.startswith("annual_report_")
     assert len(res.blocks) >= 1
+
+
+def test_digital_pdf_routes_to_docling_by_default(sample_pdf: Path, monkeypatch):
+    """IRA-61: a clean digital PDF (probe says fast_text) is parsed by the layout/Docling parser."""
+    service = IngestionService()
+    called = {}
+
+    def fake_layout(path, doc_id):
+        called["layout"] = True
+        return []
+
+    monkeypatch.setattr(service.layout_parser, "parse", fake_layout)
+    service.parse(IngestRequest(file_path=str(sample_pdf)))
+    assert called.get("layout")
+
+
+def test_docling_default_can_be_disabled(sample_pdf: Path, monkeypatch):
+    from services.common.config import load_config
+
+    cfg = load_config()
+    cfg.ingestion.docling_default = False
+    monkeypatch.setattr("services.ingestion.service.load_config", lambda: cfg)
+    service = IngestionService()
+    monkeypatch.setattr(
+        service.layout_parser, "parse", lambda *a: pytest.fail("layout parser must not run")
+    )
+    service.parse(IngestRequest(file_path=str(sample_pdf)))

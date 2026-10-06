@@ -30,7 +30,7 @@ COPY components/__init__.py components/
 # parsers and the FlashRank reranker run on CPU — so pin the CPU-only torch first and let the
 # project install reuse it.
 RUN pip install --upgrade pip && \
-    pip install --index-url https://download.pytorch.org/whl/cpu torch && \
+    pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision && \
     pip install ".[parse]"
 
 COPY . .
