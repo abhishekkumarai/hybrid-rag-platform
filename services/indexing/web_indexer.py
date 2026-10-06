@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 from pathlib import Path
 
 from contracts.chunk import IndexResponse
 from contracts.document import Block
-from contracts.web import WebPageDocument, WebSourceItem, WebSyncResponse
+from contracts.web import WebPageDocument, WebSourceItem, WebSyncResponse, WebSyncStatus
 from services.common.logger import get_logger
 from services.indexing.service import IndexingService
 from services.ingestion.web_parser import DEFAULT_CATEGORIES, REPO_ROOT, WikiIndexWebParser
@@ -31,6 +32,46 @@ class WebRAGIndexer:
         self.parser = parser or WikiIndexWebParser()
         self.web_docs_dir = Path(web_docs_dir or WEB_DOCS_DIR)
         self.web_docs_dir.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.Lock()
+        self._progress = {"done": 0, "total": 0}
+        self._started_at: float | None = None
+        self._result: WebSyncResponse | None = None
+
+    def start_background_sync(
+        self, categories: list[str] | None = None, force_refresh: bool = False, discover: bool = False
+    ) -> bool:
+        """Starts a sync on a daemon thread. Returns False if one is already running (IRA-66)."""
+        if not self._lock.acquire(blocking=False):
+            return False
+        self._started_at = time.time()
+        self._result = None
+        self._progress.update(done=0, total=0)
+
+        def _run() -> None:
+            try:
+                self._result = self.sync_categories(
+                    categories=categories, force_refresh=force_refresh, discover=discover
+                )
+            except Exception as e:  # sitemap or store failure before any page ran
+                logger.error(f"WebRAGIndexer: background sync failed: {e}")
+                self._result = WebSyncResponse(
+                    synced_pages=[], total_pages=0, total_resources=0, total_chunks=0,
+                    duration_ms=0.0, status="failed", error=str(e),
+                )
+            finally:
+                self._lock.release()
+
+        threading.Thread(target=_run, name="web-sync", daemon=True).start()
+        return True
+
+    def sync_status(self) -> WebSyncStatus:
+        return WebSyncStatus(
+            running=self._lock.locked(),
+            started_at=self._started_at,
+            done=self._progress["done"],
+            total=self._progress["total"],
+            result=self._result,
+        )
 
     def sync_category(
         self,
@@ -63,12 +104,20 @@ class WebRAGIndexer:
         categories: list[str] | None = None,
         force_refresh: bool = False,
         max_pages: int | None = None,
+        discover: bool = False,
     ) -> WebSyncResponse:
         """Syncs multiple or all standard wiki-index categories into the RAG store."""
         t0 = time.perf_counter()
-        targets = categories if (categories and len(categories) > 0) else list(DEFAULT_CATEGORIES)
+        if categories:
+            targets = list(categories)
+        elif discover:
+            targets = self.parser.fetch_sitemap_slugs()
+        else:
+            targets = list(DEFAULT_CATEGORIES)
         if max_pages and max_pages > 0:
             targets = targets[:max_pages]
+        self._progress["total"] = len(targets)
+        self._progress["done"] = 0
 
         synced_slugs: list[str] = []
         total_resources = 0
@@ -84,6 +133,7 @@ class WebRAGIndexer:
             except Exception as e:
                 logger.error(f"WebRAGIndexer: failed to sync category '{slug}': {e}")
                 errors.append(f"{slug}: {e}")
+            self._progress["done"] += 1
 
         total_ms = (time.perf_counter() - t0) * 1000
         status = "completed" if not errors else ("partial" if synced_slugs else "failed")

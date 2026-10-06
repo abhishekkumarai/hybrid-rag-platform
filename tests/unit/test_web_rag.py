@@ -205,6 +205,76 @@ def test_web_rag_indexer_sync_and_persistence(mock_html_fetch, tmp_path):
     assert retrieved.slug == "ai"
 
 
+def _indexer(tmp_path) -> WebRAGIndexer:
+    return WebRAGIndexer(
+        indexing_service=IndexingService(in_memory=True, bm25_dir=tmp_path / "bm25"),
+        parser=WikiIndexWebParser(cache_dir=tmp_path / "cache"),
+        web_docs_dir=tmp_path / "web_docs",
+    )
+
+
+def test_sync_categories_discovers_pages_from_sitemap(mock_html_fetch, tmp_path, monkeypatch):
+    """IRA-66: discover=True reads the sitemap; explicit categories and the default list still win."""
+    indexer = _indexer(tmp_path)
+    monkeypatch.setattr(WikiIndexWebParser, "fetch_sitemap_slugs", lambda self: ["ai", "new-page"])
+
+    resp = indexer.sync_categories(discover=True)
+    assert sorted(resp.synced_pages) == ["web_wiki_index_ai", "web_wiki_index_new-page"]
+
+    assert indexer.sync_categories(categories=["video"], discover=True).synced_pages == ["web_wiki_index_video"]
+
+
+def test_background_sync_reports_progress_and_is_single_flight(mock_html_fetch, tmp_path):
+    """IRA-66: a background sync returns at once, refuses a second start, and exposes its result."""
+    import threading
+
+    indexer = _indexer(tmp_path)
+    gate = threading.Event()
+    real = indexer.sync_category
+
+    def slow(slug, force_refresh=False):
+        gate.wait(5)
+        return real(slug, force_refresh=force_refresh)
+
+    indexer.sync_category = slow
+    assert indexer.start_background_sync(categories=["ai", "video"]) is True
+    assert indexer.sync_status().running is True
+    assert indexer.start_background_sync(categories=["ai"]) is False
+
+    gate.set()
+    for _ in range(1200):
+        if not indexer.sync_status().running:
+            break
+        threading.Event().wait(0.05)
+    status = indexer.sync_status()
+    assert status.running is False
+    assert (status.done, status.total) == (2, 2)
+    assert status.result is not None and status.result.status == "completed"
+
+
+def test_gateway_background_sync_endpoint(mock_html_fetch, tmp_path, monkeypatch):
+    """IRA-66: POST /web/sync with background=true answers 'running'; /web/sync/status then shows the result."""
+    import threading
+
+    import services.gateway.api as api_mod
+
+    indexer = _indexer(tmp_path)
+    monkeypatch.setattr(api_mod, "_web_indexer", indexer)
+    client = TestClient(app)
+
+    resp = client.post("/api/v1/web/sync", json={"categories": ["ai"], "background": True})
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "running"
+
+    for _ in range(1200):
+        status = client.get("/api/v1/web/sync/status").json()
+        if not status["running"]:
+            break
+        threading.Event().wait(0.05)
+    assert status["result"]["status"] == "completed"
+    assert "web_wiki_index_ai" in status["result"]["synced_pages"]
+
+
 def test_web_rag_retrieval_and_link_citations(mock_html_fetch, tmp_path):
     """Verifies that hybrid retrieval surfaces web citations with external URLs and wiki links."""
     indexing_service = IndexingService(in_memory=True, bm25_dir=tmp_path / "bm25")

@@ -46,12 +46,18 @@ class _FakeGateway {
   int polls = 0;
   bool accepted = false;
   int acceptStatus = 202;
+  Map<String, dynamic>? urlBody;
 
   Future<http.Response> handle(http.Request r) async {
     if (r.url.path == '/api/v1/ingest/jobs' && r.method == 'POST') {
       if (acceptStatus != 202) return _json({'detail': 'disk full'}, status: acceptStatus);
       accepted = true;
       return _json(_job('queued', 'Queued'), status: 202);
+    }
+    if (r.url.path == '/api/v1/ingest/jobs/url' && r.method == 'POST') {
+      urlBody = jsonDecode(r.body) as Map<String, dynamic>;
+      accepted = true;
+      return _json({..._job('queued', 'Queued'), 'kind': 'url', 'source': urlBody!['url']}, status: 202);
     }
     if (r.url.path == '/api/v1/ingest/jobs' && r.method == 'GET') {
       if (!accepted) return _json({'jobs': []});
@@ -137,5 +143,18 @@ void main() {
 
     await notifier.dismiss(row);
     expect(notifier.state, isEmpty);
+  });
+
+  test('a web link is posted to the URL job route with the project and parser override', () async {
+    final gw = _FakeGateway();
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final notifier = container.read(_provider(_client(gw)));
+
+    await notifier.submitUrl('https://example.com/post', route: 'layout');
+
+    expect(gw.urlBody, {'url': 'https://example.com/post', 'session_id': 'sess_1', 'route': 'layout'});
+    expect(notifier.state.single.id, 'job_1');
+    await _until(() => notifier.state.single.isDone);
   });
 }

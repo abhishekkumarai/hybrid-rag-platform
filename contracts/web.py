@@ -43,6 +43,16 @@ class WebSyncRequest(BaseModel):
         default=False,
         description="Whether to re-fetch and re-index already ingested pages",
     )
+    discover: bool = Field(
+        default=False,
+        description="When no categories are given, read the site's sitemap.xml for pages instead of the "
+        "built-in category list (falls back to that list if the sitemap is unavailable).",
+    )
+    background: bool = Field(
+        default=False,
+        description="Return at once with status 'running' and poll GET /web/sync/status, instead of "
+        "holding the request open for the whole crawl.",
+    )
 
 
 class WebSyncResponse(BaseModel):
@@ -52,8 +62,19 @@ class WebSyncResponse(BaseModel):
     total_resources: int = Field(ge=0, description="Count of resource links indexed")
     total_chunks: int = Field(ge=0, description="Count of chunks indexed across dense/sparse/graph")
     duration_ms: float = Field(ge=0.0, description="Total duration in milliseconds")
-    status: str = Field(default="completed", description="Status outcome ('completed', 'partial', 'failed')")
+    status: str = Field(
+        default="completed", description="Status outcome ('running', 'completed', 'partial', 'failed')"
+    )
     error: str | None = Field(default=None, description="Error message if sync failed")
+
+
+class WebSyncStatus(BaseModel):
+    """Progress of the most recent background sync (IRA-66)."""
+    running: bool = Field(description="True while a crawl is in flight")
+    started_at: float | None = Field(default=None, description="Unix time the last sync started")
+    done: int = Field(default=0, ge=0, description="Pages processed so far, including failures")
+    total: int = Field(default=0, ge=0, description="Pages queued for this sync")
+    result: WebSyncResponse | None = Field(default=None, description="Final result once the sync has finished")
 
 
 class WebSourceItem(BaseModel):

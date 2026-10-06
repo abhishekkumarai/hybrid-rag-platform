@@ -27,6 +27,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   _LibraryScope _scope = _LibraryScope.all;
   bool _uploading = false;
   bool _syncing = false;
+  String? _syncProgress;
   final _urlController = TextEditingController();
 
   @override
@@ -111,7 +112,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                                   ),
                                 )
                               : const Icon(Symbols.sync, size: 18),
-                          label: const Text('Sync web sources'),
+                          label: Text(_syncProgress == null
+                              ? 'Sync web sources'
+                              : 'Syncing $_syncProgress'),
                         ),
                       ],
                     ],
@@ -233,15 +236,29 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   Future<void> _syncWeb() async {
     setState(() => _syncing = true);
     try {
-      await ref.read(adminActionsProvider).syncWebStore();
+      final result = await ref.read(adminActionsProvider).syncWebStore(
+            onProgress: (done, total) {
+              if (mounted) setState(() => _syncProgress = '$done/$total');
+            },
+          );
       ref.invalidate(documentsProvider);
+      if (mounted && result['status'] != 'completed') {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Sync ${result['status']}: ${result['error'] ?? ''}'),
+        ));
+      }
     } on ApiException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('Sync failed: ${e.detail}')));
       }
     } finally {
-      if (mounted) setState(() => _syncing = false);
+      if (mounted) {
+        setState(() {
+          _syncing = false;
+          _syncProgress = null;
+        });
+      }
     }
   }
 }

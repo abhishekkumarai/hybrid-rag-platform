@@ -85,11 +85,25 @@ class AdminActions {
     return json;
   }
 
-  Future<Map<String, dynamic>> syncWebStore({bool forceRefresh = false}) async {
-    return await _client.post(
+  /// Starts the wiki-index crawl in the background (IRA-66) and polls until it finishes, so the
+  /// request is never held open for the whole crawl. [onProgress] gets (pagesDone, pagesTotal).
+  Future<Map<String, dynamic>> syncWebStore({
+    bool forceRefresh = false,
+    void Function(int done, int total)? onProgress,
+    Duration pollInterval = const Duration(seconds: 2),
+  }) async {
+    await _client.post(
       '/api/v1/web/sync',
-      body: {'force_refresh': forceRefresh},
-    ) as Map<String, dynamic>;
+      body: {'force_refresh': forceRefresh, 'background': true},
+    );
+    while (true) {
+      final status =
+          await _client.get('/api/v1/web/sync/status') as Map<String, dynamic>;
+      onProgress?.call(status['done'] as int? ?? 0, status['total'] as int? ?? 0);
+      final result = status['result'] as Map<String, dynamic>?;
+      if (status['running'] != true && result != null) return result;
+      await Future<void>.delayed(pollInterval);
+    }
   }
 
   Future<GraphRAGResponse> queryGraph(

@@ -78,6 +78,7 @@ from contracts.web import (
     WebSourcesListResponse,
     WebSyncRequest,
     WebSyncResponse,
+    WebSyncStatus,
 )
 from services.common.config import load_config
 from services.common.logger import get_logger
@@ -1413,7 +1414,22 @@ def sync_web_store(req: WebSyncRequest | None = None, _admin: User = Depends(req
     indexer = get_web_indexer()
     categories = req.categories if req else None
     force_refresh = req.force_refresh if req else False
-    return indexer.sync_categories(categories=categories, force_refresh=force_refresh)
+    discover = req.discover if req else False
+    if indexer.sync_status().running:
+        raise HTTPException(status_code=409, detail="A web sync is already running.")
+    if req and req.background:
+        if not indexer.start_background_sync(categories, force_refresh, discover):
+            raise HTTPException(status_code=409, detail="A web sync is already running.")
+        return WebSyncResponse(
+            synced_pages=[], total_pages=0, total_resources=0, total_chunks=0, duration_ms=0.0, status="running"
+        )
+    return indexer.sync_categories(categories=categories, force_refresh=force_refresh, discover=discover)
+
+
+@app.get("/api/v1/web/sync/status", response_model=WebSyncStatus)
+def web_sync_status(_admin: User = Depends(require_admin)) -> WebSyncStatus:
+    """Progress of the latest background web sync (IRA-66)."""
+    return get_web_indexer().sync_status()
 
 
 @app.get("/api/v1/web/sources", response_model=WebSourcesListResponse)
