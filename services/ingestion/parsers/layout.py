@@ -158,7 +158,19 @@ class LayoutParser:
             elif label in (DocItemLabel.PICTURE, DocItemLabel.CHART):
                 b_type = BlockType.IMAGE
                 caption = getattr(item, "caption", None)
-                text = getattr(item, "text", "").strip() or f"Figure on page {page_no}"
+                text = getattr(item, "text", "").strip()
+                if not text:
+                    # Docling sometimes tags real text (e.g. a large title) as a picture; recover
+                    # it from the PDF's own text layer rather than emit a "Figure" placeholder.
+                    layer_text = self._text_in_bbox(path, page_no, bbox)
+                    if layer_text:
+                        text = layer_text
+                        if len(text) < 80 and len(text.splitlines()) == 1:
+                            b_type, b_level = BlockType.HEADING, 2
+                        else:
+                            b_type = BlockType.TEXT
+                    else:
+                        text = f"Figure on page {page_no}"
 
             elif label == DocItemLabel.CODE:
                 b_type = BlockType.CODE
@@ -218,6 +230,18 @@ class LayoutParser:
             f"across {len(doc.pages) if hasattr(doc, 'pages') else '?'} pages"
         )
         return blocks
+
+    @staticmethod
+    def _text_in_bbox(path: Path, page_no: int, bbox: tuple[float, float, float, float]) -> str:
+        """Text-layer content inside a top-left-origin bbox, or '' (scans, empty or bad regions)."""
+        try:
+            with fitz.open(str(path)) as pdf:
+                rect = fitz.Rect(*bbox)
+                if rect.is_empty or not 1 <= page_no <= len(pdf):
+                    return ""
+                return pdf[page_no - 1].get_text("text", clip=rect).strip()
+        except Exception:
+            return ""
 
     def _parse_fallback(self, path: Path, doc_id: str) -> list[Block]:
         """Enhanced PyMuPDF fallback with font-size heading detection, tables, and figures."""

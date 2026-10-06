@@ -6,7 +6,7 @@ from unittest.mock import patch
 import fitz
 import pytest
 
-from contracts.document import Block, BlockType
+from contracts.document import BlockType
 from services.indexing.chunker import chunk_blocks
 from services.ingestion.parsers.layout import LayoutParser
 
@@ -90,3 +90,11 @@ def test_layout_parser_fallback_on_docling_error(structured_pdf: Path):
     assert "Executive Architecture Brief" in headings[0].text
     assert headings[0].level in (1, 2)
     assert len(headings[0].bbox) == 4
+
+
+def test_text_in_bbox_recovers_title_text(structured_pdf: Path):
+    """IRA-61: text Docling mislabels as a picture is recovered from the PDF text layer."""
+    text = LayoutParser._text_in_bbox(structured_pdf, 1, (60.0, 50.0, 400.0, 80.0))
+    assert "Executive Architecture Brief" in text
+    assert LayoutParser._text_in_bbox(structured_pdf, 1, (0.0, 0.0, 0.0, 0.0)) == ""
+    assert LayoutParser._text_in_bbox(structured_pdf, 9, (0.0, 0.0, 100.0, 100.0)) == ""
