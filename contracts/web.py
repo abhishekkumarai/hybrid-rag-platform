@@ -43,10 +43,6 @@ class WebSyncRequest(BaseModel):
         default=False,
         description="Whether to re-fetch and re-index already ingested pages",
     )
-    base_url: str = Field(
-        default="https://wiki-index.pages.dev",
-        description="Base URL for the wiki-index deployment",
-    )
 
 
 class WebSyncResponse(BaseModel):

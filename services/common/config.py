@@ -58,6 +58,8 @@ class IngestionConfig(BaseModel):
     url_max_bytes: int = 20_000_000
     url_timeout_s: float = 20.0
     url_max_redirects: int = 5
+    docling_default: bool = True  # digital PDFs go to Docling ('layout'); only scans stay on OCR
+    web_cache_ttl_s: float = 86_400.0  # wiki-index HTML cache lifetime; 0 disables the cache
 
 
 class ChunkingConfig(BaseModel):

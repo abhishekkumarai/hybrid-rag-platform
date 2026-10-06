@@ -25,10 +25,15 @@ ingestion:
   text_coverage_threshold: 0.60
   image_ratio_threshold: 0.65
   gutter_gap_threshold_pt: 18.0
+  # Route every digital (non-scanned) PDF through Docling instead of only tabular/multi-column ones.
+  # Slower on CPU; set false to restore the probe's fast_text route for clean single-column PDFs.
+  docling_default: true
   # "Add source → Web": a fetched page is capped in size/time and must resolve to a public address.
   url_max_bytes: 20000000
   url_timeout_s: 20.0
   url_max_redirects: 5
+  # Wiki-index corpus sync reuses a cached page for this long before re-fetching (0 = always fetch).
+  web_cache_ttl_s: 86400
 
 chunking:
   max_tokens: 512

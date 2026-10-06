@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,9 +15,13 @@ import requests
 
 from contracts.document import Block, BlockType
 from contracts.web import WebPageDocument, WebResourceLink
+from services.common.config import load_config
 from services.common.logger import get_logger
 
 logger = get_logger("ingestion.web_parser")
+
+# Anchored to the repo, not the cwd, so the cache and mirrors resolve wherever the gateway starts.
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 DEFAULT_BASE_URL = "https://wiki-index.pages.dev"
 
@@ -60,11 +65,13 @@ class WikiIndexWebParser:
         base_url: str = DEFAULT_BASE_URL,
         cache_dir: Path | str | None = None,
         timeout_seconds: float = 12.0,
+        cache_ttl_s: float | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
-        self.cache_dir = Path(cache_dir or "data/web_cache")
+        self.cache_dir = Path(cache_dir or REPO_ROOT / "data" / "web_cache")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.timeout_seconds = timeout_seconds
+        self.cache_ttl_s = load_config().ingestion.web_cache_ttl_s if cache_ttl_s is None else cache_ttl_s
 
     def fetch_sitemap_slugs(self) -> list[str]:
         """Fetches sitemap.xml and returns all non-blog category slugs."""
@@ -88,12 +95,19 @@ class WikiIndexWebParser:
             slugs = list(DEFAULT_CATEGORIES)
         return sorted(list(dict.fromkeys(slugs)))
 
+    def _cache_is_fresh(self, cache_file: Path) -> bool:
+        if self.cache_ttl_s <= 0 or not cache_file.exists():
+            return False
+        return time.time() - cache_file.stat().st_mtime < self.cache_ttl_s
+
     def fetch_page_html(self, slug_or_url: str, force_refresh: bool = False) -> tuple[str, str, str]:
         """Fetches the HTML content for a category slug or URL, caching locally.
 
         Returns (slug, page_url, html_content).
         """
         if slug_or_url.startswith("http://") or slug_or_url.startswith("https://"):
+            if urlparse(slug_or_url).netloc.lower() != urlparse(self.base_url).netloc.lower():
+                raise ValueError(f"Refusing to fetch {slug_or_url}: not on {self.base_url}")
             page_url = slug_or_url
             slug = urlparse(slug_or_url).path.strip("/") or "index"
         else:
@@ -103,7 +117,7 @@ class WikiIndexWebParser:
         safe_slug = re.sub(r"[^\w-]", "_", slug) or "index"
         cache_file = self.cache_dir / f"{safe_slug}.html"
 
-        if not force_refresh and cache_file.exists():
+        if not force_refresh and self._cache_is_fresh(cache_file):
             try:
                 html = cache_file.read_text(encoding="utf-8")
                 if html.strip():

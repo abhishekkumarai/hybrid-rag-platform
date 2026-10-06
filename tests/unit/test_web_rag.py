@@ -121,6 +121,55 @@ def test_wiki_index_parser_sitemap_filtering():
         assert not any("blog" in s for s in slugs)
 
 
+def _fake_response(text: str = SAMPLE_HTML, status: int = 200) -> MagicMock:
+    resp = MagicMock()
+    resp.status_code = status
+    resp.text = text
+    return resp
+
+
+def test_fetch_page_html_refuses_foreign_host(tmp_path):
+    """IRA-65: a full URL must be on the configured wiki host, never an arbitrary address."""
+    parser = WikiIndexWebParser(cache_dir=tmp_path, cache_ttl_s=60)
+    with patch("requests.get") as get:
+        with pytest.raises(ValueError, match="not on"):
+            parser.fetch_page_html("http://127.0.0.1:8000/admin")
+        get.assert_not_called()
+
+
+def test_fetch_page_html_cache_honours_ttl(tmp_path):
+    """IRA-65: a fresh cache entry is reused; an expired one (or force_refresh) is re-fetched."""
+    import os
+    import time
+
+    parser = WikiIndexWebParser(cache_dir=tmp_path, cache_ttl_s=3600)
+    with patch("requests.get", return_value=_fake_response()) as get:
+        parser.fetch_page_html("ai")
+        parser.fetch_page_html("ai")
+        assert get.call_count == 1
+
+        stale = time.time() - 7200
+        os.utime(tmp_path / "ai.html", (stale, stale))
+        parser.fetch_page_html("ai")
+        assert get.call_count == 2
+
+        parser.fetch_page_html("ai", force_refresh=True)
+        assert get.call_count == 3
+
+
+def test_ingest_job_url_request_validates_route_and_length():
+    """IRA-65: the job request is as strict as the synchronous UrlIngestRequest."""
+    from pydantic import ValidationError
+
+    from contracts.ingest_job import IngestJobUrlRequest
+
+    with pytest.raises(ValidationError):
+        IngestJobUrlRequest(url="https://example.com", session_id="s", route="bogus")
+    with pytest.raises(ValidationError):
+        IngestJobUrlRequest(url="https://example.com/" + "a" * 2100, session_id="s")
+    assert IngestJobUrlRequest(url="https://example.com", session_id="s", route="ocr").route == "ocr"
+
+
 def test_web_rag_indexer_sync_and_persistence(mock_html_fetch, tmp_path):
     """Verifies that WebRAGIndexer chunks, dual-indexes, and saves metadata & markdown mirrors."""
     indexing_service = IndexingService(in_memory=True, bm25_dir=tmp_path / "bm25")

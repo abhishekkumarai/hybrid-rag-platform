@@ -823,7 +823,7 @@ def list_documents(user: User = Depends(current_user)) -> dict:
 def _raw_document(doc_id: str, allowed: set[str], user_id: str | None) -> Response:
     if doc_id in allowed and (doc_id.startswith("web_") or doc_id.startswith("wiki_index")):
         clean_name = Path(doc_id).stem
-        web_md_path = Path("data/web_documents") / f"{clean_name}.md"
+        web_md_path = get_web_indexer().web_docs_dir / f"{clean_name}.md"
         if web_md_path.exists():
             return Response(
                 content=web_md_path.read_bytes(),
@@ -1426,7 +1426,7 @@ def list_web_sources() -> WebSourcesListResponse:
         sources=sources,
         total_sources=len(sources),
         total_resources=total_res,
-        base_url="https://wiki-index.pages.dev",
+        base_url=indexer.parser.base_url,
     )
 
 

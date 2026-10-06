@@ -11,9 +11,11 @@ from contracts.document import Block
 from contracts.web import WebPageDocument, WebSourceItem, WebSyncResponse
 from services.common.logger import get_logger
 from services.indexing.service import IndexingService
-from services.ingestion.web_parser import DEFAULT_CATEGORIES, WikiIndexWebParser
+from services.ingestion.web_parser import DEFAULT_CATEGORIES, REPO_ROOT, WikiIndexWebParser
 
 logger = get_logger("indexing.web_indexer")
+
+WEB_DOCS_DIR = REPO_ROOT / "data" / "web_documents"
 
 
 class WebRAGIndexer:
@@ -27,7 +29,7 @@ class WebRAGIndexer:
     ) -> None:
         self.indexing_service = indexing_service or IndexingService()
         self.parser = parser or WikiIndexWebParser()
-        self.web_docs_dir = Path(web_docs_dir or "data/web_documents")
+        self.web_docs_dir = Path(web_docs_dir or WEB_DOCS_DIR)
         self.web_docs_dir.mkdir(parents=True, exist_ok=True)
 
     def sync_category(

@@ -31,9 +31,9 @@ class IngestJob(BaseModel):
 
 
 class IngestJobUrlRequest(BaseModel):
-    url: str = Field(min_length=1)
+    url: str = Field(min_length=1, max_length=2048)
     session_id: str
-    route: str | None = None
+    route: Literal["fast_text", "layout", "ocr", "paddleocr"] | None = None
 
 
 class IngestJobListResponse(BaseModel):
