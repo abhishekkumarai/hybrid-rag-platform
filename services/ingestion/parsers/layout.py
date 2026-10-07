@@ -8,6 +8,7 @@ is unavailable or raises an unexpected conversion error (IRA-61, IRA-63).
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,15 @@ try:
     _HAS_DOCLING = True
 except ImportError:
     _HAS_DOCLING = False
+
+
+# A decorative drop cap is often extracted as a lone capital split from its word ("T hink"), which
+# breaks BM25 matching. "A" and "I" are excluded because "A lot" / "I am" are legitimate English.
+_DROP_CAP = re.compile(r"^([B-HJ-Z]) (?=[a-z]{2,})")
+
+
+def _rejoin_drop_cap(text: str) -> str:
+    return _DROP_CAP.sub(lambda m: m.group(1), text, count=1)
 
 
 class LayoutParser:
@@ -184,6 +194,8 @@ class LayoutParser:
                 text = getattr(item, "text", "").strip()
                 # Enhanced semantic refinement: if Docling emitted text, but it's a section title/header
                 if (
+                    text[:1].isalnum() or text.startswith("#")
+                ) and (
                     len(text.splitlines()) <= 2
                     and len(text) < 80
                     and not text.endswith((".", ";", ","))
@@ -202,6 +214,8 @@ class LayoutParser:
                 else:
                     b_type = BlockType.TEXT
 
+            if b_type in (BlockType.TEXT, BlockType.HEADING, BlockType.CAPTION):
+                text = _rejoin_drop_cap(text)
             if not text:
                 continue
 

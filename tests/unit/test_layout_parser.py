@@ -98,3 +98,15 @@ def test_text_in_bbox_recovers_title_text(structured_pdf: Path):
     assert "Executive Architecture Brief" in text
     assert LayoutParser._text_in_bbox(structured_pdf, 1, (0.0, 0.0, 0.0, 0.0)) == ""
     assert LayoutParser._text_in_bbox(structured_pdf, 9, (0.0, 0.0, 100.0, 100.0)) == ""
+
+
+def test_rejoin_drop_cap_is_generic():
+    from services.ingestion.parsers.layout import _rejoin_drop_cap
+
+    assert _rejoin_drop_cap("T hink about someone you know") == "Think about someone you know"
+    assert _rejoin_drop_cap("P lutarch, a Roman") == "Plutarch, a Roman"
+    # Legitimate one-letter words and normal prose are untouched.
+    assert _rejoin_drop_cap("A lot of people agree") == "A lot of people agree"
+    assert _rejoin_drop_cap("I am here") == "I am here"
+    assert _rejoin_drop_cap("The cat") == "The cat"
+    assert _rejoin_drop_cap("T 5 items") == "T 5 items"

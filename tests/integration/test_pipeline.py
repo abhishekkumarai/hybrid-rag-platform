@@ -5,7 +5,7 @@ from pathlib import Path
 import fitz
 import pytest
 
-from contracts.document import IngestRequest
+from contracts.document import BlockType, IngestRequest
 from contracts.retrieval import SearchQuery
 from services.common.logger import LOGS_DIR
 from services.indexing.service import IndexingService
@@ -92,3 +92,64 @@ def test_full_rag_pipeline_end_to_end(complex_pdf: Path, tmp_path: Path):
     assert "rag.ingestion" in log_content
     assert "rag.indexing" in log_content
     assert "rag.retrieval" in log_content
+
+
+@pytest.fixture
+def stoic_style_pdf(tmp_path: Path) -> Path:
+    """A devotional-book page: date + title, a quote, an all-caps attribution, and commentary that
+    opens with a decorative drop cap extracted as a lone capital ("T hink")."""
+    pdf_path = tmp_path / "daily_meditations.pdf"
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((72, 72), "August 15th", fontsize=14)
+    page.insert_text((72, 110), "THE SUPREME COURT OF YOUR MIND", fontsize=18)
+    page.insert_text(
+        (72, 190),
+        '"Virtue is the only good; there is no certainty outside our own judgment."',
+        fontsize=11,
+    )
+    page.insert_text((72, 260), "-SENECA, MORAL LETTERS, 71.32", fontsize=10)
+    page.insert_text(
+        (72, 340),
+        "T hink about someone you know who has the character of granite and why they are dependable.",
+        fontsize=11,
+    )
+    doc.save(str(pdf_path))
+    doc.close()
+    return pdf_path
+
+
+def test_docling_pipeline_drop_caps_and_attributions(stoic_style_pdf: Path, tmp_path: Path):
+    """Docling is the default route; a split drop cap is rejoined and an attribution is not a heading.
+
+    Regression for the Daily Stoic ingest: 244 blocks had "T hink"-style splits (unsearchable by
+    BM25) and 183 "-AUTHOR, WORK" lines were promoted to headings.
+    """
+    pytest.importorskip("docling")
+    ingestion = IngestionService()
+    indexing = IndexingService(in_memory=True, bm25_dir=tmp_path / "bm25")
+    retrieval = RetrievalService(qdrant_store=indexing.qdrant, bm25_store=indexing.bm25)
+
+    ingest_res = ingestion.parse(IngestRequest(file_path=str(stoic_style_pdf)))
+
+    # The probe calls this clean text; the default must still send it through Docling.
+    assert ingest_res.profile.route == "fast_text"
+    assert any(b.meta.get("label") for b in ingest_res.blocks), "blocks did not come from Docling"
+
+    texts = [b.text for b in ingest_res.blocks]
+    assert not any(t.startswith("T hink") for t in texts), texts
+    assert any(t.startswith("Think about someone") for t in texts), texts
+    attributions = [b for b in ingest_res.blocks if b.text.lstrip().startswith("-SENECA")]
+    assert attributions and all(b.type != BlockType.HEADING for b in attributions)
+
+    indexing.chunk_and_index(doc_id=ingest_res.doc_id, blocks=ingest_res.blocks)
+    res = retrieval.retrieve(
+        SearchQuery(
+            query_text="think about someone with the character of granite",
+            top_k=10,
+            top_rerank=3,
+            min_rerank_score=0.15,
+        )
+    )
+    assert not res.refused
+    assert "Think about someone" in res.candidates[0].text
