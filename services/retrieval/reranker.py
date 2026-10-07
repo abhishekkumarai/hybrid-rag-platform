@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Any
 
 from contracts.retrieval import Candidate, Citation
 from services.common.logger import get_logger
 
 logger = get_logger("retrieval.reranker")
+
+# FlashRank downloads its model on first use. The default cache is /tmp, which a container loses on
+# every recreate and which the gateway and ingestion worker race to fill; data/ is bind-mounted.
+MODEL_CACHE_DIR = Path(__file__).resolve().parents[2] / "data" / "models" / "flashrank"
 
 
 class FlashRankReranker:
@@ -27,7 +32,8 @@ class FlashRankReranker:
     def _init_ranker(self) -> None:
         try:
             from flashrank import Ranker
-            self.ranker = Ranker(model_name=self.model_name)
+            MODEL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            self.ranker = Ranker(model_name=self.model_name, cache_dir=str(MODEL_CACHE_DIR))
             logger.info(f"Initialized FlashRank with model '{self.model_name}' on CPU")
         except Exception as e:
             logger.warning(f"Could not load FlashRank ({e}); fallback ranking will be used")
