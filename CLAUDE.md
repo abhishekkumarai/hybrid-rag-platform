@@ -166,7 +166,7 @@ send `X-RI-Client: web` (or a same-origin `Origin`). Identity data — users, lo
 - **Only the first uploader of a doc_id may re-index it** (`/api/v1/index`): blocks come from the client, so a
   later uploader of the same content could otherwise rewrite someone else's chunks.
 - Cross-project views (`/metrics`, `/feedback/summary`, `/ragops/dataset` without `session_id`) and operator
-  endpoints (HNSW rebuild, DLQ, web sync, benchmark eval) are admin-only.
+  endpoints (HNSW rebuild, DLQ, benchmark eval) are admin-only. Web sync is temporarily open to any signed-in user.
 
 **Share links (IRA-35).** `services/sharing/service.py` snapshots a project's messages (internal `metadata`
 stripped) at a public `/s/<token>` URL; only the token's sha256 is stored. The snapshot's `doc_ids` are the

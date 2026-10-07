@@ -1409,8 +1409,11 @@ def delete_conversation(conversation_id: str, session: ChatSession = Depends(wor
 
 
 @app.post("/api/v1/web/sync", response_model=WebSyncResponse)
-def sync_web_store(req: WebSyncRequest | None = None, _admin: User = Depends(require_admin)) -> WebSyncResponse:
-    """Crawls and synchronizes wiki-index.pages.dev categories into the RAG store."""
+def sync_web_store(req: WebSyncRequest | None = None, _user: User = Depends(current_user)) -> WebSyncResponse:
+    """Crawls and synchronizes wiki-index.pages.dev categories into the RAG store.
+
+    Open to any signed-in user for now (was admin-only); the corpus is shared, so tighten before launch.
+    """
     indexer = get_web_indexer()
     categories = req.categories if req else None
     force_refresh = req.force_refresh if req else False
@@ -1427,7 +1430,7 @@ def sync_web_store(req: WebSyncRequest | None = None, _admin: User = Depends(req
 
 
 @app.get("/api/v1/web/sync/status", response_model=WebSyncStatus)
-def web_sync_status(_admin: User = Depends(require_admin)) -> WebSyncStatus:
+def web_sync_status(_user: User = Depends(current_user)) -> WebSyncStatus:
     """Progress of the latest background web sync (IRA-66)."""
     return get_web_indexer().sync_status()
 
