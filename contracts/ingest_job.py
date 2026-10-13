@@ -34,6 +34,8 @@ class IngestJobUrlRequest(BaseModel):
     url: str = Field(min_length=1, max_length=2048)
     session_id: str
     route: Literal["fast_text", "layout", "ocr", "paddleocr"] | None = None
+    max_depth: int = Field(default=0, ge=0, le=5)  # follow same-site links this many levels deep
+    max_pages: int | None = Field(default=None, ge=1, le=100)  # clamped to ingestion.crawl_max_pages
 
 
 class IngestJobListResponse(BaseModel):

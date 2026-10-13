@@ -43,6 +43,7 @@ x-app-base: &app-base
   image: hybrid-rag-platform:local
   restart: unless-stopped
   environment: *app-env
+  shm_size: 1gb  # headless Chromium (Crawl4AI) crashes on Docker's 64MB /dev/shm default
   extra_hosts:
     - "host.docker.internal:host-gateway"
   volumes:

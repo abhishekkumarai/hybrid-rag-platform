@@ -37,7 +37,12 @@ COPY components/__init__.py components/
 # project install reuse it.
 RUN pip install --upgrade pip && \
     pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision && \
-    pip install ".[parse]"
+    pip install ".[parse,crawl]"
+
+# Crawl4AI drives headless Chromium through Playwright (IRA-68). Browsers live outside /root so they
+# are readable whatever user runs the container; --with-deps pulls the system libraries Chromium needs.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN playwright install --with-deps chromium && rm -rf /var/lib/apt/lists/*
 
 COPY . .
 

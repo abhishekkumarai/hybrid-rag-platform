@@ -42,6 +42,16 @@ def _in_memory_projects(monkeypatch):
     monkeypatch.setattr(api.session_manager, "_in_memory_conversations", {})
 
 
+@pytest.fixture(autouse=True)
+def _legacy_url_ingest(monkeypatch):
+    """URL tests exercise the PDF fetch path. With the `crawl` extra installed (the Docker image) the
+    default engine would be a real browser hitting the network, so unit tests opt out; the crawl
+    tests (test_crawl_ingest_api.py) switch it back on."""
+    from services.gateway import api
+
+    monkeypatch.setattr(api.settings.ingestion, "crawler", "legacy")
+
+
 @pytest.fixture
 def real_auth():
     """Drops the signed-in override so requests authenticate through the real cookie path."""

@@ -63,6 +63,8 @@ class UrlIngestRequest(BaseModel):
     route: Literal["fast_text", "layout", "ocr", "paddleocr"] | None = Field(
         default=None, description="Optional parser override, as for file uploads"
     )
+    max_depth: int = Field(default=0, ge=0, le=5, description="Follow same-site links this many levels deep (0 = just this page)")
+    max_pages: int | None = Field(default=None, ge=1, le=100, description="Cap on pages crawled; clamped to ingestion.crawl_max_pages")
 
 
 class IngestResponse(BaseModel):

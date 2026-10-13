@@ -99,14 +99,16 @@ class IngestJobsNotifier extends StateNotifier<List<IngestJob>> {
         () => _client.createIngestJob(bytes, filename, sessionId, route: route),
       );
 
-  /// Queues a web page or PDF link; the gateway fetches it.
-  Future<void> submitUrl(String url, {String? route}) => _submit(
+  /// Queues a web page or PDF link; the gateway fetches it. [maxDepth] > 0 also crawls same-site
+  /// links that many levels deep (the gateway caps the page count).
+  Future<void> submitUrl(String url, {String? route, int maxDepth = 0}) => _submit(
         url,
         'url',
         () => _client.post('/api/v1/ingest/jobs/url', body: {
           'url': url,
           'session_id': sessionId,
           'route': ?route,
+          if (maxDepth > 0) 'max_depth': maxDepth,
         }),
       );
 

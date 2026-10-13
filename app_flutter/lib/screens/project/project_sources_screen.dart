@@ -39,6 +39,7 @@ class _ProjectSourcesScreenState extends ConsumerState<ProjectSourcesScreen> {
   String? _routeOverride;
   _SourceKind _kind = _SourceKind.file;
   final _urlController = TextEditingController();
+  int _crawlDepth = 0; // 0 = just this page; N = also follow same-site links N levels deep
 
   @override
   void dispose() {
@@ -62,7 +63,7 @@ class _ProjectSourcesScreenState extends ConsumerState<ProjectSourcesScreen> {
     _urlController.clear();
     await ref
         .read(ingestJobsProvider(widget.projectId).notifier)
-        .submitUrl(url);
+        .submitUrl(url, maxDepth: _crawlDepth);
   }
 
   @override
@@ -168,6 +169,16 @@ class _ProjectSourcesScreenState extends ConsumerState<ProjectSourcesScreen> {
                             ),
                             onSubmitted: (_) => _addUrl(),
                           ),
+                        ),
+                        const SizedBox(width: 12),
+                        DropdownButton<int>(
+                          value: _crawlDepth,
+                          onChanged: (v) => setState(() => _crawlDepth = v ?? 0),
+                          items: const [
+                            DropdownMenuItem(value: 0, child: Text('This page only')),
+                            DropdownMenuItem(value: 1, child: Text('+ linked pages')),
+                            DropdownMenuItem(value: 2, child: Text('+ 2 levels deep')),
+                          ],
                         ),
                         const SizedBox(width: 12),
                         FilledButton.icon(

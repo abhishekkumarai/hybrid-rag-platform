@@ -59,6 +59,14 @@ class IngestionConfig(BaseModel):
     url_timeout_s: float = 20.0
     url_max_redirects: int = 5
     docling_default: bool = True  # digital PDFs go to Docling ('layout'); only scans stay on OCR
+    # "Add source -> Web" (IRA-68): 'crawl4ai' renders pages in headless Chromium and keeps their markdown;
+    # 'legacy' (also the fallback when Crawl4AI/Chromium is unavailable) fetches and flattens to a PDF.
+    crawler: str = "crawl4ai"
+    crawl_max_pages: int = 10
+    crawl_max_depth: int = 2
+    crawl_page_timeout_s: float = 30.0
+    crawl_max_markdown_bytes: int = 2_000_000
+    crawl_allow_private: bool = False  # tests only: lets the crawler reach 127.0.0.1; never set in compose
     soffice_path: str = ""  # LibreOffice binary for .pptx -> PDF; empty = look on PATH / SOFFICE_PATH (IRA-67)
     convert_timeout_s: float = 120.0
     web_cache_ttl_s: float = 86_400.0  # wiki-index HTML cache lifetime; 0 disables the cache

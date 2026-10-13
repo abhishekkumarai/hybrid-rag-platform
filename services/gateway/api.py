@@ -23,7 +23,13 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from contracts.chat import ChatTurnRequest
 from contracts.chunk import IndexResponse
 from contracts.compactor import CompactedContext, CompactorRequest
-from contracts.document import Block, IngestRequest, IngestResponse, UrlIngestRequest
+from contracts.document import (
+    Block,
+    DocumentProfile,
+    IngestRequest,
+    IngestResponse,
+    UrlIngestRequest,
+)
 from contracts.feedback import FeedbackRecord, FeedbackRequest, RAGOpsSummary
 from contracts.graph import GraphExtractionResult, GraphRAGResponse, GraphSearchQuery
 from contracts.identity import (
@@ -93,11 +99,13 @@ from services.identity.passwords import DUMMY_HASH, hash_password, verify_passwo
 from services.identity.store import DuplicateEmailError, IdentityStore, build_identity_store
 from services.indexing.service import IndexingService
 from services.indexing.web_indexer import WebRAGIndexer
+from services.ingestion import crawler
 from services.ingestion.jobs import IngestJobRunner, IngestJobStore, StageReporter
 from services.ingestion.normalize import SUPPORTED_EXTENSIONS, ConversionError, is_supported
 from services.ingestion.service import IngestionService
 from services.ingestion.url_source import UrlSourceError, url_to_pdf
 from services.ingestion.visualizer import render_page_with_bbox, resolve_document_path
+from services.ingestion.web_markdown import markdown_to_blocks, web_doc_id
 from services.retrieval.agentic import AgenticCoordinator
 from services.retrieval.compactor import ContextCompactor
 from services.retrieval.service import RetrievalService
@@ -797,12 +805,13 @@ def list_documents(user: User = Depends(current_user)) -> dict:
                     page_count = len(doc)
             except Exception:
                 pass
+        crawled = doc_id.startswith("web_crawl_")  # a page the user crawled (IRA-68), not the wiki corpus
         docs.append({
             "name": record.filename if record else doc_id,
             "doc_id": doc_id,
             "pages": page_count,
             "size_kb": round(path.stat().st_size / 1024, 1) if path else 0.0,
-            "is_web": False,
+            "is_web": crawled,
             "read_only": doc_id not in owned,
         })
 
@@ -836,9 +845,10 @@ def _raw_document(doc_id: str, allowed: set[str], user_id: str | None) -> Respon
     doc_path = _readable_path(doc_id, allowed, user_id)
     if not doc_path:
         raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found")
+    is_markdown = doc_path.suffix.lower() == ".md"  # a crawled web page is stored as markdown (IRA-68)
     return Response(
         content=doc_path.read_bytes(),
-        media_type="application/pdf",
+        media_type="text/markdown; charset=utf-8" if is_markdown else "application/pdf",
         headers={"Content-Disposition": f'inline; filename="{doc_path.name}"'},
     )
 
@@ -856,6 +866,8 @@ def _render_preview(
     doc_path = _readable_path(doc_id, allowed, user_id)
     if not doc_path:
         raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found")
+    if doc_path.suffix.lower() == ".md":
+        raise HTTPException(status_code=404, detail="Web sources have no page preview; open the source URL instead")
 
     target_bbox: tuple[float, float, float, float] | None = None
     if x0 is not None and y0 is not None and x1 is not None and y1 is not None:
@@ -947,6 +959,12 @@ def ingest_url(req: UrlIngestRequest, user: User = Depends(current_user)) -> Ing
     """Fetches a public web page (or PDF link), converts it to a PDF and ingests it exactly like an
     upload — same doc_id scheme, ownership, preview and citations. Index it with /api/v1/index."""
     cfg = settings.ingestion
+    if _use_crawler(req.url.strip()):
+        pages = _crawl_pages(req.url.strip(), max_depth=0, max_pages=1)  # the sync route is single-page
+        if pages is not None:
+            res = _ingest_crawled_page(pages[0], user)
+            logger.info(f"API Ingest URL (crawl): '{req.url}' -> {len(res.blocks)} blocks")
+            return res
     try:
         filename, pdf_bytes = url_to_pdf(
             req.url.strip(), max_bytes=cfg.url_max_bytes, timeout_s=cfg.url_timeout_s,
@@ -959,6 +977,59 @@ def ingest_url(req: UrlIngestRequest, user: User = Depends(current_user)) -> Ing
     res = _parse_owned_upload(file_path, filename, req.route, user)
     logger.info(f"API Ingest URL: '{req.url}' -> {filename}: {len(res.blocks)} blocks ({res.profile.route})")
     return res
+
+
+def _use_crawler(url: str) -> bool:
+    """Crawl4AI handles web pages; a PDF link, `crawler: legacy`, or a missing engine use the PDF path."""
+    return (
+        settings.ingestion.crawler == "crawl4ai"
+        and not urlparse(url).path.lower().endswith(".pdf")
+        and crawler.available()
+    )
+
+
+def _crawl_pages(url: str, max_depth: int, max_pages: int | None) -> list[crawler.CrawledPage] | None:
+    """Crawled pages, or None when the engine can't run here (the caller then uses the PDF path)."""
+    cfg = settings.ingestion
+    try:
+        return crawler.crawl(
+            url, max_depth=min(max_depth, cfg.crawl_max_depth), max_pages=min(max_pages or cfg.crawl_max_pages, cfg.crawl_max_pages)
+        )
+    except crawler.CrawlUnavailable as exc:
+        logger.warning(f"Crawl4AI unavailable ({exc}); falling back to the PDF fetch for '{url}'")
+        return None
+    except crawler.CrawlError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+def _ingest_crawled_page(page: crawler.CrawledPage, user: User) -> IngestResponse:
+    """Stores one crawled page as the caller's own markdown web document (IRA-68).
+
+    Kept under data/web_crawls/<user_id>/ — not data/documents/, which the directory scan ingests —
+    and recorded as an owned document, so isolation, sharing and access checks need no special case.
+    The `web_crawl_` doc_id keeps it out of the public wiki corpus."""
+    start = time.perf_counter()
+    doc_id = web_doc_id(page.url, page.markdown)
+    blocks = markdown_to_blocks(page.markdown, doc_id, page.url, page.title)
+    if not blocks:
+        raise HTTPException(status_code=422, detail=f"No readable text found at {page.url}")
+    out_dir = Path("data/web_crawls") / user.id
+    out_dir.mkdir(parents=True, exist_ok=True)
+    md_path = _safe_join(out_dir, f"{doc_id}.md")
+    md_path.write_text(page.markdown, encoding="utf-8")
+    get_identity_store().add_document(
+        OwnedDocument(user_id=user.id, doc_id=doc_id, filename=page.title or page.url, path=str(md_path))
+    )
+    chars = sum(len(b.text) for b in blocks)
+    profile = DocumentProfile(
+        route="fast_text", page_count=max(b.page for b in blocks), sample_pages=[1], text_coverage=1.0,
+        chars_per_page=float(chars), image_ratio=0.0, columns=1, table_score=0.0,
+        reason="web crawl (Crawl4AI): markdown kept, no PDF layout",
+    )
+    return IngestResponse(
+        doc_id=doc_id, file_path=str(md_path), profile=profile, blocks=blocks,
+        duration_ms=round((time.perf_counter() - start) * 1000, 2),
+    )
 
 
 def _require_supported_upload(filename: str) -> None:
@@ -1062,7 +1133,26 @@ def create_ingest_url_job(req: IngestJobUrlRequest, user: User = Depends(current
         report("Parsing")
         return _parse_owned_upload(file_path, filename, req.route, user)
 
-    ingest_runner.submit(job, _ingest_pipeline(user, session, parse))
+    legacy = _ingest_pipeline(user, session, parse)
+
+    def work(report: StageReporter) -> tuple[str, int]:
+        pages = None
+        if _use_crawler(url):
+            report("Crawling" if req.max_depth else "Rendering the page")
+            pages = _crawl_pages(url, req.max_depth, req.max_pages)
+        if pages is None:
+            return legacy(report)
+        first_doc, total_blocks = "", 0
+        for n, page in enumerate(pages, 1):
+            report(f"Indexing page {n}/{len(pages)}")
+            res = _ingest_crawled_page(page, user)
+            _index_owned(res.doc_id, res.blocks, user)
+            _attach_to_session(session, [res.doc_id], user)
+            first_doc = first_doc or res.doc_id
+            total_blocks += len(res.blocks)
+        return first_doc, total_blocks
+
+    ingest_runner.submit(job, work)
     return job
 
 

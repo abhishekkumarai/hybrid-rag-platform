@@ -32,6 +32,13 @@ ingestion:
   url_max_bytes: 20000000
   url_timeout_s: 20.0
   url_max_redirects: 5
+  # "Add source -> Web" (IRA-68). crawl4ai = headless-Chromium crawl keeping markdown; legacy = fetch -> PDF.
+  crawler: crawl4ai
+  crawl_max_pages: 10
+  crawl_max_depth: 2
+  crawl_page_timeout_s: 30.0
+  crawl_max_markdown_bytes: 2000000
+  crawl_allow_private: false  # tests only
   # .pptx -> PDF conversion (IRA-67) shells out to LibreOffice; empty = find `soffice` on PATH.
   soffice_path: ""
   convert_timeout_s: 120.0
