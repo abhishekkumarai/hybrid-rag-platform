@@ -272,7 +272,7 @@ class _ProjectSourcesScreenState extends ConsumerState<ProjectSourcesScreen> {
   Future<void> _pickAndUpload() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['pdf'],
+      allowedExtensions: ['pdf', 'pptx', 'txt', 'md', 'png', 'jpg', 'jpeg'],
       withData: true,
     );
     if (result == null || result.files.isEmpty) return;

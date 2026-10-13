@@ -11,12 +11,15 @@ import json
 from pathlib import Path
 
 from services.common.logger import get_logger
+from services.ingestion.normalize import SUPPORTED_EXTENSIONS as NORMALIZE_EXTENSIONS
 
 logger = get_logger("scheduling.registry")
 
 DATA_DOCS_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "documents"
 SEEN_REGISTRY_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "seen_documents.json"
-SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
+# Single source of truth lives with the converters. .docx is deliberately absent: nothing parses it,
+# so the scan would only dispatch a guaranteed failure.
+SUPPORTED_EXTENSIONS = NORMALIZE_EXTENSIONS
 
 
 def load_registry(registry_file: Path | str = SEEN_REGISTRY_FILE) -> dict[str, str]:

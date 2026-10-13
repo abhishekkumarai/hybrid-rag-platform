@@ -59,6 +59,8 @@ class IngestionConfig(BaseModel):
     url_timeout_s: float = 20.0
     url_max_redirects: int = 5
     docling_default: bool = True  # digital PDFs go to Docling ('layout'); only scans stay on OCR
+    soffice_path: str = ""  # LibreOffice binary for .pptx -> PDF; empty = look on PATH / SOFFICE_PATH (IRA-67)
+    convert_timeout_s: float = 120.0
     web_cache_ttl_s: float = 86_400.0  # wiki-index HTML cache lifetime; 0 disables the cache
 
 
@@ -222,6 +224,9 @@ def load_config(profile: str | None = None) -> AppConfig:
         scheduling_data["temporal_port"] = int(os.environ["TEMPORAL_PORT"])
     if "TEMPORAL_NAMESPACE" in os.environ:
         scheduling_data["temporal_namespace"] = os.environ["TEMPORAL_NAMESPACE"]
+
+    if "SOFFICE_PATH" in os.environ:
+        data.setdefault("ingestion", {})["soffice_path"] = os.environ["SOFFICE_PATH"]
 
     hardware_data = data.setdefault("hardware", {})
     if "OLLAMA_BASE_URL" in os.environ:

@@ -9,6 +9,7 @@ from pathlib import Path
 from contracts.document import IngestRequest, IngestResponse
 from services.common.config import load_config
 from services.common.logger import get_logger
+from services.ingestion.normalize import to_pdf
 from services.ingestion.parsers.fast_text import FastTextParser
 from services.ingestion.parsers.layout import LayoutParser
 from services.ingestion.parsers.ocr import OCRParser
@@ -16,6 +17,13 @@ from services.ingestion.parsers.paddle_ocr import PaddleOCRParser
 from services.ingestion.probe import probe_document
 
 logger = get_logger("ingestion.service")
+
+# Typographic ligature glyphs (ﬁ, ﬃ, ...) come out of a PDF text layer as one code point, so "sufficient"
+# would never match a query for it in BM25. Expand them to their letters.
+_LIGATURES = str.maketrans({
+    "ﬀ": "ff", "ﬁ": "fi", "ﬂ": "fl", "ﬃ": "ffi", "ﬄ": "ffl",
+    "ﬅ": "st", "ﬆ": "st",
+})
 
 
 class IngestionService:
@@ -47,7 +55,13 @@ class IngestionService:
             logger.error(err_msg)
             raise FileNotFoundError(err_msg)
 
+        # doc_id hashes the file as uploaded: a converted PDF isn't byte-stable between runs.
         doc_id = request.doc_id or self._generate_doc_id(file_path)
+
+        # 0. Non-PDF sources (pptx, images, txt/md) are converted once; everything below sees a PDF.
+        #    Raises ConversionError for an unsupported or unconvertible file.
+        original_path = file_path
+        file_path = to_pdf(file_path, doc_id)
 
         # 1. Run Layout Probe
         profile = probe_document(file_path)
@@ -75,7 +89,17 @@ class IngestionService:
         else:
             blocks = self.fast_parser.parse(str(file_path), doc_id)
 
+        for block in blocks:
+            block.text = block.text.translate(_LIGATURES)
+
         duration_ms = (time.perf_counter() - start_time) * 1000
+
+        error = None
+        if not blocks and original_path.suffix.lower() != ".pdf":
+            # A converted image/slide/text file that yields nothing (e.g. OCR found no text or the OCR
+            # engine is missing) must fail loudly, not index an empty document.
+            error = f"No text could be extracted from '{original_path.name}'"
+            logger.error(error)
 
         logger.info(
             f"Successfully parsed '{file_path.name}' into {len(blocks)} blocks "
@@ -88,4 +112,5 @@ class IngestionService:
             profile=profile,
             blocks=blocks,
             duration_ms=round(duration_ms, 2),
+            error=error,
         )

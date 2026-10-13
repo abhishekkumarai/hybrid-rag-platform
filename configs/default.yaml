@@ -32,6 +32,9 @@ ingestion:
   url_max_bytes: 20000000
   url_timeout_s: 20.0
   url_max_redirects: 5
+  # .pptx -> PDF conversion (IRA-67) shells out to LibreOffice; empty = find `soffice` on PATH.
+  soffice_path: ""
+  convert_timeout_s: 120.0
   # Wiki-index corpus sync reuses a cached page for this long before re-fetching (0 = always fetch).
   web_cache_ttl_s: 86400
 

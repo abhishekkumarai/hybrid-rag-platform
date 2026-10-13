@@ -9,6 +9,7 @@ from typing import Tuple
 import fitz
 
 from services.common.logger import get_logger
+from services.ingestion.normalize import converted_path
 
 logger = get_logger("ingestion.visualizer")
 DATA_DOCS_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "documents"
@@ -24,6 +25,11 @@ def resolve_document_path(doc_identifier: str) -> Path | None:
     candidate = (base / clean_id).resolve()
     if candidate.is_relative_to(base) and candidate.is_file():
         return candidate
+
+    # A pptx/image/text source is parsed, previewed and served from its converted PDF (IRA-67).
+    converted = converted_path(clean_id)
+    if converted.is_file():
+        return converted
 
     candidate_pdf = (base / f"{clean_id}.pdf").resolve()
     if candidate_pdf.is_relative_to(base) and candidate_pdf.is_file():

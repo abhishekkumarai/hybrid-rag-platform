@@ -351,11 +351,19 @@ class _SourceRowItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final filename = doc?.name ?? docId;
-    final isPdf = filename.toLowerCase().endsWith('.pdf');
+    final lower = filename.toLowerCase();
+    final isPdf = lower.endsWith('.pdf');
+    final isSlides = lower.endsWith('.pptx');
+    final isImage = lower.endsWith('.png') ||
+        lower.endsWith('.jpg') ||
+        lower.endsWith('.jpeg');
+    final kind = isPdf
+        ? 'PDF'
+        : (isSlides ? 'Slides' : (isImage ? 'Image' : 'Text'));
     final isTable = filename.contains('table');
     final meta = doc == null
         ? 'Not in your library'
-        : '${doc!.isWeb ? 'Web' : (isPdf ? 'PDF' : 'Text')} · ${doc!.pages} pages · ${doc!.sizeKb.toStringAsFixed(0)} KB';
+        : '${doc!.isWeb ? 'Web' : kind} · ${doc!.pages} pages · ${doc!.sizeKb.toStringAsFixed(0)} KB';
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
@@ -374,7 +382,11 @@ class _SourceRowItem extends StatelessWidget {
                 child: Icon(
                   isTable
                       ? Symbols.table_chart
-                      : (isPdf ? Symbols.picture_as_pdf : Symbols.description),
+                      : (isPdf
+                          ? Symbols.picture_as_pdf
+                          : (isSlides
+                              ? Symbols.slideshow
+                              : (isImage ? Symbols.image : Symbols.description))),
                   size: 16,
                   color: EvergreenColors.primary,
                 ),

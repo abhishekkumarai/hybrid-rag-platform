@@ -303,9 +303,9 @@
       <!-- Sources sub-panel -->
       <aside id="sourcesPanel" class="w-72 shrink-0 h-full border-r border-surface-container-high bg-surface-container-low flex flex-col">
         <div class="p-3 border-b border-surface-container-high space-y-2">
-          <input id="wsFileInput" type="file" accept=".pdf" hidden />
+          <input id="wsFileInput" type="file" accept=".pdf,.pptx,.txt,.md,.png,.jpg,.jpeg" hidden />
           <button id="wsUploadBtn" class="w-full flex items-center justify-center gap-2 bg-primary text-on-primary rounded-lg py-2 text-xs font-label hover:opacity-90 transition font-medium shadow-sm">
-            <span class="material-symbols-outlined text-[16px]">upload_file</span> Upload PDF to Project
+            <span class="material-symbols-outlined text-[16px]">upload_file</span> Upload Document to Project
           </button>
         </div>
         <div id="wsUploadStatus" class="px-3 pt-2 pb-1 text-[11px] font-mono text-primary flex items-center gap-2 hidden">
@@ -587,8 +587,8 @@
 
       <div id="dropZone" class="border-2 border-dashed border-outline-variant rounded-xl p-8 text-center cursor-pointer mb-6 transition-colors">
         <span class="material-symbols-outlined text-[28px] text-on-surface-variant">upload_file</span>
-        <div class="text-sm text-on-surface mt-2 font-label">Drop PDFs here or click to browse</div>
-        <input id="fileInput" type="file" accept=".pdf" hidden />
+        <div class="text-sm text-on-surface mt-2 font-label">Drop PDFs, slides, images or text files here, or click to browse</div>
+        <input id="fileInput" type="file" accept=".pdf,.pptx,.txt,.md,.png,.jpg,.jpeg" hidden />
       </div>
 
       <div class="overflow-x-auto border border-surface-container-high rounded-xl">
@@ -607,7 +607,7 @@
         </table>
         <div id="libraryEmpty" class="page-placeholder" hidden>
           <span class="material-symbols-outlined text-[32px] text-outline-variant">description</span>
-          <div class="text-sm text-on-surface-variant">No documents ingested yet — drop a PDF above to get started.</div>
+          <div class="text-sm text-on-surface-variant">No documents ingested yet — drop a file above to get started.</div>
         </div>
       </div>
     </section>
@@ -2771,8 +2771,8 @@
 
   async function uploadWorkspaceFile(file) {
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.pdf')) {
-      alert('Only PDF documents are supported for ingestion.');
+    if (!/\.(pdf|pptx|txt|md|png|jpe?g)$/i.test(file.name)) {
+      alert('Supported files: PDF, PowerPoint (.pptx), text (.txt, .md) and images (.png, .jpg).');
       return;
     }
     if (!currentSessionId) {

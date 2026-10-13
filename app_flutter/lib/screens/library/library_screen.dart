@@ -202,7 +202,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   Future<void> _pickAndUpload() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['pdf'],
+      allowedExtensions: ['pdf', 'pptx', 'txt', 'md', 'png', 'jpg', 'jpeg'],
       withData: true,
     );
     if (result == null || result.files.isEmpty) return;
@@ -295,7 +295,7 @@ class _UploadDropzone extends StatelessWidget {
                 Text(
                   uploading
                       ? 'Uploading and indexing…'
-                      : 'Drag a PDF here, or click to choose a file',
+                      : 'Drag a PDF, slide deck, image or text file here, or click to choose',
                   style: const TextStyle(
                     fontSize: 13,
                     color: EvergreenColors.metadata,

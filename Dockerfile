@@ -10,8 +10,14 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 # PyMuPDF and RapidOCR need these shared libraries at runtime; curl backs the healthcheck.
+# libreoffice-impress + fonts convert .pptx to PDF for ingestion; tesseract backs the 'ocr' route that
+# images and scanned PDFs use (IRA-67).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
+        libreoffice-impress \
+        tesseract-ocr \
+        tesseract-ocr-eng \
+        fonts-dejavu-core \
         libgl1 \
         libglib2.0-0 \
         curl \

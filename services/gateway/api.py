@@ -94,6 +94,7 @@ from services.identity.store import DuplicateEmailError, IdentityStore, build_id
 from services.indexing.service import IndexingService
 from services.indexing.web_indexer import WebRAGIndexer
 from services.ingestion.jobs import IngestJobRunner, IngestJobStore, StageReporter
+from services.ingestion.normalize import SUPPORTED_EXTENSIONS, ConversionError, is_supported
 from services.ingestion.service import IngestionService
 from services.ingestion.url_source import UrlSourceError, url_to_pdf
 from services.ingestion.visualizer import render_page_with_bbox, resolve_document_path
@@ -932,6 +933,7 @@ def ingest_file(
     The per-user directory keeps two users' same-named files apart; the reconciler only watches the
     top level of data/documents/, so uploads here aren't indexed twice."""
     safe_filename = Path(file.filename or "uploaded_document.pdf").name or "uploaded_document.pdf"
+    _require_supported_upload(safe_filename)
     file_path = _user_upload_path(user, safe_filename)
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
@@ -959,6 +961,14 @@ def ingest_url(req: UrlIngestRequest, user: User = Depends(current_user)) -> Ing
     return res
 
 
+def _require_supported_upload(filename: str) -> None:
+    if not is_supported(filename):
+        raise HTTPException(
+            status_code=415,
+            detail=f"Unsupported file type. Accepted: {', '.join(sorted(SUPPORTED_EXTENSIONS))}",
+        )
+
+
 def _user_upload_path(user: User, filename: str) -> Path:
     upload_dir = Path("data/documents") / user.id
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -969,10 +979,15 @@ def _parse_owned_upload(file_path: Path, filename: str, route: str | None, user:
     """Parses a file saved under the caller's upload dir and records them as an owner of its doc_id."""
     ingestion, _, _ = get_services()
     profile_override = route if route in ("fast_text", "layout", "ocr", "paddleocr") else None
-    res = ingestion.parse(IngestRequest(file_path=str(file_path), profile_override=profile_override))
+    try:
+        res = ingestion.parse(IngestRequest(file_path=str(file_path), profile_override=profile_override))
+    except ConversionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     if not res.error:
+        # res.file_path is the PDF that was parsed (the converted copy for pptx/images/text), which
+        # is what preview and /raw must open — the original isn't a PDF.
         get_identity_store().add_document(
-            OwnedDocument(user_id=user.id, doc_id=res.doc_id, filename=filename, path=str(file_path))
+            OwnedDocument(user_id=user.id, doc_id=res.doc_id, filename=filename, path=res.file_path)
         )
     return res
 
@@ -1012,6 +1027,7 @@ def create_ingest_job(
     project in the background. Poll `GET /api/v1/ingest/jobs` for progress."""
     session = workspace_session(session_id, user)
     safe_filename = Path(file.filename or "uploaded_document.pdf").name or "uploaded_document.pdf"
+    _require_supported_upload(safe_filename)
     file_path = _user_upload_path(user, safe_filename)
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
