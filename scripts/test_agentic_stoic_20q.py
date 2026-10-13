@@ -239,7 +239,6 @@ def run_benchmark():
         # Extract step details
         step_summary = []
         crag_status = "UNKNOWN"
-        crag_reason = ""
         crag_reformulated = None
         for step in agent_steps:
             stype = step.get("step_type")

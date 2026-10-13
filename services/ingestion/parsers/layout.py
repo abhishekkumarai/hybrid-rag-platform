@@ -77,6 +77,9 @@ class LayoutParser:
                     blocks = self._parse_with_docling(converter, path, doc_id)
                     if blocks:
                         return blocks
+                    logger.warning(
+                        f"Docling returned no blocks for '{path.name}'; using the PyMuPDF fallback."
+                    )
             except Exception as exc:
                 logger.warning(
                     f"Docling layout parsing failed for '{path.name}': {exc}. "
@@ -92,6 +95,7 @@ class LayoutParser:
 
         blocks: list[Block] = []
         order = 0
+        text_pdf: Any = None  # opened lazily, only when a picture needs text-layer recovery
 
         # Build mapping of page number to height for coordinate normalization
         page_heights: dict[int, float] = {}
@@ -116,28 +120,12 @@ class LayoutParser:
             # Determine primary page and bounding box
             page_no = 1
             bbox = (0.0, 0.0, 0.0, 0.0)
-            prov_list = getattr(item, "prov", [])
-            if prov_list:
-                first_prov = prov_list[0]
-                page_no = getattr(first_prov, "page_no", 1)
-                item_bbox = getattr(first_prov, "bbox", None)
-                if item_bbox is not None:
-                    p_height = page_heights.get(page_no, 792.0)
-                    try:
-                        tl_bbox = item_bbox.to_top_left_origin(p_height)
-                        bbox = (
-                            round(float(tl_bbox.l), 2),
-                            round(float(tl_bbox.t), 2),
-                            round(float(tl_bbox.r), 2),
-                            round(float(tl_bbox.b), 2),
-                        )
-                    except Exception:
-                        bbox = (
-                            round(float(getattr(item_bbox, "l", 0.0)), 2),
-                            round(float(getattr(item_bbox, "t", 0.0)), 2),
-                            round(float(getattr(item_bbox, "r", 0.0)), 2),
-                            round(float(getattr(item_bbox, "b", 0.0)), 2),
-                        )
+            # (page, bbox) of every region the item covers; a table can span several pages.
+            regions: list[tuple[int, tuple[float, float, float, float]]] = []
+            for prov in getattr(item, "prov", None) or []:
+                regions.append((getattr(prov, "page_no", 1), self._prov_bbox(prov, page_heights)))
+            if regions:
+                page_no, bbox = regions[0]
 
             # Classify block type and extract semantic attributes
             b_type = BlockType.TEXT
@@ -159,20 +147,23 @@ class LayoutParser:
             elif label == DocItemLabel.TABLE:
                 b_type = BlockType.TABLE
                 if hasattr(item, "export_to_markdown"):
-                    text = item.export_to_markdown().strip()
+                    text = item.export_to_markdown(doc=doc).strip()
                 elif hasattr(item, "text"):
                     text = item.text.strip()
                 if hasattr(item, "export_to_html"):
-                    html = item.export_to_html()
+                    html = item.export_to_html(doc=doc)
+                caption = self._caption_of(item, doc)
 
             elif label in (DocItemLabel.PICTURE, DocItemLabel.CHART):
                 b_type = BlockType.IMAGE
-                caption = getattr(item, "caption", None)
+                caption = self._caption_of(item, doc)
                 text = getattr(item, "text", "").strip()
                 if not text:
                     # Docling sometimes tags real text (e.g. a large title) as a picture; recover
                     # it from the PDF's own text layer rather than emit a "Figure" placeholder.
-                    layer_text = self._text_in_bbox(path, page_no, bbox)
+                    if text_pdf is None:
+                        text_pdf = fitz.open(str(path))
+                    layer_text = self._text_in_bbox(path, page_no, bbox, text_pdf)
                     if layer_text:
                         text = layer_text
                         if len(text) < 80 and len(text.splitlines()) == 1:
@@ -192,8 +183,9 @@ class LayoutParser:
 
             else:
                 text = getattr(item, "text", "").strip()
-                # Enhanced semantic refinement: if Docling emitted text, but it's a section title/header
-                if (
+                # Semantic refinement only for plain TEXT: list items, footnotes and formulas keep
+                # Docling's label rather than being promoted to headings by the shape heuristic.
+                if label == DocItemLabel.TEXT and (
                     text[:1].isalnum() or text.startswith("#")
                 ) and (
                     len(text.splitlines()) <= 2
@@ -219,6 +211,10 @@ class LayoutParser:
             if not text:
                 continue
 
+            meta: dict[str, Any] = {"label": str(label.value if hasattr(label, "value") else label)}
+            if len({p for p, _ in regions}) > 1:
+                meta["regions"] = [{"page": p, "bbox": list(b)} for p, b in regions]
+
             block_id = f"{doc_id}_p{page_no}_b{order}"
             blocks.append(
                 Block(
@@ -232,13 +228,16 @@ class LayoutParser:
                     caption=caption,
                     level=b_level,
                     order=order,
-                    meta={"label": str(label.value if hasattr(label, "value") else label)},
+                    meta=meta,
                 )
             )
             order += 1
 
-        # Sort blocks chronologically by page then vertical position
-        blocks.sort(key=lambda b: (b.page, b.bbox[1]))
+        if text_pdf is not None:
+            text_pdf.close()
+
+        # No re-sort: iterate_items() yields Docling's reading order, which a (page, y) sort would
+        # break by interleaving the columns of a multi-column page.
         logger.info(
             f"DoclingParser: extracted {len(blocks)} structured blocks from '{path.name}' "
             f"across {len(doc.pages) if hasattr(doc, 'pages') else '?'} pages"
@@ -246,14 +245,54 @@ class LayoutParser:
         return blocks
 
     @staticmethod
-    def _text_in_bbox(path: Path, page_no: int, bbox: tuple[float, float, float, float]) -> str:
-        """Text-layer content inside a top-left-origin bbox, or '' (scans, empty or bad regions)."""
+    def _prov_bbox(prov: Any, page_heights: dict[int, float]) -> tuple[float, float, float, float]:
+        """Top-left-origin bbox for a Docling provenance entry, or zeros when it has none."""
+        item_bbox = getattr(prov, "bbox", None)
+        if item_bbox is None:
+            return (0.0, 0.0, 0.0, 0.0)
+        p_height = page_heights.get(getattr(prov, "page_no", 1), 792.0)
         try:
-            with fitz.open(str(path)) as pdf:
-                rect = fitz.Rect(*bbox)
-                if rect.is_empty or not 1 <= page_no <= len(pdf):
+            item_bbox = item_bbox.to_top_left_origin(p_height)
+        except Exception:
+            pass
+        return (
+            round(float(getattr(item_bbox, "l", 0.0)), 2),
+            round(float(getattr(item_bbox, "t", 0.0)), 2),
+            round(float(getattr(item_bbox, "r", 0.0)), 2),
+            round(float(getattr(item_bbox, "b", 0.0)), 2),
+        )
+
+    @staticmethod
+    def _caption_of(item: Any, doc: Any) -> str | None:
+        """Caption text of a Docling table/picture (captions are refs, not a `.caption` field)."""
+        try:
+            return item.caption_text(doc).strip() or None
+        except Exception:
+            return None
+
+    @staticmethod
+    def _text_in_bbox(
+        path: Path,
+        page_no: int,
+        bbox: tuple[float, float, float, float],
+        pdf: Any = None,
+    ) -> str:
+        """Text-layer content inside a top-left-origin bbox, or '' (scans, empty or bad regions).
+
+        Pass an already-open `pdf` to avoid reopening the file for every call.
+        """
+        try:
+            rect = fitz.Rect(*bbox)
+            if rect.is_empty:
+                return ""
+            if pdf is not None:
+                if not 1 <= page_no <= len(pdf):
                     return ""
                 return pdf[page_no - 1].get_text("text", clip=rect).strip()
+            with fitz.open(str(path)) as opened:
+                if not 1 <= page_no <= len(opened):
+                    return ""
+                return opened[page_no - 1].get_text("text", clip=rect).strip()
         except Exception:
             return ""
 
