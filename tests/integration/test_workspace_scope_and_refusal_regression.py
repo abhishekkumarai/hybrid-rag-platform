@@ -17,6 +17,7 @@ from services.gateway.api import app
 from services.indexing.service import IndexingService
 from services.ingestion.service import IngestionService
 from services.retrieval.service import RetrievalService
+from tests.unit.conftest import own_documents
 
 
 @pytest.fixture
@@ -176,7 +177,7 @@ def test_per_workspace_embedding_route_scoping():
 
 @patch("services.gateway.api.requests.post")
 @patch("services.gateway.api.get_services")
-def test_chat_uses_workspace_retrieval_mode(mock_get_services, mock_ollama_post):
+def test_chat_uses_workspace_retrieval_mode(mock_get_services, mock_ollama_post, identity):
     """Verifies that calling /api/v1/chat with default mode='auto' inherits the workspace's configured retrieval mode."""
     client = TestClient(app)
 
@@ -219,6 +220,9 @@ def test_chat_uses_workspace_retrieval_mode(mock_get_services, mock_ollama_post)
         "/api/v1/sessions",
         json={"title": "Direct Workspace", "parameters": {"retrieval_mode": "direct"}},
     ).json()
+    # A project with no readable documents refuses every turn (IRA-34), so give the user one.
+    own_documents(identity, "system_architecture_spec.pdf")
+    client.post(f"/api/v1/sessions/{sess['id']}/files", json={"files": ["system_architecture_spec.pdf"]})
 
     # Post query without specifying mode
     chat_res = client.post(

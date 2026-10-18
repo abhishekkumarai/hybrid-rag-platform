@@ -10,12 +10,18 @@ run proves nothing either way. The cases pin the failures this area has actually
 - IRA-18: an off-corpus question must get the persona's exact refusal, not a guess.
 
 Needs the gateway (default http://127.0.0.1:8010), Qdrant and Ollama with both documents indexed.
-Usage: python tests/eval/conversation_regression.py [--base URL] [--model M] [--trials N]
+Accounts (IRA-32): the gateway is private by default, so the suite signs in with --email/--password
+(or RAG_EVAL_EMAIL / RAG_EVAL_PASSWORD) and attaches documents by the exact doc_id found in that
+account's /documents listing. The account must already have both documents uploaded; a demo guest
+cannot read them.
+
+Usage: python tests/eval/conversation_regression.py --email E --password P [--base URL] [--model M] [--trials N]
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from dataclasses import dataclass, field
 
@@ -56,23 +62,45 @@ CASES = [
 ]
 
 
-def run_case(base: str, model: str, case: Case) -> tuple[bool, str]:
-    session = requests.post(f"{base}/sessions", json={
+def sign_in(base: str, email: str, password: str) -> requests.Session:
+    """A session carrying the auth cookie and the header the CSRF guard requires on writes."""
+    http = requests.Session()
+    http.headers["X-RI-Client"] = "web"
+    resp = http.post(f"{base}/auth/login", json={"email": email, "password": password}, timeout=30)
+    if resp.status_code != 200:
+        raise SystemExit(f"Sign-in failed ({resp.status_code}): {resp.text[:200]}")
+    if not http.get(f"{base}/workspaces", timeout=30).json().get("workspaces"):
+        http.post(f"{base}/workspaces", json={"name": "Eval"}, timeout=30).raise_for_status()
+    return http
+
+
+def resolve_doc_ids(http: requests.Session, base: str) -> dict[str, str]:
+    """Maps each case's filename to the exact doc_id this account can read."""
+    docs = http.get(f"{base}/documents", timeout=30).json().get("documents", [])
+    by_name = {d["name"]: d["doc_id"] for d in docs}
+    missing = sorted({c.doc for c in CASES} - by_name.keys())
+    if missing:
+        raise SystemExit(f"Upload these documents to the eval account first: {missing}")
+    return by_name
+
+
+def run_case(http: requests.Session, base: str, model: str, case: Case, doc_id: str) -> tuple[bool, str]:
+    session = http.post(f"{base}/sessions", json={
         "title": f"[eval] {case.name}",
         "parameters": {"model": model, "retrieval_mode": "auto", "temperature": 0.2},
     }, timeout=30).json()
     sid = session["id"]
     try:
-        requests.post(f"{base}/sessions/{sid}/files", json={"files": [case.doc]}, timeout=30)
+        http.post(f"{base}/sessions/{sid}/files", json={"files": [doc_id]}, timeout=30).raise_for_status()
         answer = ""
         for query in case.turns:
-            resp = requests.post(f"{base}/chat", json={
+            resp = http.post(f"{base}/chat", json={
                 "query": query, "session_id": sid, "stream": False, "model": model, "mode": "auto",
             }, timeout=300).json()
             answer = (resp.get("raw_answer") or resp.get("answer") or "").strip()
         return case.check(answer), answer
     finally:
-        requests.delete(f"{base}/sessions/{sid}", timeout=30)
+        http.delete(f"{base}/sessions/{sid}", timeout=30)
 
 
 def main() -> int:
@@ -80,13 +108,20 @@ def main() -> int:
     parser.add_argument("--base", default="http://127.0.0.1:8010/api/v1")
     parser.add_argument("--model", default="llama3.2:3b")
     parser.add_argument("--trials", type=int, default=5)
+    parser.add_argument("--email", default=os.environ.get("RAG_EVAL_EMAIL"))
+    parser.add_argument("--password", default=os.environ.get("RAG_EVAL_PASSWORD"))
     args = parser.parse_args()
+    if not (args.email and args.password):
+        parser.error("--email and --password (or RAG_EVAL_EMAIL / RAG_EVAL_PASSWORD) are required")
+
+    http = sign_in(args.base, args.email, args.password)
+    doc_ids = resolve_doc_ids(http, args.base)
 
     failed = []
     for case in CASES:
         passes, sample_fail = 0, ""
         for _ in range(args.trials):
-            ok, answer = run_case(args.base, args.model, case)
+            ok, answer = run_case(http, args.base, args.model, case, doc_ids[case.doc])
             passes += ok
             if not ok and not sample_fail:
                 sample_fail = answer[:160].replace("\n", " ")
