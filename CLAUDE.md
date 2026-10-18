@@ -274,18 +274,27 @@ scores, stage latencies.
 
 ## Frontend
 
-The web client is a single hand-written file, `ui/index.html` (no build step, no framework), served by the
-gateway. Design tokens and component rules are in [`DESIGN.md`](DESIGN.md); behavioral rules and the
-component reuse hierarchy are in [`docs/frontend-guidelines.md`](docs/frontend-guidelines.md); agent-facing
-UI directives are in [`AGENTS.md`](AGENTS.md). Match the existing dark zinc/obsidian aesthetic — hairline
-1px borders over drop shadows, monospace for all metadata and numerics.
+The default web and mobile client is the Flutter app in `app_flutter/` (Evergreen light theme; spec in
+`ui/stitch_workspace/DESIGN-evergreen.md`, wireframes beside it). `ui.client: flutter` in `configs/default.yaml`
+makes the gateway serve `app_flutter/build/web` at `/`, `/s/<token>` and client routes; build it with
+`make flutter-web`, test with `make flutter-test` (`flutter analyze` + `flutter test`), and run it against a
+local gateway with `flutter run -d chrome` (list the dev origin in `auth.cors_origins`). Mobile keeps the
+`ri_auth` cookie itself and has a Server URL setting. The Docker image copies the pre-built `build/web`, so
+build it first. Backend contracts the client mirrors live in `app_flutter/lib/api/models/`; change
+`contracts/` first, then the matching Dart model and its round-trip test.
 
-**Terminology:** the UI calls the scoped unit a **Project** (gallery = "Projects"). A Project is the backend
+The old single-file client, `ui/index.html` (no build step, dark zinc/obsidian aesthetic, hairline 1px
+borders, monospace metadata), is still served at `/legacy` until the cut-over is finished (IRA-52). Its
+design tokens and component rules are in [`DESIGN.md`](DESIGN.md), behavioral rules in
+[`docs/frontend-guidelines.md`](docs/frontend-guidelines.md), agent-facing UI directives in
+[`AGENTS.md`](AGENTS.md); they apply to the legacy page only. Don't add features to it.
+
+**Terminology:** both UIs call the scoped unit a **Project** (gallery = "Projects"). A Project is the backend
 `ChatSession` (`/api/v1/sessions`, `session_id`): its `files` are the project's documents, `parameters` its
 settings, and telemetry/feedback/eval are keyed by its `session_id`. JS identifiers and `localStorage` keys
 still say `workspace` (`ri_workspace_model_*`) — keep them, renaming would drop saved per-project state.
 
-**Signed-in client (IRA-36).** `ui/index.html` wraps `window.fetch` once so every same-origin call sends the auth
+**Signed-in legacy client (IRA-36).** `ui/index.html` wraps `window.fetch` once so every same-origin call sends the auth
 cookie and `X-RI-Client`, and a 401 opens the sign-in overlay (`#authGate`) — plain `fetch(...)` calls need no
 changes. A `/s/<token>` URL (`SHARE_TOKEN`) renders the chat page read-only (`body.shared-view`), with inspector
 previews/figures pointed at the public share endpoints. Chat text and citation fields can be another user's
