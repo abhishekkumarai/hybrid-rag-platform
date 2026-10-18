@@ -12,6 +12,7 @@ class Citation {
   final String? webUrl;
   final String? resourceUrl;
   final String? resourceTitle;
+  final double? score;
 
   const Citation({
     required this.docId,
@@ -26,6 +27,7 @@ class Citation {
     this.webUrl,
     this.resourceUrl,
     this.resourceTitle,
+    this.score,
   });
 
   factory Citation.fromJson(Map<String, dynamic> json) => Citation(
@@ -41,6 +43,7 @@ class Citation {
         webUrl: json['web_url'] as String?,
         resourceUrl: json['resource_url'] as String?,
         resourceTitle: json['resource_title'] as String?,
+        score: (json['score'] as num?)?.toDouble(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -56,5 +59,6 @@ class Citation {
         'web_url': webUrl,
         'resource_url': resourceUrl,
         'resource_title': resourceTitle,
+        'score': score,
       };
 }

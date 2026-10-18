@@ -283,7 +283,10 @@ class _DocumentMockupPreview extends StatelessWidget {
                       style: monoStyle(fontSize: 10, color: EvergreenColors.metadata),
                     ),
                     Text(
-                      selected.isWeb ? 'Web resource' : 'Page ${selected.page}',
+                      [
+                        selected.isWeb ? 'Web resource' : 'Page ${selected.page}',
+                        if (selected.score != null) 'score ${selected.score!.toStringAsFixed(2)}',
+                      ].join(' · '),
                       style: monoStyle(fontSize: 10, color: EvergreenColors.metadata),
                     ),
                   ],

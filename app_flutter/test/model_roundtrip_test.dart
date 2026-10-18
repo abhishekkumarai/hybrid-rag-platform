@@ -19,9 +19,22 @@ void main() {
       'web_url': null,
       'resource_url': null,
       'resource_title': null,
+      'score': 0.87,
     };
     final citation = Citation.fromJson(json);
     expect(citation.toJson(), json);
+    expect(citation.score, 0.87);
+  });
+
+  test('Citation without a score (older server) parses with null score', () {
+    final citation = Citation.fromJson({
+      'doc_id': 'doc_1',
+      'page': 1,
+      'bbox': [0, 0, 1, 1],
+      'snippet': 's',
+      'formatted_badge': '[doc_1]',
+    });
+    expect(citation.score, isNull);
   });
 
   test('User.fromJson parses required and optional fields', () {

@@ -58,6 +58,7 @@ class Citation(BaseModel):
     web_url: str | None = Field(default=None, description="Direct web URL or wiki section anchor")
     resource_url: str | None = Field(default=None, description="External resource URL")
     resource_title: str | None = Field(default=None, description="Resource title")
+    score: float | None = Field(default=None, description="Cross-encoder rerank score of the cited passage")
 
 
 class RetrieveResponse(BaseModel):

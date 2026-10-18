@@ -152,6 +152,7 @@ class FlashRankReranker:
                     web_url=c.web_url,
                     resource_url=c.resource_url,
                     resource_title=c.resource_title,
+                    score=c.rerank_score,
                 )
             )
 
