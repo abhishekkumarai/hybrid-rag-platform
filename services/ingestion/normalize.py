@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import zipfile
 from pathlib import Path
 
 import fitz
@@ -161,12 +162,24 @@ def _find_soffice() -> str | None:
     return None
 
 
+def _is_pptx_package(src: Path) -> bool:
+    try:
+        with zipfile.ZipFile(src) as pkg:
+            return "[Content_Types].xml" in pkg.namelist()
+    except (zipfile.BadZipFile, OSError):
+        return False
+
+
 def _slides_to_pdf(src: Path, target: Path) -> None:
     soffice = _find_soffice()
     if soffice is None:
         raise ConversionError(
             "PowerPoint conversion needs LibreOffice; install it or set ingestion.soffice_path / SOFFICE_PATH"
         )
+    # Some LibreOffice builds open an unrecognised file as plain text and "convert" it, which would index
+    # the raw bytes of a corrupt deck as if they were slide content. A .pptx is an OOXML zip, so check.
+    if not _is_pptx_package(src):
+        raise ConversionError(f"'{src.name}' is not a valid PowerPoint file")
     timeout = load_config().ingestion.convert_timeout_s
     # ignore_cleanup_errors: on Windows soffice.bin can still hold profile files when we clean up, and
     # that PermissionError would otherwise replace the real conversion error.
