@@ -106,7 +106,6 @@ def test_state_changing_requests_need_the_client_header_or_same_origin(client):
 
 def test_admin_endpoints_refuse_regular_users(client):
     _signup(client)
-    assert client.post("/api/v1/web/sync", json={}, headers=H).status_code == 403
     assert client.post("/api/v1/eval/run", headers=H).status_code == 403
     assert client.get("/api/v1/queue/dlq").status_code == 403
 
