@@ -97,6 +97,25 @@ class BM25Store:
         logger.info(f"BM25Store: indexed {len(chunks)} chunks (total {len(self.corpus_chunks)})")
         return len(chunks)
 
+    def remove_document(self, doc_id: str) -> int:
+        """Drops a document's chunks and rebuilds the index. Returns how many chunks were removed."""
+        before = len(self.corpus_chunks)
+        self.corpus_chunks = [c for c in self.corpus_chunks if c.get("doc_id") != doc_id]
+        removed = before - len(self.corpus_chunks)
+        if not removed:
+            return 0
+        import bm25s
+
+        self.retriever = bm25s.BM25()
+        if self.corpus_chunks:
+            self.retriever.index(bm25s.tokenize([c["text"] for c in self.corpus_chunks], stopwords="en", show_progress=False))
+            self.retriever.save(str(self.index_dir))
+        self.index_dir.mkdir(parents=True, exist_ok=True)
+        with open(self.index_dir / "chunks_metadata.json", "w", encoding="utf-8") as f:
+            json.dump(self.corpus_chunks, f, indent=2)
+        logger.info(f"BM25Store: removed {removed} chunks of '{doc_id}' (total {len(self.corpus_chunks)})")
+        return removed
+
     def resolve_matching_doc_ids(self, requested_doc_ids: list[str]) -> list[str]:
         """Resolves raw or requested doc_ids into concrete indexed doc_ids found in the corpus."""
         target_set = set(requested_doc_ids)

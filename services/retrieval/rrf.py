@@ -59,7 +59,7 @@ def reciprocal_rank_fusion(
 
         meta = payload.get("meta") or {}
         doc_id_val = payload.get("doc_id", "")
-        is_web = bool(meta.get("is_web") or doc_id_val.startswith("web_"))
+        is_web = bool(meta.get("is_web") or doc_id_val.startswith("web_") or meta.get("source") == "web_connector")
 
         candidates.append(
             Candidate(
@@ -77,7 +77,8 @@ def reciprocal_rank_fusion(
                 image_path=payload.get("image_path"),
                 caption=payload.get("caption"),
                 is_web=is_web,
-                web_url=meta.get("wiki_url") or meta.get("url"),
+                # Website connector chunks carry the exact section (`page#anchor`) they came from.
+                web_url=meta.get("wiki_url") or meta.get("section_url") or meta.get("url"),
                 resource_url=meta.get("resource_url"),
                 resource_title=meta.get("resource_title"),
             )

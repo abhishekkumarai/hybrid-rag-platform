@@ -90,6 +90,14 @@ class IndexingService:
             duration_ms=round(duration_ms, 2),
         )
 
+    def remove_document(self, doc_id: str) -> None:
+        """Drops a document's chunks from the dense and sparse indexes (IRA-57: a re-crawled page that
+        changed or disappeared). Graph entities may keep pointing at its chunk ids; retrieval is always
+        scoped to exact doc_ids, so those dangling references are never served."""
+        self.qdrant.remove_document(doc_id)
+        self.bm25.remove_document(doc_id)
+        logger.info(f"IndexingService: removed doc_id='{doc_id}' from dense and sparse indexes")
+
     def index(self, request: IndexRequest) -> IndexResponse:
         """Indexes pre-chunked items directly."""
         start = time.perf_counter()

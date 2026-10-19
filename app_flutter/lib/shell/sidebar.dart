@@ -31,6 +31,7 @@ class AppSidebar extends ConsumerWidget {
   static const _navItems = [
     (label: 'Overview', icon: Symbols.dashboard, suffix: ''),
     (label: 'Library', icon: Symbols.folder_open, suffix: '/library'),
+    (label: 'Connectors', icon: Symbols.language, suffix: '/connectors'),
     (label: 'Evaluation', icon: Symbols.analytics, suffix: '/evaluation'),
     (
       label: 'Observability',
@@ -74,7 +75,8 @@ class AppSidebar extends ConsumerWidget {
                       _NavTile(
                         label: item.label,
                         icon: item.icon,
-                        selected: location == '/w/$workspaceId${item.suffix}',
+                        selected: location == '/w/$workspaceId${item.suffix}' ||
+                            (item.suffix.isNotEmpty && location.startsWith('/w/$workspaceId${item.suffix}/')),
                         onTap: () =>
                             context.go('/w/$workspaceId${item.suffix}'),
                       ),
@@ -88,7 +90,8 @@ class AppSidebar extends ConsumerWidget {
                       _NavTile(
                         label: item.label,
                         icon: item.icon,
-                        selected: location == '/w/$workspaceId${item.suffix}',
+                        selected: location == '/w/$workspaceId${item.suffix}' ||
+                            (item.suffix.isNotEmpty && location.startsWith('/w/$workspaceId${item.suffix}/')),
                         onTap: () =>
                             context.go('/w/$workspaceId${item.suffix}'),
                       ),

@@ -186,6 +186,17 @@ class QdrantStore:
             "indexed_vectors_count": info.indexed_vectors_count,
         }
 
+    def remove_document(self, doc_id: str) -> None:
+        from qdrant_client.models import FieldCondition, Filter, FilterSelector, MatchValue
+
+        try:
+            self.client.delete(
+                collection_name=self.collection_name,
+                points_selector=FilterSelector(filter=Filter(must=[FieldCondition(key="doc_id", match=MatchValue(value=doc_id))])),
+            )
+        except Exception as e:
+            logger.warning(f"QdrantStore: could not remove doc_id='{doc_id}': {e}")
+
     def index(self, chunks: list[Chunk], ollama_url: str = "http://127.0.0.1:11434") -> int:
         """Embeds and upserts chunks into Qdrant."""
         if not chunks:
