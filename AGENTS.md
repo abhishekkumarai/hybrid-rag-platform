@@ -1,5 +1,9 @@
 # Agent Directives & UI Design Standards
 
+> The web/mobile client is the Flutter app in `app_flutter/` (Evergreen light theme, spec in
+> `ui/stitch_workspace/DESIGN-evergreen.md`). The dark "Craft" rules below describe the retired `ui/index.html` and
+> `DESIGN.md`; for the Flutter client, defer to the Evergreen spec and `docs/frontend-guidelines.md`.
+
 ## UI / UX Design Directives (Priority 1: Figma MCP)
 
 ### 1. Mandatory Priority 1: Figma MCP for All UI Work

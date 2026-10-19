@@ -105,9 +105,3 @@ auth:
 logging:
   level: "INFO"
   dir: "logs"
-
-ui:
-  # "legacy" serves ui/index.html; "flutter" serves app_flutter/build/web (IRA-52). Flip to
-  # "flutter" once the parity checklist passes — /legacy still reaches the old page either way,
-  # until it's retired.
-  client: "flutter"

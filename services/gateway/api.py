@@ -187,7 +187,7 @@ def csrf_guard(request: Request) -> None:
     raise HTTPException(status_code=403, detail="Cross-site request refused (missing X-RI-Client header)")
 
 
-_PUBLIC_EXACT = {"/", "/legacy", "/api/v1/health"}
+_PUBLIC_EXACT = {"/", "/api/v1/health"}
 _PUBLIC_PREFIXES = ("/api/v1/auth/", "/api/v1/public/", "/s/")
 
 
@@ -2107,25 +2107,6 @@ def fork_share(token: str, user: User = Depends(current_user)) -> ForkResponse:
 FLUTTER_WEB_DIR = Path("app_flutter/build/web")
 
 
-def _legacy_html() -> str:
-    ui_path = Path("ui/index.html")
-    if ui_path.exists():
-        return ui_path.read_text(encoding="utf-8")
-    return """
-    <html>
-      <head><title>Hybrid RAG SOA Gateway</title></head>
-      <body style="font-family: sans-serif; padding: 2rem;">
-        <h2>Hybrid RAG Platform API Gateway</h2>
-        <p>Endpoints available:</p>
-        <ul>
-          <li><a href="/docs">Swagger API Documentation (/docs)</a></li>
-          <li><a href="/api/v1/health">System Health (/api/v1/health)</a></li>
-        </ul>
-      </body>
-    </html>
-    """
-
-
 def _flutter_html() -> str:
     index_path = FLUTTER_WEB_DIR / "index.html"
     if index_path.exists():
@@ -2139,15 +2120,8 @@ def _flutter_html() -> str:
     )
 
 
-@app.get("/legacy", response_class=HTMLResponse)
-def legacy_index_page() -> str:
-    """The pre-Flutter single-page client (IRA-52) — stays reachable at this path regardless of
-    `ui.client`, until it's retired."""
-    return _legacy_html()
-
-
 def _client_page() -> HTMLResponse:
-    html = _flutter_html() if settings.ui.client == "flutter" else _legacy_html()
+    html = _flutter_html()
     return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
 
@@ -2159,8 +2133,7 @@ def shared_chat_page(token: str) -> HTMLResponse:
 
 @app.get("/", response_class=HTMLResponse)
 def index_page() -> HTMLResponse:
-    """Serves the interactive RAG client — `ui.client` selects Flutter (IRA-47+) or the legacy
-    single-page client, defaulting to legacy until the Flutter rewrite's parity checklist passes."""
+    """Serves the Flutter web client (IRA-52)."""
     return _client_page()
 
 
@@ -2185,7 +2158,6 @@ class _SpaStaticFiles(StaticFiles):
 
 # Mounted last, after every /api, /docs and /data route above — Starlette matches routes in
 # registration order, so those explicit routes (and "/" and "/s/{token}" above) always win over
-# this catch-all. Only active in Flutter mode; legacy mode's request handling is unchanged, which
-# is what keeps `ui.client` defaulting to "legacy" a genuinely no-op change.
-if settings.ui.client == "flutter" and FLUTTER_WEB_DIR.is_dir():
+# this catch-all. Skipped when the web bundle isn't built (API-only deployments).
+if FLUTTER_WEB_DIR.is_dir():
     app.mount("/", _SpaStaticFiles(directory=FLUTTER_WEB_DIR, html=True), name="flutter-web")

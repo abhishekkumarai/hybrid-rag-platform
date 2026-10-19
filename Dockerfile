@@ -48,8 +48,8 @@ COPY . .
 
 # Pre-built Flutter web client (IRA-52) — `.dockerignore` excludes the rest of app_flutter/ (Dart
 # source, Android/iOS projects) since this image only ever serves the compiled bundle. Absent if
-# `make flutter-web` wasn't run first; the gateway falls back to the legacy ui/index.html either
-# way (see services/common/config.py::UIConfig and services/gateway/api.py's `_flutter_html`).
+# `make flutter-web` wasn't run first; the gateway then serves a
+# "build not found" page at / (see services/gateway/api.py's `_flutter_html`).
 COPY app_flutter/build/web app_flutter/build/web
 
 EXPOSE 8000

@@ -119,7 +119,7 @@ Docker it's the `ingestion-worker` service, needing `temporal` (and `qdrant`/`re
 `_attach_to_session` on a 2-thread pool inside the gateway (not Temporal) and records each stage in the Redis
 hash `rag:ingest_jobs`. Clients poll `GET /api/v1/ingest/jobs?session_id=`; progress therefore survives tab
 changes and reloads. A job left `running` by a previous gateway process is reported failed (`runner_id`
-mismatch). The synchronous `/api/v1/ingest` + `/index` routes remain for the legacy web UI and scripts.
+mismatch). The synchronous `/api/v1/ingest` + `/index` routes remain for scripts and the eval harness.
 Restart the `rag_gateway` container after code changes — uvicorn does not reload the bind-mounted source.
 
 **Retrieval layering.** `RetrievalService.retrieve()` is the plain hybrid path. Above it:
@@ -283,20 +283,18 @@ local gateway with `flutter run -d chrome` (list the dev origin in `auth.cors_or
 build it first. Backend contracts the client mirrors live in `app_flutter/lib/api/models/`; change
 `contracts/` first, then the matching Dart model and its round-trip test.
 
-The old single-file client, `ui/index.html` (no build step, dark zinc/obsidian aesthetic, hairline 1px
-borders, monospace metadata), is still served at `/legacy` until the cut-over is finished (IRA-52). Its
-design tokens and component rules are in [`DESIGN.md`](DESIGN.md), behavioral rules in
-[`docs/frontend-guidelines.md`](docs/frontend-guidelines.md), agent-facing UI directives in
-[`AGENTS.md`](AGENTS.md); they apply to the legacy page only. Don't add features to it.
+The old single-file client (`ui/index.html`, dark zinc aesthetic) was removed in IRA-52; recover it from git history
+(before that commit) if ever needed. Its design notes survive as [`DESIGN.md`](DESIGN.md) (dark-theme reference, not
+used by the Flutter client); UI rules for the Flutter client are in
+[`docs/frontend-guidelines.md`](docs/frontend-guidelines.md), agent-facing directives in [`AGENTS.md`](AGENTS.md).
+`/` serves a "build not found" page until `make flutter-web` has produced `app_flutter/build/web`.
 
-**Terminology:** both UIs call the scoped unit a **Project** (gallery = "Projects"). A Project is the backend
+**Terminology:** the client calls the scoped unit a **Project** (gallery = "Projects"). A Project is the backend
 `ChatSession` (`/api/v1/sessions`, `session_id`): its `files` are the project's documents, `parameters` its
-settings, and telemetry/feedback/eval are keyed by its `session_id`. JS identifiers and `localStorage` keys
-still say `workspace` (`ri_workspace_model_*`) — keep them, renaming would drop saved per-project state.
+settings, and telemetry/feedback/eval are keyed by its `session_id`. Saved per-project
+state in the client may still use the older `workspace` name — keep keys as they are, renaming would drop it.
 
-**Signed-in legacy client (IRA-36).** `ui/index.html` wraps `window.fetch` once so every same-origin call sends the auth
-cookie and `X-RI-Client`, and a 401 opens the sign-in overlay (`#authGate`) — plain `fetch(...)` calls need no
-changes. A `/s/<token>` URL (`SHARE_TOKEN`) renders the chat page read-only (`body.shared-view`), with inspector
-previews/figures pointed at the public share endpoints. Chat text and citation fields can be another user's
-content there: template them through `escapeHtmlText` / `htmlSafeCitation`, and never build inline event
-handlers from them.
+**Signed-in client (IRA-36).** The Flutter client keeps the `ri_auth` cookie (browser: HttpOnly cookie; mobile: its own
+jar), sends `X-RI-Client: web`, and routes to `/signin` on a 401. A `/s/<token>` URL renders the chat read-only
+(`shared_chat_screen.dart`) against the public share endpoints. Chat text and citation fields in a shared chat are
+another user's content: render them as plain text/markdown, never as HTML.

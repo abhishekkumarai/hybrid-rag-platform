@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field
@@ -138,13 +138,6 @@ class SchedulingConfig(BaseModel):
     scan_interval_s: int = Field(default=60, ge=5)
 
 
-class UIConfig(BaseModel):
-    # "legacy" serves ui/index.html (default until the Flutter rewrite's parity checklist
-    # passes); "flutter" serves app_flutter/build/web instead (IRA-52). The legacy page stays
-    # reachable at /legacy either way until it's retired.
-    client: Literal["legacy", "flutter"] = "legacy"
-
-
 class AppConfig(BaseModel):
     hardware: HardwareConfig = Field(default_factory=HardwareConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
@@ -156,7 +149,6 @@ class AppConfig(BaseModel):
     auth: AuthConfig = Field(default_factory=AuthConfig)
     scheduling: SchedulingConfig = Field(default_factory=SchedulingConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
-    ui: UIConfig = Field(default_factory=UIConfig)
 
     @property
     def auth_postgres_url(self) -> str:

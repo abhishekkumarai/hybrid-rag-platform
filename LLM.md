@@ -58,7 +58,7 @@ User Query ──> AgenticCoordinator / Decomposer
 | Directory / File | Description |
 | :--- | :--- |
 | `contracts/` | **Single Source of Truth**: Pydantic models for all data exchange between services (`chunk.py`, `document.py`, `retrieval.py`, `agent.py`, `graph.py`, `feedback.py`, `session.py`). |
-| `services/gateway/api.py` | FastAPI SOA Gateway exposing REST and SSE streaming endpoints, serves `ui/index.html`. |
+| `services/gateway/api.py` | FastAPI SOA Gateway exposing REST and SSE streaming endpoints, serves the built Flutter web client. |
 | `services/ingestion/` | Document ingestion (`service.py`), probe router (`probe.py`), chunker (`chunker.py`), multimodal/visualizer (`visualizer.py`). |
 | `services/indexing/` | Storage coordinator (`service.py`) managing Qdrant (`qdrant_store.py`), BM25 (`bm25_store.py`), and Graph (`graph_store.py`). |
 | `services/retrieval/` | Hybrid retriever (`service.py`), FlashRank (`reranker.py`), CRAG (`crag.py`), Agentic loop (`agentic.py`), and Compactor (`compactor.py`). |
@@ -66,7 +66,7 @@ User Query ──> AgenticCoordinator / Decomposer
 | `services/session/` | Multi-turn conversational memory in Redis (`manager.py`). |
 | `services/feedback/` | RAGOps store and active learning dataset generator (`store.py`). |
 | `configs/` | Hierarchical configuration (`default.yaml`, `profiles/quality.yaml`, `profiles/fast.yaml`). |
-| `ui/index.html` | Zero-build single-page frontend following Obsidian/Zinc craft design standards. |
+| `app_flutter/` | Flutter client (web + mobile), Evergreen light theme. |
 | `docker-compose.yml` | Full containerized stack (gateway, worker, scheduler, qdrant, redis, postgres, langflow). |
 
 ---
@@ -92,7 +92,7 @@ Base Gateway URL: `http://localhost:8001` (Docker) or `http://localhost:8000` (L
 
 | Endpoint | Method | Description |
 | :--- | :--- | :--- |
-| `/` | `GET` | Single-Page Web Client (`ui/index.html`) |
+| `/` | `GET` | Flutter web client (`app_flutter/build/web`) |
 | `/docs` | `GET` | OpenAPI / Swagger Documentation |
 | `/api/v1/health` | `GET` | Health probes for Qdrant, Redis, Ollama |
 | `/api/v1/chat` | `POST` | Primary RAG endpoint (supports SSE streaming and multi-turn sessions) |

@@ -1,5 +1,10 @@
 # Frontend Rules
 
+The client is the Flutter app in `app_flutter/` (web + Android/iOS), Evergreen light theme — tokens in
+`app_flutter/lib/theme/evergreen_theme.dart`, spec and wireframes in `ui/stitch_workspace/`. Generic rules below
+apply to any UI work; where they name web libraries (shadcn/ui, Lucide, JSX), read "the project's existing
+widgets and icon set" instead. Do not add a second component system.
+
 ## Primary Goal
 
 Build interfaces that look like a professionally designed production product.
@@ -19,19 +24,11 @@ The frontend should feel:
 
 Use this order of preference:
 
-1. Existing components already present in the project
-2. shadcn/ui
-3. 21st.dev-style components and patterns
-4. Radix primitives
-5. Custom components only when necessary
+1. Existing widgets in `app_flutter/lib/widgets/` and the feature folders
+2. Material 3 widgets themed by `EvergreenTheme`
+3. Custom widgets only when necessary
 
-Do not recreate standard UI components from scratch.
-
-Use shadcn/ui as the base component system.
-
-For any component that needs stronger visual design,
-look for an appropriate existing component from 21st.dev
-rather than designing one from scratch.
+Do not recreate standard widgets from scratch, and do not hard-code colors: use the theme tokens.
 
 Do not invent custom UI patterns unless necessary.
 
@@ -123,7 +120,7 @@ Do not introduce multiple accent colors unless required by the product.
 
 ## Icons
 
-Use Lucide icons or the project's existing icon system.
+Use the Material icon set the app already uses.
 
 Do not use emojis as UI icons.
 
@@ -166,7 +163,7 @@ For every significant frontend task:
 8. Test responsive behavior.
 9. Only then consider the task complete.
 
-Never declare the frontend finished immediately after writing JSX.
+Never declare the frontend finished immediately after writing the widget code: run `make flutter-test` and look at it in `flutter run -d chrome`.
 
 ## Visual Quality Check
 
@@ -187,13 +184,25 @@ When something can be simpler, make it simpler.
 
 ## Accounts and shared chats
 
-* Every page assumes a signed-in user; the sign-in overlay (`#authGate`) and the header user chip are the only
-  account UI. Reuse the overlay's card and input styles for any future account forms.
-* A `/s/<token>` shared chat reuses the chat page, read-only: hide composing, settings and project controls
-  rather than building a separate page, and keep the "Continue this chat" banner as the single call to action.
-* Content in a shared chat was written by someone else. Escape it (`escapeHtmlText`, `htmlSafeCitation`) before
-  templating into `innerHTML`, and attach behavior with listeners or `data-*` attributes, not inline handlers.
-* Controls for admin-only operations (web sync, all-projects views) are hidden or disabled for regular users.
+* Every screen assumes a signed-in user; an unauthenticated request lands on `/signin` (`screens/signin`). Reuse its
+  card and field styles for any future account forms.
+* A `/s/<token>` shared chat is a separate read-only screen (`screens/shared`): no composer, settings or project
+  controls, and the "Continue this chat" action is its single call to action.
+* Content in a shared chat was written by someone else. Render it as text/markdown; never interpret it as HTML.
+* Controls for admin-only operations (web sync, all-projects views, `features/admin`) are hidden or disabled for
+  regular users.
+
+## Parity checklist (IRA-52)
+
+Behaviours the removed web page had, and where the Flutter client implements them:
+
+* Sign-in, sign-up, "Try demo", sign-out: `screens/signin`.
+* Project gallery, create/rename/delete projects: `features/workspace`, `screens/home`.
+* Add sources (file, URL, crawl depth) with background progress: `screens/library`, `features/project`.
+* Chat with streaming, mode and model selection, parameters: `features/chat`, `screens/settings`.
+* Citation inspector with page preview, bbox highlight, rerank score: `screens/project/chat`.
+* Per-project observability, evaluation and feedback views: `screens/observability`, `screens/evaluation`.
+* Share link create/revoke, read-only viewer, fork: `screens/shared`.
 
 ## Important
 

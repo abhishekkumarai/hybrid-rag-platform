@@ -246,6 +246,9 @@ components:
     padding: 10px 14px
 ---
 
+> **Retired (IRA-52).** This is the design spec of the removed `ui/index.html` client. The shipped client is the
+> Flutter app (Evergreen light theme: `ui/stitch_workspace/DESIGN-evergreen.md`). Kept only as a dark-theme reference.
+
 # DESIGN.md — Enterprise Multimodal RAG Console
 
 Specification following the **[getdesign.md](https://getdesign.md)** and **Google Stitch** standards.
@@ -414,7 +417,7 @@ The platform follows a responsive 2-column cockpit with modal drawers:
 
 When adding or refactoring frontend code in this repository:
 1. **Read `DESIGN.md` First**: Ensure all hex codes, font tokens, and component classes align with this specification.
-2. **Match Existing CSS**: Update `ui/index.html` inline `:root` variables or dedicated stylesheets without introducing competing CSS frameworks.
+2. **Match Existing Tokens**: Reuse the tokens defined here; do not introduce competing styling systems.
 3. **Check Contrast**: Body copy must always meet WCAG AAA (contrast ratio $\ge 7:1$) against `{colors.surface-card}` and `{colors.canvas}`.
 4. **Preserve Monospace Data**: Latency figures (`124ms`), confidence scores (`0.88`), page numbers (`p. 3`), and coordinates must always be styled with `{typography.code}` or `{typography.badge-mono}`.
 5. **Keep Components Self-Contained**: Do not install heavy third-party UI widget libraries when native semantic HTML (`<details>`, `<dialog>`, `<canvas>`) provides superior performance and transparency.
